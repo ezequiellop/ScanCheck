@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f2027">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ScanCheck">
+<title>ScanCheck — Mantenimiento de Scanners</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash">
+  <div class="splash-content">
+    <div class="splash-icon">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="16" fill="#00d4aa"/>
+        <path d="M14 20h36v24H14z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M20 28h8M20 34h12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <rect x="34" y="26" width="12" height="12" rx="2" fill="white" fill-opacity="0.3" stroke="white" stroke-width="1.5"/>
+        <path d="M37 32l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>ScanCheck</h1>
+    <p>Control de Mantenimiento</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden">
+
+  <!-- HEADER -->
+  <header id="main-header">
+    <button id="btn-back" class="btn-icon hidden" onclick="goBack()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="header-title">
+      <span id="page-title">Inicio</span>
+    </div>
+    <button id="btn-menu" class="btn-icon" onclick="toggleMenu()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+    </button>
+  </header>
+
+  <!-- DROPDOWN MENU -->
+  <div id="dropdown-menu" class="hidden">
+    <button onclick="showPage('home'); toggleMenu()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+      Inicio
+    </button>
+    <button onclick="showPage('history'); toggleMenu()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Historial de Informes
+    </button>
+    <button onclick="exportAllData(); toggleMenu()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Exportar Todo
+    </button>
+  </div>
+
+  <!-- PAGES -->
+  <div id="pages">
+
+    <!-- HOME PAGE -->
+    <div id="page-home" class="page active">
+      <div class="home-hero">
+        <div class="hero-date" id="hero-date"></div>
+        <div class="hero-stats">
+          <div class="stat-card">
+            <span class="stat-num" id="stat-today">0</span>
+            <span class="stat-label">Hoy</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num" id="stat-total">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num" id="stat-reports">0</span>
+            <span class="stat-label">Informes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Acción principal</div>
+      <button class="btn-primary big" onclick="showPage('new-scan')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Registrar Scanner
+      </button>
+
+      <div class="section-label" style="margin-top:24px">Hoy</div>
+      <div id="today-list" class="scan-list">
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+          <p>Sin registros hoy</p>
+        </div>
+      </div>
+
+      <div id="btn-close-day-wrap" class="hidden">
+        <button class="btn-secondary" onclick="closeDayReport()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Generar Informe del Día
+        </button>
+      </div>
+    </div>
+
+    <!-- NEW SCAN PAGE -->
+    <div id="page-new-scan" class="page">
+      <div class="form-section">
+        <div class="form-group">
+          <label>Nombre del paso / inspección</label>
+          <input type="text" id="inp-paso" placeholder="Ej: Limpieza óptica" maxlength="80">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>N° de Puesto</label>
+            <input type="text" id="inp-puesto" placeholder="Ej: 05-A" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label>N° de Serie</label>
+            <input type="text" id="inp-serie" placeholder="Ej: SC2024-001" maxlength="30">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notas adicionales</label>
+          <textarea id="inp-notas" placeholder="Observaciones del estado del scanner..." rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- CAMERA SECTION -->
+      <div class="section-label">Fotografía del estado</div>
+      <div class="camera-zone" id="camera-zone">
+        <div id="camera-preview-wrap" class="hidden">
+          <canvas id="camera-canvas"></canvas>
+          <div class="camera-overlay-info" id="cam-overlay-info"></div>
+          <button class="btn-retake" onclick="retakePhoto()">↺ Retomar</button>
+        </div>
+        <div id="camera-placeholder" onclick="startCamera()">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <p>Tomar foto del scanner</p>
+          <span>Toca para activar cámara</span>
+        </div>
+      </div>
+
+      <video id="camera-stream" autoplay playsinline class="hidden"></video>
+
+      <div id="camera-controls" class="hidden">
+        <div class="cam-live-overlay" id="cam-live-overlay"></div>
+        <button class="btn-capture" id="btn-capture" onclick="capturePhoto()">
+          <div class="capture-ring"></div>
+        </button>
+        <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
+      </div>
+
+      <button class="btn-primary" style="margin-top:24px" onclick="saveScan()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+        Guardar Registro
+      </button>
+    </div>
+
+    <!-- REPORT PAGE -->
+    <div id="page-report" class="page">
+      <div class="report-header">
+        <div class="report-date" id="report-date-label"></div>
+        <div class="report-count" id="report-count-label"></div>
+      </div>
+
+      <div id="report-scan-list" class="report-list"></div>
+
+      <div class="section-label" style="margin-top:24px">Firma del Inspector</div>
+      <div class="signature-zone">
+        <canvas id="sig-canvas" width="320" height="140"></canvas>
+        <div class="sig-hint" id="sig-hint">Firmar aquí</div>
+        <div class="sig-actions">
+          <button class="btn-ghost" onclick="clearSignature()">Limpiar</button>
+          <button class="btn-primary small" onclick="saveReport()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/></svg>
+            Guardar Informe
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW REPORT PAGE -->
+    <div id="page-view-report" class="page">
+      <div id="view-report-content"></div>
+      <div class="action-row">
+        <button class="btn-secondary" onclick="downloadReport()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar HTML
+        </button>
+        <button class="btn-ghost danger" onclick="deleteReport()">Eliminar</button>
+      </div>
+    </div>
+
+    <!-- HISTORY PAGE -->
+    <div id="page-history" class="page">
+      <div id="history-list" class="history-list">
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <p>Sin informes guardados</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /pages -->
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+</div><!-- /app -->
+
+<!-- SCAN DETAIL MODAL -->
+<div id="modal-scan" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-scan')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="modal-scan-content"></div>
+    <button class="btn-ghost danger" onclick="deleteScanFromModal()">Eliminar este registro</button>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
