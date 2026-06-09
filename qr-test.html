@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Test</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0f2027; color: #e8f4f8; padding: 16px; max-width: 500px; margin: 0 auto; }
+  h2 { color: #00d4aa; margin-bottom: 16px; }
+  video { width: 100%; border-radius: 10px; display: block; margin-bottom: 8px; }
+  canvas { width: 100%; border-radius: 10px; display: block; margin-bottom: 8px; }
+  button { width: 100%; padding: 14px; margin-bottom: 10px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn-start { background: #00d4aa; color: #0f2027; }
+  .btn-stop  { background: #ff5555; color: white; }
+  .btn-file  { background: #1e3347; color: #00aeff; border: 1px solid #00aeff; }
+  #status { background: #1e3347; border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.8; margin-bottom: 10px; min-height: 60px; white-space: pre-wrap; font-family: monospace; }
+  #result { background: #0a2e24; border: 2px solid #00d4aa; border-radius: 10px; padding: 14px; font-size: 12px; display: none; white-space: pre-wrap; font-family: monospace; color: #00d4aa; word-break: break-all; }
+  .ok  { color: #00d4aa; }
+  .err { color: #ff5555; }
+  .warn{ color: #ffa040; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<h2>ScanCheck — Test QR</h2>
+
+<div id="status">Listo para comenzar...</div>
+
+<video id="vid" autoplay playsinline muted></video>
+<canvas id="cnv" style="display:none"></canvas>
+
+<button class="btn-start" onclick="startScan()">Iniciar camara y escanear</button>
+<button class="btn-stop"  onclick="stopScan()" style="display:none" id="btn-stop">Detener</button>
+<button class="btn-file"  onclick="document.getElementById('fi').click()">Escanear imagen desde galeria</button>
+<input type="file" id="fi" accept="image/*" onchange="scanFromFile(event)">
+
+<div id="result"></div>
+
+<script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+var stream = null;
+var scanning = false;
+var frameCount = 0;
+var foundCount = 0;
+
+function log(msg, cls) {
+  var el = document.getElementById('status');
+  el.innerHTML += '<span class="'+(cls||'')+'">' + msg + '</span>\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('status').innerHTML = '';
+}
+
+async function startScan() {
+  clearLog();
+  log('jsQR disponible: ' + (typeof jsQR !== 'undefined' ? 'SI' : 'NO'), typeof jsQR !== 'undefined' ? 'ok' : 'err');
+  
+  if (typeof jsQR === 'undefined') {
+    log('ERROR: jsQR no cargó. Verifica conexión a internet.', 'err');
+    return;
+  }
+
+  log('Solicitando acceso a camara...', 'warn');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    var vid = document.getElementById('vid');
+    vid.srcObject = stream;
+    await vid.play();
+    log('Camara OK: ' + vid.videoWidth + 'x' + vid.videoHeight, 'ok');
+    document.getElementById('btn-stop').style.display = 'block';
+    scanning = true;
+    frameCount = 0;
+    requestAnimationFrame(scan);
+  } catch(e) {
+    log('ERROR camara: ' + e.message, 'err');
+  }
+}
+
+function scan() {
+  if (!scanning) return;
+  var vid = document.getElementById('vid');
+  var cnv = document.getElementById('cnv');
+
+  if (vid.readyState < 2) {
+    requestAnimationFrame(scan);
+    return;
+  }
+
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    log('Frame ' + frameCount + ' | ' + vid.videoWidth + 'x' + vid.videoHeight + ' | readyState:' + vid.readyState);
+  }
+
+  cnv.width  = vid.videoWidth  || 640;
+  cnv.height = vid.videoHeight || 480;
+  var ctx = cnv.getContext('2d');
+  ctx.drawImage(vid, 0, 0, cnv.width, cnv.height);
+
+  var imageData = ctx.getImageData(0, 0, cnv.width, cnv.height);
+  
+  var code = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: 'attemptBoth'
+  });
+
+  if (code) {
+    foundCount++;
+    log('QR DETECTADO! Datos: ' + code.data.substring(0, 80) + '...', 'ok');
+    stopScan();
+    showResult(code.data);
+    return;
+  }
+
+  requestAnimationFrame(scan);
+}
+
+function stopScan() {
+  scanning = false;
+  if (stream) { stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+  document.getElementById('vid').srcObject = null;
+  document.getElementById('btn-stop').style.display = 'none';
+  log('Camara detenida. Frames procesados: ' + frameCount, 'warn');
+}
+
+function scanFromFile(event) {
+  clearLog();
+  log('jsQR disponible: ' + (typeof jsQR !== 'undefined' ? 'SI' : 'NO'), typeof jsQR !== 'undefined' ? 'ok' : 'err');
+  
+  var file = event.target.files[0];
+  if (!file) return;
+  log('Imagen cargada: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB)', 'ok');
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      log('Imagen: ' + img.width + 'x' + img.height, 'ok');
+      var cnv = document.getElementById('cnv');
+      cnv.width  = img.width;
+      cnv.height = img.height;
+      cnv.style.display = 'block';
+      var ctx = cnv.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      var imageData = ctx.getImageData(0, 0, cnv.width, cnv.height);
+      log('Procesando imagen con jsQR...', 'warn');
+      var code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth'
+      });
+      if (code) {
+        log('QR DETECTADO en imagen!', 'ok');
+        showResult(code.data);
+      } else {
+        log('QR no encontrado en la imagen.', 'err');
+        log('Asegurate que el QR sea visible, bien iluminado y sin distorsion.', 'warn');
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function showResult(data) {
+  var el = document.getElementById('result');
+  el.style.display = 'block';
+  try {
+    var parsed = JSON.parse(data);
+    el.textContent = 'QR LEIDO CORRECTAMENTE:\n\n' + JSON.stringify(parsed, null, 2);
+  } catch(e) {
+    el.textContent = 'QR LEIDO (texto plano):\n\n' + data;
+  }
+}
+</script>
+</body>
+</html>
