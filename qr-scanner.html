@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ScanCheck QR</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#0f2027;color:#e8f4f8;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  #header{padding:14px 16px;background:#162436;border-bottom:1px solid rgba(0,212,170,.2);display:flex;align-items:center;gap:12px;flex-shrink:0}
+  #header h1{font-size:16px;font-weight:600;color:#00d4aa;flex:1}
+  #btn-close{background:rgba(255,85,85,.15);border:1px solid rgba(255,85,85,.3);color:#ff5555;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+  #cam-wrap{position:relative;flex:1;overflow:hidden;background:#000}
+  #vid{width:100%;height:100%;object-fit:cover;display:block}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  #frame{width:240px;height:240px;position:relative}
+  #frame::before,#frame::after{content:'';position:absolute;width:36px;height:36px}
+  #frame::before{top:0;left:0;border-top:4px solid #00d4aa;border-left:4px solid #00d4aa;border-radius:4px 0 0 0}
+  #frame::after{top:0;right:0;border-top:4px solid #00d4aa;border-right:4px solid #00d4aa;border-radius:0 4px 0 0}
+  #frame .bl{position:absolute;bottom:0;left:0;width:36px;height:36px;border-bottom:4px solid #00d4aa;border-left:4px solid #00d4aa;border-radius:0 0 0 4px}
+  #frame .br{position:absolute;bottom:0;right:0;width:36px;height:36px;border-bottom:4px solid #00d4aa;border-right:4px solid #00d4aa;border-radius:0 0 4px 0}
+  #scanline{position:absolute;left:4px;right:4px;height:3px;background:linear-gradient(90deg,transparent,#00d4aa,transparent);animation:scanmove 2s linear infinite;top:0}
+  @keyframes scanmove{0%{top:4px}100%{top:228px}}
+  #status-bar{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:10px 16px;text-align:center;font-size:13px;color:rgba(255,255,255,.8)}
+  #status-bar span{display:block;font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;font-family:monospace}
+  #shadow-top{position:absolute;top:0;left:0;right:0;height:calc(50% - 120px);background:rgba(0,0,0,.5)}
+  #shadow-bot{position:absolute;bottom:0;left:0;right:0;height:calc(50% - 120px);background:rgba(0,0,0,.5)}
+  #shadow-l{position:absolute;top:calc(50% - 120px);bottom:calc(50% - 120px);left:0;width:calc(50% - 120px);background:rgba(0,0,0,.5)}
+  #shadow-r{position:absolute;top:calc(50% - 120px);bottom:calc(50% - 120px);right:0;width:calc(50% - 120px);background:rgba(0,0,0,.5)}
+  #success{display:none;position:absolute;inset:0;background:rgba(0,212,170,.15);align-items:center;justify-content:center;flex-direction:column;gap:12px}
+  #success.show{display:flex}
+  #success .check{width:72px;height:72px;background:#00d4aa;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px}
+  #success p{font-size:18px;font-weight:700;color:#00d4aa}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Escanear QR del Script PS</h1>
+  <button id="btn-close" onclick="cancelScan()">Cancelar</button>
+</div>
+
+<div id="cam-wrap">
+  <video id="vid" autoplay playsinline muted></video>
+  <div id="shadow-top"></div>
+  <div id="shadow-bot"></div>
+  <div id="shadow-l"></div>
+  <div id="shadow-r"></div>
+  <div id="overlay">
+    <div id="frame">
+      <div class="bl"></div>
+      <div class="br"></div>
+      <div id="scanline"></div>
+    </div>
+  </div>
+  <div id="status-bar">
+    Apuntá al QR de la pantalla de la PC
+    <span id="frame-info">Iniciando camara...</span>
+  </div>
+  <div id="success">
+    <div class="check">✓</div>
+    <p>QR Detectado!</p>
+  </div>
+</div>
+
+<canvas id="cnv" style="display:none"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+var stream = null;
+var scanning = false;
+var frameCount = 0;
+var vid = document.getElementById('vid');
+var cnv = document.getElementById('cnv');
+var frameInfo = document.getElementById('frame-info');
+
+function cancelScan() {
+  stopStream();
+  // Send cancel message to parent app
+  if (window.opener) {
+    window.opener.postMessage({ type: 'QR_CANCEL' }, '*');
+    window.close();
+  } else {
+    window.history.back();
+  }
+}
+
+function stopStream() {
+  scanning = false;
+  if (stream) { stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+}
+
+async function init() {
+  frameInfo.textContent = 'jsQR: ' + (typeof jsQR !== 'undefined' ? 'OK' : 'ERROR - sin conexion');
+  if (typeof jsQR === 'undefined') {
+    document.getElementById('status-bar').firstChild.textContent = 'ERROR: jsQR no disponible';
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    vid.srcObject = stream;
+    vid.play();
+    scanning = true;
+    vid.addEventListener('loadeddata', function() {
+      frameInfo.textContent = 'Camara: ' + vid.videoWidth + 'x' + vid.videoHeight;
+      requestAnimationFrame(tick);
+    });
+  } catch(e) {
+    document.getElementById('status-bar').firstChild.textContent = 'Error camara: ' + e.message;
+  }
+}
+
+function tick() {
+  if (!scanning) return;
+
+  frameCount++;
+  if (vid.readyState < 2) { requestAnimationFrame(tick); return; }
+
+  cnv.width  = vid.videoWidth;
+  cnv.height = vid.videoHeight;
+  var ctx = cnv.getContext('2d');
+  ctx.drawImage(vid, 0, 0);
+
+  // Only update frame info every 60 frames to avoid flicker
+  if (frameCount % 60 === 0) {
+    frameInfo.textContent = vid.videoWidth + 'x' + vid.videoHeight + ' | frames: ' + frameCount;
+  }
+
+  var imageData = ctx.getImageData(0, 0, cnv.width, cnv.height);
+  var code = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: 'attemptBoth'
+  });
+
+  if (code && code.data) {
+    onDetected(code.data);
+    return;
+  }
+
+  requestAnimationFrame(tick);
+}
+
+function onDetected(data) {
+  scanning = false;
+  stopStream();
+
+  // Show success UI
+  document.getElementById('success').classList.add('show');
+  document.getElementById('status-bar').firstChild.textContent = 'QR detectado correctamente!';
+
+  // Send data to parent app after short delay
+  setTimeout(function() {
+    if (window.opener) {
+      window.opener.postMessage({ type: 'QR_DATA', data: data }, '*');
+      window.close();
+    } else {
+      // Fallback: store in sessionStorage and go back
+      sessionStorage.setItem('scancheck_qr_result', data);
+      window.history.back();
+    }
+  }, 800);
+}
+
+// Start immediately
+init();
+</script>
+</body>
+</html>

@@ -169,8 +169,7 @@
       <div class="section-label" style="margin-top:20px">Datos desde PC <span class="badge-new">QR</span></div>
       <button class="btn-qr" onclick="startQRScan()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="17" y1="19" x2="20" y2="19"/></svg>Escanear QR del Script PS</button>
       <div id="qr-data-preview" class="qr-data-preview hidden"></div>
-      <video id="qr-stream" autoplay playsinline class="hidden" style="width:100%;border-radius:12px;margin-top:8px"></video>
-      <div id="qr-controls" class="hidden" style="text-align:center;margin-top:8px"><button class="btn-ghost" onclick="stopQRScan()">Cancelar QR</button></div>
+      <div id="qr-controls" style="display:none"></div>
 
       <video id="camera-stream" autoplay playsinline class="hidden"></video>
       <div id="camera-controls" class="hidden">

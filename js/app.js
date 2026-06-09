@@ -33,6 +33,13 @@ window.addEventListener('DOMContentLoaded', () => {
   initSignatureCanvas();
   requestLocation();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Check if we returned from QR scanner page
+  const qrResult = sessionStorage.getItem('scancheck_qr_result');
+  if (qrResult) {
+    sessionStorage.removeItem('scancheck_qr_result');
+    // Process after app loads
+    setTimeout(() => processQRData(qrResult), 1500);
+  }
 
   setTimeout(() => {
     const splash = document.getElementById('splash');
@@ -427,52 +434,42 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 }
 
 // ======== QR SCAN ========
-async function startQRScan() {
-  try {
-    qrStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }
-    });
-    const vid = document.getElementById('qr-stream');
-    vid.srcObject = qrStream;
-    vid.classList.remove('hidden');
+function startQRScan() {
+  // Listen for result from the QR scanner window
+  window.addEventListener('message', onQRMessage);
 
-    const ctrl = document.getElementById('qr-controls');
-    ctrl.classList.remove('hidden');
-    ctrl.innerHTML = `
-      <div style="text-align:center;padding:8px 0">
-        <div style="display:inline-block;border:3px solid #00d4aa;border-radius:12px;padding:4px;margin-bottom:8px">
-          <div style="width:180px;height:180px;position:relative;display:flex;align-items:center;justify-content:center">
-            <div style="position:absolute;top:0;left:0;width:24px;height:24px;border-top:3px solid #00d4aa;border-left:3px solid #00d4aa;border-radius:4px 0 0 0"></div>
-            <div style="position:absolute;top:0;right:0;width:24px;height:24px;border-top:3px solid #00d4aa;border-right:3px solid #00d4aa;border-radius:0 4px 0 0"></div>
-            <div style="position:absolute;bottom:0;left:0;width:24px;height:24px;border-bottom:3px solid #00d4aa;border-left:3px solid #00d4aa;border-radius:0 0 0 4px"></div>
-            <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-bottom:3px solid #00d4aa;border-right:3px solid #00d4aa;border-radius:0 0 4px 0"></div>
-            <span style="font-size:11px;color:#00d4aa;font-family:var(--mono)" id="qr-status">Buscando QR...</span>
-          </div>
-        </div>
-        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Apunta al QR de la pantalla de la PC</p>
-        <button class="btn-ghost" onclick="stopQRScan()" style="width:100%">Cancelar</button>
-      </div>`;
+  // Also check sessionStorage in case we came back from the scanner page
+  const stored = sessionStorage.getItem('scancheck_qr_result');
+  if (stored) {
+    sessionStorage.removeItem('scancheck_qr_result');
+    processQRData(stored);
+    return;
+  }
 
-    qrScanning = true;
-    // Wait for video to be ready before scanning
-    vid.onloadeddata = () => { scanQRFrame(vid); };
-    // Fallback if already loaded
-    if (vid.readyState >= 2) scanQRFrame(vid);
-  } catch(e) {
-    showToast('No se pudo acceder a la camara', 'error');
-    console.error('QR cam error:', e);
+  // Open the standalone QR scanner page (avoids ES module scope issues with jsQR)
+  const scannerUrl = new URL('qr-scanner.html', window.location.href).href;
+  const popup = window.open(scannerUrl, 'qr_scanner', 'width=400,height=700');
+
+  // If popup was blocked, navigate in same tab
+  if (!popup || popup.closed) {
+    sessionStorage.setItem('scancheck_return_page', currentPage);
+    window.location.href = scannerUrl;
   }
 }
 window.startQRScan = startQRScan;
 
+function onQRMessage(event) {
+  if (event.data && event.data.type === 'QR_DATA') {
+    window.removeEventListener('message', onQRMessage);
+    processQRData(event.data.data);
+  } else if (event.data && event.data.type === 'QR_CANCEL') {
+    window.removeEventListener('message', onQRMessage);
+  }
+}
+
 function stopQRScan() {
+  // QR scanning now handled by qr-scanner.html popup
   qrScanning = false;
-  if (qrStream) { qrStream.getTracks().forEach(t=>t.stop()); qrStream=null; }
-  const vid = document.getElementById('qr-stream');
-  vid.classList.add('hidden'); vid.srcObject=null; vid.onloadeddata=null;
-  const ctrl = document.getElementById('qr-controls');
-  ctrl.classList.add('hidden');
-  ctrl.innerHTML = '<button class="btn-ghost" onclick="stopQRScan()" style="width:100%">Cancelar QR</button>';
 }
 window.stopQRScan = stopQRScan;
 
