@@ -150,22 +150,28 @@ Write-Host "  TXT generado: $TXT" -ForegroundColor Green
 Write-Host ""
 Write-Host "Generando QR para ScanCheck..." -ForegroundColor Yellow
 
-# QR con claves cortas para reducir densidad del codigo
-# La app mapea: PC->Puesto, SN->Serie, resto->Notas
+# QR con claves cortas (2-3 letras) para mantener QR legible
 $jsonObj = [ordered]@{
     PC   = $data.NombrePC
+    USR  = $data.Usuario
     SN   = $data.Serial
-    Fab  = $data.Fabricante
-    Mod  = $data.Modelo
+    FAB  = $data.Fabricante
+    MOD  = $data.Modelo
     IP   = $data.IP
-    CPU  = ([string]$data.UsoCPU_Porcentaje) + "%"
-    RAM  = ([string]$data.MemoriaUsada_GB) + "/" + ([string]$data.MemoriaTotal_GB) + "GB"
-    AID  = $data.AssureID_Engine_Version
+    MAC  = $data.MAC
+    CPU  = $data.CPU
+    CPUP = [string]$data.UsoCPU_Porcentaje
+    RAMT = [string]$data.MemoriaTotal_GB
+    RAMU = [string]$data.MemoriaUsada_GB
+    RAMP = [string]$data.UsoMemoria_Porcentaje
+    AEV  = $data.AssureID_Engine_Version
     ADL  = $data.AssureID_DocLib_Version
     AED  = $data.AssureID_Edicion
     ALK  = $data.AssureID_LicenseKey
+    ATI  = $data.AssureID_Tipo
+    AAC  = $data.AssureID_Activacion
     AVN  = $data.AssureID_Vencimiento
-    AAD  = $data.AssureID_ActivationID
+    AAI  = $data.AssureID_ActivationID
     TS   = $data.Fecha
 }
 
