@@ -726,10 +726,24 @@ async function saveReport() {
   if (!inspectorName) { showToast('Ingresá el nombre del inspector','error'); return; }
   if (!currentReport) return;
 
+  // Embed full scan data in report (photos stored separately)
+  const todayScans = localScans.filter(s => currentReport.scanIds.includes(s.id||s.fbId));
+  const scansSnapshot = todayScans.map(s => ({
+    id: s.id, fbId: s.fbId,
+    paso: s.paso, puesto: s.puesto, serie: s.serie,
+    serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
+    opType: s.opType, notas: s.notas,
+    lat: s.lat, lon: s.lon, address: s.address,
+    timestamp: s.timestamp, userId: s.userId,
+    photos: s.photos || [],
+    pcData: s.pcData
+  }));
+
   const report = {
     id: 'rep_'+Date.now(),
     date: currentReport.date,
     scanIds: currentReport.scanIds,
+    scansSnapshot,
     signature: sigCanvas.toDataURL('image/png'),
     inspectorName,
     technicianName: currentUser.name,
@@ -841,172 +855,216 @@ async function downloadReportPDF() {
   if (!rep) { showToast('Informe no encontrado','error'); return; }
   showToast('Generando PDF...','success');
 
+  // Scan lookup priority:
+  // 1. scansSnapshot embedded in report (most reliable)
+  // 2. localScans cache
+  // 3. Firebase fetch
+  const scanIds = rep.scanIds || [];
+  let scans = [];
+
+  // Priority 1: embedded snapshot
+  if (rep.scansSnapshot && rep.scansSnapshot.length > 0) {
+    scans = rep.scansSnapshot;
+    console.log('Using embedded scansSnapshot:', scans.length);
+  }
+
+  // Priority 2: local cache
+  if (scans.length === 0) {
+    scans = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
+    console.log('Using localScans:', scans.length);
+  }
+
+  // Priority 3: Firebase
+  if (scans.length === 0 && rep.userId) {
+    try {
+      const fbScans = await fbGetMyScans(rep.userId);
+      scans = fbScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
+      fbScans.forEach(s => { if (!localScans.find(ls=>ls.id===s.id||ls.fbId===s.fbId)) localScans.push(s); });
+      console.log('Fetched from Firebase:', scans.length);
+    } catch(e) { console.warn('Firebase fetch failed:', e); }
+  }
+
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     const W=210, M=15;
     let y = M;
 
-    // ── HEADER ──────────────────────────────────────────
+    // ── HEADER ──
     doc.setFillColor(15,32,39);
-    doc.rect(0,0,W,30,'F');
-    // Logo Danaide
-    try { doc.addImage(DANAIDE_LOGO,'PNG',M,5,42,16); } catch(e){ console.warn('logo err',e); }
-    // Titulo
-    doc.setTextColor(0,212,170); doc.setFontSize(16); doc.setFont('helvetica','bold');
-    doc.text('ScanCheck',M+46,13);
+    doc.rect(0,0,W,32,'F');
+    try { doc.addImage(DANAIDE_LOGO,'PNG',M,5,44,18); } catch(e){}
+    doc.setTextColor(0,212,170); doc.setFontSize(17); doc.setFont('helvetica','bold');
+    doc.text('ScanCheck', M+48, 14);
     doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(139,175,196);
-    doc.text('Control de Mantenimiento Preventivo — Danaide Enterprise',M+46,19);
-    // Fecha
+    doc.text('Control de Mantenimiento Preventivo — Danaide Enterprise', M+48, 21);
     const d = new Date(rep.date+'T12:00:00');
     const dateLabel = d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     doc.setTextColor(180,210,225); doc.setFontSize(8);
-    doc.text(dateLabel.charAt(0).toUpperCase()+dateLabel.slice(1), W-M, 13, {align:'right'});
-    doc.text('Generado: '+new Date().toLocaleString('es-AR'), W-M, 19, {align:'right'});
-    y = 36;
+    doc.text(dateLabel.charAt(0).toUpperCase()+dateLabel.slice(1), W-M, 14, {align:'right'});
+    doc.text('Generado: '+new Date().toLocaleString('es-AR'), W-M, 21, {align:'right'});
+    y = 38;
 
-    // ── INFO BOX ─────────────────────────────────────────
+    // ── INFO BOX ──
     doc.setFillColor(22,36,54);
     doc.roundedRect(M,y,W-M*2,20,3,3,'F');
     const infoItems = [
-      ['Técnico',   rep.technicianName||'—'],
-      ['Inspector', rep.inspectorName||'—'],
-      ['Dispositivos', String(rep.scanIds?.length||0)],
-      ['Jira', rep.jiraKey||'Pendiente']
+      ['Técnico',      rep.technicianName||'—'],
+      ['Inspector',    rep.inspectorName||'—'],
+      ['Dispositivos', String(scanIds.length)],
+      ['Jira',         rep.jiraKey||'Pendiente']
     ];
     infoItems.forEach(([lbl,val],i) => {
       const cx = M+4+(i*(W-M*2)/4);
       doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(74,106,125);
       doc.text(lbl, cx, y+7);
       doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248);
-      doc.text(String(val), cx, y+14);
+      doc.text(String(val).substring(0,24), cx, y+14);
     });
     y += 26;
 
-    // ── SCANS ─────────────────────────────────────────────
-    // Find scans — try multiple ID matching strategies
-    const scanIds = rep.scanIds || [];
-    let scans = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
-    
-    // If not found locally, log for debug
-    console.log(`Report has ${scanIds.length} scanIds, found ${scans.length} scans locally`);
-    console.log('scanIds:', scanIds);
-    console.log('localScans ids:', localScans.map(s=>s.id||s.fbId));
-
+    // ── SCANS NOT FOUND MESSAGE ──
     if (scans.length === 0) {
-      doc.setFontSize(11); doc.setTextColor(255,85,85);
-      doc.text('No se encontraron registros de dispositivos para este informe.', M, y+10);
-      doc.setFontSize(9); doc.setTextColor(139,175,196);
-      doc.text('(Los registros pueden haberse guardado en otra sesión o dispositivo)', M, y+18);
-      y += 30;
+      doc.setFillColor(40,10,10);
+      doc.roundedRect(M,y,W-M*2,20,3,3,'F');
+      doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(255,100,100);
+      doc.text('No se encontraron registros de dispositivos', M+4, y+9);
+      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(200,150,150);
+      doc.text('Los registros fueron generados en otra sesión. Sincronizá y volvé a intentar.', M+4, y+16);
+      y += 26;
     }
 
+    // ── EACH SCAN ──
     for (let i=0; i<scans.length; i++) {
       const s = scans[i];
-      if (y > 252) { doc.addPage(); y = M; }
+      if (y > 248) { doc.addPage(); y = M; }
 
-      // Scan header bar
+      // Scan header
       doc.setFillColor(30,51,71);
-      doc.roundedRect(M,y,W-M*2,9,2,2,'F');
+      doc.roundedRect(M,y,W-M*2,10,2,2,'F');
       doc.setFillColor(0,212,170);
-      doc.circle(M+5,y+4.5,3,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(15,32,39);
-      doc.text(String(i+1), M+5, y+5.5, {align:'center'});
-      doc.setTextColor(232,244,248);
-      doc.text(escHtmlPDF(s.paso||'—'), M+11, y+5.5);
+      doc.circle(M+6,y+5,3.5,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,32,39);
+      doc.text(String(i+1), M+6, y+6, {align:'center'});
+      doc.setTextColor(232,244,248); doc.setFontSize(9);
+      doc.text((s.paso||'Sin descripcion').substring(0,55), M+13, y+6.5);
       const opCol = s.opType==='instalacion'?[0,174,255]:s.opType==='reemplazo'?[255,160,64]:[0,212,170];
-      doc.setTextColor(...opCol);
-      doc.text(opLabel(s.opType), W-M-2, y+5.5, {align:'right'});
-      y += 11;
+      doc.setTextColor(...opCol); doc.setFontSize(7.5);
+      doc.text(opLabel(s.opType), W-M-2, y+6.5, {align:'right'});
+      y += 12;
 
-      // Fields row
-      doc.setFillColor(22,36,54);
-      doc.roundedRect(M,y,W-M*2,14,2,2,'F');
-      const cols = [
-        ['PUESTO',  s.puesto||'—'],
-        ['N° SERIE', s.serie||'—'],
-        ['HORA',    new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
-        ['GPS',     s.lat ? s.lat.toFixed(4)+','+s.lon.toFixed(4) : '—']
+      // Fields grid (2 rows x 4 cols)
+      const fields = [
+        ['PUESTO',    s.puesto||'—'],
+        ['N° SERIE',  s.serie||'—'],
+        ['HORA',      new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
+        ['TIPO OP.',  opLabel(s.opType)],
       ];
-      cols.forEach(([lbl,val],ci) => {
-        const cx = M+4+ci*((W-M*2)/4);
+      if (s.serieRetira) { fields.push(['SERIE RETIRA', s.serieRetira]); fields.push(['SERIE NUEVA', s.serieNuevo||'—']); }
+      if (s.lat) fields.push(['GPS', s.lat.toFixed(5)+', '+s.lon.toFixed(5)]);
+
+      const colW = (W-M*2)/4;
+      const rowH = 13;
+      const rows = Math.ceil(fields.length/4);
+      doc.setFillColor(22,36,54);
+      doc.roundedRect(M,y,W-M*2,rows*rowH,2,2,'F');
+      fields.forEach(([lbl,val],fi) => {
+        const col = fi%4, row = Math.floor(fi/4);
+        const cx = M+4+col*colW;
+        const cy = y+row*rowH;
         doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(74,106,125);
-        doc.text(lbl, cx, y+5);
-        doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248);
-        doc.text(String(val).substring(0,22), cx, y+11);
+        doc.text(lbl, cx, cy+5);
+        doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248); doc.setFontSize(8);
+        doc.text(String(val).substring(0,22), cx, cy+11);
       });
-      y += 16;
+      y += rows*rowH + 3;
 
-      // Reemplazo fields
-      if (s.serieRetira) {
-        doc.setFillColor(30,20,10);
-        doc.roundedRect(M,y,W-M*2,9,2,2,'F');
-        doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,160,64);
-        doc.text('RETIRA:', M+4, y+5.5);
-        doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248);
-        doc.text(s.serieRetira, M+22, y+5.5);
-        doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
-        doc.text('NUEVO:', W/2, y+5.5);
-        doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248);
-        doc.text(s.serieNuevo||'—', W/2+18, y+5.5);
-        y += 11;
-      }
-
-      // Photos — up to 3 inline
+      // Photos
       const photos = s.photos||[];
       if (photos.length > 0) {
-        const pw = (W-M*2-8)/Math.min(photos.length,3);
-        const ph = pw*0.65;
-        if (y+ph > 275) { doc.addPage(); y=M; }
-        for (let pi=0; pi<Math.min(photos.length,3); pi++) {
-          try { doc.addImage(photos[pi],'JPEG',M+pi*(pw+4),y,pw,ph,'','FAST'); } catch(e){}
+        const maxPhotos = Math.min(photos.length,3);
+        const pw = (W-M*2 - (maxPhotos-1)*3) / maxPhotos;
+        const ph = pw * 0.65;
+        if (y+ph > 272) { doc.addPage(); y=M; }
+        for (let pi=0; pi<maxPhotos; pi++) {
+          try { doc.addImage(photos[pi],'JPEG', M+pi*(pw+3), y, pw, ph, '', 'FAST'); } catch(e){}
         }
-        y += ph+3;
-        if (photos.length>3) {
+        y += ph + 3;
+        if (photos.length > 3) {
           doc.setFontSize(7); doc.setTextColor(74,106,125);
-          doc.text('+'+( photos.length-3)+' fotos adicionales', M, y);
-          y += 4;
+          doc.text('+ '+(photos.length-3)+' fotos adicionales', M, y+3);
+          y += 6;
         }
       }
 
-      // Notas
-      if (s.notas) {
-        const noLines = doc.splitTextToSize(s.notas, W-M*2-8);
-        if (y+noLines.length*4 > 275) { doc.addPage(); y=M; }
-        doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(139,175,196);
-        doc.text(noLines, M+4, y+3);
-        y += noLines.length*4+4;
+      // Notas — formatted as list (each line on its own row)
+      if (s.notas && s.notas.trim()) {
+        const noteLines = s.notas.split('\n').filter(l => l.trim());
+        if (noteLines.length > 0) {
+          if (y+4+noteLines.length*5 > 275) { doc.addPage(); y=M; }
+          doc.setFillColor(18,28,42);
+          doc.roundedRect(M,y,W-M*2,4+noteLines.length*5+2,2,2,'F');
+          doc.setDrawColor(0,212,170,50); doc.setLineWidth(0.3);
+          doc.line(M+3,y+1,M+3,y+3+noteLines.length*5);
+          doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+          noteLines.forEach((line,li) => {
+            const isSection = line.startsWith('---');
+            if (isSection) {
+              doc.setTextColor(0,212,170); doc.setFont('helvetica','bold');
+              doc.text(line.replace(/---/g,'').trim(), M+6, y+5+li*5);
+              doc.setFont('helvetica','normal');
+            } else {
+              // Split key: value lines
+              const colonIdx = line.indexOf(':');
+              if (colonIdx > 0) {
+                const key = line.substring(0,colonIdx).trim();
+                const val = line.substring(colonIdx+1).trim();
+                doc.setTextColor(74,106,125); doc.setFont('helvetica','bold');
+                doc.text(key+':', M+6, y+5+li*5);
+                doc.setTextColor(220,236,244); doc.setFont('helvetica','normal');
+                doc.text(val.substring(0,60), M+6+doc.getTextWidth(key+':')+2, y+5+li*5);
+              } else {
+                doc.setTextColor(220,236,244);
+                doc.text(line.substring(0,70), M+6, y+5+li*5);
+              }
+            }
+          });
+          y += 4+noteLines.length*5+4;
+        }
       }
       y += 5;
     }
 
-    // ── FIRMA ─────────────────────────────────────────────
+    // ── FIRMA ──
     doc.addPage(); y=M;
-    doc.setFillColor(15,32,39); doc.rect(0,0,W,16,'F');
-    try { doc.addImage(DANAIDE_LOGO,'PNG',M,2,32,12); } catch(e){}
-    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
-    doc.text('Firma del Inspector Responsable', M+36, 10);
-    y = 24;
-    doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(139,175,196);
-    doc.text('Inspector: '+(rep.inspectorName||'—'), M, y); y+=7;
-    doc.text('Técnico:   '+(rep.technicianName||'—'), M, y); y+=7;
-    doc.text('Fecha:     '+dateLabel, M, y); y+=12;
+    doc.setFillColor(15,32,39); doc.rect(0,0,W,18,'F');
+    try { doc.addImage(DANAIDE_LOGO,'PNG',M,2,36,14); } catch(e){}
+    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
+    doc.text('Firma del Inspector Responsable', M+40, 11);
+    y = 26;
+    doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(74,106,125);
+    doc.text('Inspector:', M, y); doc.setTextColor(232,244,248); doc.text(rep.inspectorName||'—', M+28, y); y+=7;
+    doc.text('Técnico:',   M, y); doc.setTextColor(232,244,248); doc.text(rep.technicianName||'—', M+28, y); y+=7;
+    doc.text('Fecha:',     M, y); doc.setTextColor(232,244,248); doc.text(dateLabel, M+28, y); y+=14;
 
     let sig = rep.signature;
     if (!sig && rep.fbId) { try { sig = await fbGetSignature(rep.fbId); } catch(e){} }
     if (sig) {
       try {
-        doc.addImage(sig,'PNG',M,y,85,38);
-        doc.setDrawColor(0,212,170); doc.setLineWidth(0.3);
-        doc.rect(M,y,85,38);
-        // Inspector name under signature
+        doc.addImage(sig,'PNG',M,y,90,40);
+        doc.setDrawColor(0,212,170); doc.setLineWidth(0.4);
+        doc.rect(M,y,90,40);
+        y += 44;
         doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(74,106,125);
-        doc.text(rep.inspectorName||'', M, y+44);
-      } catch(e){ console.warn('sig err',e); }
+        doc.text(rep.inspectorName||'', M, y);
+        doc.setFontSize(7); doc.setFont('helvetica','normal');
+        doc.text('Firma del inspector responsable', M, y+5);
+      } catch(e){}
     }
-    y += 52;
+    y += 20;
+    doc.setFillColor(15,32,39); doc.rect(0,275,W,22,'F');
     doc.setFontSize(7); doc.setTextColor(74,106,125);
-    doc.text('ScanCheck — Danaide Enterprise — '+new Date().toLocaleString('es-AR'), M, y);
+    doc.text('ScanCheck — Danaide Enterprise  |  '+new Date().toLocaleString('es-AR'), W/2, 283, {align:'center'});
 
     doc.save('informe-scancheck-'+rep.date+'.pdf');
     showToast('✓ PDF descargado','success');
@@ -1016,8 +1074,6 @@ async function downloadReportPDF() {
     console.error('PDF error:', e);
   }
 }
-
-function escHtmlPDF(str) { return String(str||'').replace(/[^ -~À-ɏ]/g,''); }
 window.downloadReportPDF = downloadReportPDF;
 
 // ======== JIRA ========
