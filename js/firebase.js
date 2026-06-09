@@ -61,18 +61,9 @@ export async function fbSaveScan(scan) {
 }
 
 export async function fbGetMyScans(userId) {
-  try {
-    const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  } catch(e) {
-    console.warn('fbGetMyScans with orderBy failed:', e.code);
-    const q = query(collection(db, "scans"), where("userId","==",userId));
-    const snap = await getDocs(q);
-    const results = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    results.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
-    return results;
-  }
+  const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
 export async function fbDeleteScan(fbId) {
@@ -99,23 +90,21 @@ export async function fbGetSignature(reportFbId) {
 }
 
 export async function fbGetAllReports() {
+  // Try with orderBy first, fall back without if index missing
   try {
-    // Try with ordering first
     const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   } catch(e) {
-    console.warn('fbGetAllReports with orderBy failed, trying without:', e.code);
-    // Fallback: get all without ordering (works even if index missing or field absent)
+    console.warn("fbGetAllReports fallback (no orderBy):", e.code);
     const snap = await getDocs(collection(db, "reports"));
-    const results = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    // Sort client-side
-    results.sort((a,b) => {
-      const ta = a.createdAt?.seconds || new Date(a.date+'T23:59').getTime()/1000;
-      const tb = b.createdAt?.seconds || new Date(b.date+'T23:59').getTime()/1000;
-      return tb - ta;
+    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+    r.sort((a,b) => {
+      const ta = a.createdAt?.seconds||new Date(a.date||0).getTime()/1000;
+      const tb = b.createdAt?.seconds||new Date(b.date||0).getTime()/1000;
+      return tb-ta;
     });
-    return results;
+    return r;
   }
 }
 
@@ -125,16 +114,12 @@ export async function fbGetMyReports(userId) {
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   } catch(e) {
-    console.warn('fbGetMyReports with orderBy failed:', e.code);
+    console.warn("fbGetMyReports fallback:", e.code);
     const q = query(collection(db, "reports"), where("userId","==",userId));
     const snap = await getDocs(q);
-    const results = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    results.sort((a,b) => {
-      const ta = a.createdAt?.seconds || new Date(a.date+'T23:59').getTime()/1000;
-      const tb = b.createdAt?.seconds || new Date(b.date+'T23:59').getTime()/1000;
-      return tb - ta;
-    });
-    return results;
+    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+    r.sort((a,b) => new Date(b.createdAt?.seconds*1000||b.date||0)-new Date(a.createdAt?.seconds*1000||a.date||0));
+    return r;
   }
 }
 

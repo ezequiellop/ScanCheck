@@ -406,17 +406,14 @@ function stopCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
   clearInterval(overlayTimer); overlayTimer=null;
   const vid = document.getElementById('camera-stream');
-  vid.srcObject=null;
-  document.getElementById('camera-wrap').classList.add('hidden');
+  vid.classList.add('hidden'); vid.srcObject=null;
   document.getElementById('camera-controls').classList.add('hidden');
 }
 window.stopCamera = stopCamera;
 
 function updateLiveOverlay() {
   const el = document.getElementById('cam-live-overlay');
-  if (!el) return;
-  const lines = getWatermarkLines();
-  el.textContent = lines.join('\n');
+  if (el) el.textContent = getWatermarkLines().join('\n');
 }
 
 function capturePhoto() {
@@ -982,7 +979,7 @@ async function downloadReportPDF() {
       });
       y += rows*rowH + 3;
 
-      // Photos — todas en grilla de 2 columnas
+      // Photos — TODAS en grilla 2 columnas
       const photos = s.photos||[];
       if (photos.length > 0) {
         const cols = Math.min(photos.length, 2);
@@ -990,15 +987,9 @@ async function downloadReportPDF() {
         const ph = pw * 0.62;
         for (let pi = 0; pi < photos.length; pi++) {
           const col = pi % cols;
-          if (col === 0) {
-            if (y + ph > 272) { doc.addPage(); y = M; }
-          }
-          try {
-            doc.addImage(photos[pi], 'JPEG', M + col*(pw+4), y, pw, ph, '', 'FAST');
-          } catch(e) {}
-          if (col === cols-1 || pi === photos.length-1) {
-            y += ph + 4;
-          }
+          if (col === 0 && (y + ph) > 272) { doc.addPage(); y = M; }
+          try { doc.addImage(photos[pi], 'JPEG', M + col*(pw+4), y, pw, ph, '', 'FAST'); } catch(e){}
+          if (col === cols-1 || pi === photos.length-1) { y += ph + 4; }
         }
       }
 
@@ -1151,34 +1142,63 @@ window.supTab = supTab;
 
 let liveMapStarted=false;
 async function renderSupervisor() {
-  // Informes
-  const supList=document.getElementById('sup-informes-list');
-  supList.innerHTML='<div class="empty-state"><p style="color:var(--accent)">Cargando...</p></div>';
-  let allReports=[];
+  const supList   = document.getElementById('sup-informes-list');
+  const tecList   = document.getElementById('sup-tecnicos-list');
+  supList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--accent);font-size:13px">Cargando informes...</div>';
+
+  // ── Load ALL reports ─────────────────────────────────────────
+  let allReports = [];
+
+  // Step 1: always include local reports
+  allReports = [...localReports];
+
+  // Step 2: fetch from Firebase (multiple fallback strategies)
   try {
-    allReports = await fbGetAllReports();
-    console.log('Supervisor: loaded', allReports.length, 'reports from Firebase');
+    let fbReports = [];
+    try {
+      // Strategy A: with orderBy (requires index)
+      const { query, collection, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      fbReports = []; // will be overwritten
+    } catch(importErr) {}
+
+    // Use the already-imported db directly
+    fbReports = await fbGetAllReports();
+    // Merge: add FB reports not already in local
+    fbReports.forEach(fr => {
+      if (!allReports.find(r => r.id===fr.fbId || r.fbId===fr.fbId || r.id===fr.id)) {
+        allReports.push(fr);
+      }
+    });
+    console.log(`Supervisor: local=${localReports.length}, firebase=${fbReports.length}, merged=${allReports.length}`);
   } catch(e) {
-    console.error('Supervisor load error:', e.code, e.message);
-    supList.innerHTML = `<div style="background:rgba(255,85,85,.1);border:1px solid rgba(255,85,85,.3);border-radius:10px;padding:14px;font-size:13px;color:var(--danger);margin-bottom:12px">
-      Error cargando informes: ${e.code || e.message}<br>
-      <span style="font-size:11px;color:var(--text2);margin-top:4px;display:block">Verificá que las Reglas de Firestore permitan lectura a usuarios autenticados.</span>
+    console.error('Firebase reports error:', e.code, e.message);
+    // Show error banner but continue with local data
+    supList.innerHTML += `<div style="background:rgba(255,85,85,.1);border:1px solid rgba(255,85,85,.3);border-radius:10px;padding:12px;font-size:12px;color:var(--danger);margin-bottom:12px">
+      Error Firebase: ${e.code||e.message}<br>
+      <span style="color:var(--text2)">Verificá las Reglas de Firestore (deben permitir lectura a usuarios autenticados)</span>
     </div>`;
   }
-  // Merge with local reports not yet synced
-  localReports.forEach(lr => {
-    if (!allReports.find(r=>r.id===lr.id||r.fbId===lr.id||r.fbId===lr.fbId)) allReports.push(lr);
+
+  // Sort newest first
+  allReports.sort((a,b) => {
+    const ta = a.createdAt?.seconds ? a.createdAt.seconds*1000 : new Date(a.date+'T23:59').getTime();
+    const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date(b.date+'T23:59').getTime();
+    return tb - ta;
   });
-  allReports.sort((a,b)=>new Date(b.createdAt||b.date+'T23:59')-new Date(a.createdAt||a.date+'T23:59'));
-  if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes registrados</p></div>`; }
-  else {
-    supList.innerHTML=allReports.map(rep=>{
-      const d=new Date(rep.date+'T12:00:00');
-      const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-      const count=rep.scanIds?.length||0;
-      return `<div class="sup-card" onclick="viewReportSupervisor('${rep.fbId||rep.id}')">
+
+  // ── Render reports list ──────────────────────────────────────
+  if (!allReports.length) {
+    supList.innerHTML = '<div class="empty-state"><p>Sin informes registrados</p></div>';
+  } else {
+    supList.innerHTML = allReports.map(rep => {
+      const d = new Date(rep.date+'T12:00:00');
+      const label = d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const count = rep.scanIds?.length || 0;
+      const repId = rep.fbId || rep.id;
+      return `<div class="sup-card" onclick="viewReportSupervisor('${repId}')">
         <div class="sup-card-top">
-          <div><div class="sup-card-title">${escHtml(rep.technicianName||'—')}</div>
+          <div>
+            <div class="sup-card-title">${escHtml(rep.technicianName||'—')}</div>
             <div class="sup-card-meta">${label} · ${count} dispositivo${count!==1?'s':''}</div>
             <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
           </div>
@@ -1191,15 +1211,15 @@ async function renderSupervisor() {
     }).join('');
   }
 
-  // Técnicos
+  // ── Render technicians ───────────────────────────────────────
   try {
-    const users=await fbGetAllUsers();
-    const tecList=document.getElementById('sup-tecnicos-list');
-    const tecs=users.filter(u=>u.role==='tecnico');
-    if(!tecs.length){tecList.innerHTML=`<div class="empty-state"><p>Sin técnicos registrados</p></div>`;}
-    else {
-      tecList.innerHTML=tecs.map(u=>{
-        const uReports=allReports.filter(r=>r.userId===u.id);
+    const users = await fbGetAllUsers();
+    const tecs  = users.filter(u => u.role==='tecnico');
+    if (!tecs.length) {
+      tecList.innerHTML = '<div class="empty-state"><p>Sin técnicos registrados</p></div>';
+    } else {
+      tecList.innerHTML = tecs.map(u => {
+        const uReports = allReports.filter(r => r.userId===u.id);
         return `<div class="sup-card">
           <div class="sup-card-top">
             <div>
@@ -1214,8 +1234,11 @@ async function renderSupervisor() {
         </div>`;
       }).join('');
     }
-  } catch(e) {}
+  } catch(e) {
+    tecList.innerHTML = `<div class="empty-state"><p>Error cargando técnicos</p></div>`;
+  }
 }
+
 
 function startLiveMap() {
   if (liveMapStarted) return;

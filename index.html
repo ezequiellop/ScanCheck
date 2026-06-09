@@ -177,11 +177,9 @@
       <div id="qr-data-preview" class="qr-data-preview hidden"></div>
       <div id="qr-controls" style="display:none"></div>
 
-      <div id="camera-wrap" class="hidden" style="position:relative;margin-bottom:8px">
-        <video id="camera-stream" autoplay playsinline style="width:100%;border-radius:12px;background:#000;display:block"></video>
-        <div class="cam-live-overlay" id="cam-live-overlay" style="position:absolute;bottom:0;left:0;right:0;margin:0;border-radius:0 0 12px 12px"></div>
-      </div>
+      <video id="camera-stream" autoplay playsinline class="hidden"></video>
       <div id="camera-controls" class="hidden">
+        <div class="cam-live-overlay" id="cam-live-overlay"></div>
         <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
         <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
       </div>
