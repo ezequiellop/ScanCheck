@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f2027">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ScanCheck">
+<title>ScanCheck — Mantenimiento de Scanners</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-content">
+    <div class="splash-icon">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="16" fill="#00d4aa"/>
+        <path d="M14 20h36v24H14z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M20 28h8M20 34h12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <rect x="34" y="26" width="12" height="12" rx="2" fill="white" fill-opacity="0.3" stroke="white" stroke-width="1.5"/>
+        <path d="M37 32l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>ScanCheck</h1>
+    <p>Control de Mantenimiento</p>
+    <div class="splash-loading"><div class="splash-bar"></div></div>
+  </div>
+</div>
+
+<!-- LOGIN PAGE -->
+<div id="login-page" class="hidden">
+  <div class="login-scroll">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <svg width="44" height="44" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="16" fill="#00d4aa"/><path d="M14 20h36v24H14z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round"/><path d="M20 28h8M20 34h12" stroke="white" stroke-width="2" stroke-linecap="round"/><rect x="34" y="26" width="12" height="12" rx="2" fill="white" fill-opacity="0.3" stroke="white" stroke-width="1.5"/><path d="M37 32l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h2>ScanCheck</h2>
+        <p>Danaide Enterprise</p>
+      </div>
+      <div id="login-form">
+        <div class="form-group"><label>Correo electrónico</label><input type="email" id="login-email" placeholder="tecnico@danaide.com" autocomplete="email"></div>
+        <div class="form-group"><label>Contraseña</label>
+          <div style="position:relative"><input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+          <button class="btn-eye" onclick="togglePass()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        </div>
+        <div id="login-error" class="login-error hidden"></div>
+        <button class="btn-primary" onclick="doLogin()" id="btn-login">Ingresar</button>
+        <button class="btn-ghost" onclick="showRegister()" style="width:100%;margin-top:6px">Crear cuenta nueva</button>
+      </div>
+      <div id="register-form" class="hidden">
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">Nueva cuenta</div>
+        <div class="form-group"><label>Nombre completo</label><input type="text" id="reg-name" placeholder="Juan Pérez"></div>
+        <div class="form-group"><label>Correo electrónico</label><input type="email" id="reg-email" placeholder="tecnico@danaide.com"></div>
+        <div class="form-group"><label>Contraseña (mín. 6 caracteres)</label><input type="password" id="reg-pass" placeholder="••••••••"></div>
+        <div class="form-group"><label>Rol</label>
+          <select id="reg-role"><option value="tecnico">Técnico</option><option value="supervisor">Supervisor</option></select>
+        </div>
+        <div id="reg-error" class="login-error hidden"></div>
+        <button class="btn-primary" onclick="doRegister()" id="btn-register">Crear cuenta</button>
+        <button class="btn-ghost" onclick="hideRegister()" style="width:100%;margin-top:6px">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden">
+  <header id="main-header">
+    <button id="btn-back" class="btn-icon hidden" onclick="goBack()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="header-title"><span id="page-title">Inicio</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="sync-indicator" id="sync-indicator" title="Sincronizando...">
+        <div class="sync-dot"></div>
+      </div>
+      <div class="header-user" id="header-user" onclick="toggleMenu()">
+        <div class="user-avatar" id="user-avatar">?</div>
+      </div>
+    </div>
+  </header>
+
+  <div id="dropdown-menu" class="hidden">
+    <div class="menu-user-info">
+      <div class="menu-user-name" id="menu-user-name">—</div>
+      <div class="menu-user-email" id="menu-user-email">—</div>
+      <div class="menu-user-role" id="menu-user-role">—</div>
+    </div>
+    <div class="menu-divider"></div>
+    <button onclick="showPage('home');toggleMenu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Inicio</button>
+    <button onclick="showPage('history');toggleMenu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Historial</button>
+    <button id="btn-supervisor-menu" class="hidden" onclick="showPage('supervisor');toggleMenu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Panel Supervisor</button>
+    <button onclick="showPage('jira-config');toggleMenu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Configurar Jira</button>
+    <div class="menu-divider"></div>
+    <button onclick="doLogout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Cerrar sesión</button>
+  </div>
+
+  <div id="pages">
+
+    <!-- HOME -->
+    <div id="page-home" class="page active">
+      <div class="home-hero">
+        <div class="hero-date" id="hero-date"></div>
+        <div class="hero-stats">
+          <div class="stat-card"><span class="stat-num" id="stat-today">0</span><span class="stat-label">Hoy</span></div>
+          <div class="stat-card"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Total</span></div>
+          <div class="stat-card"><span class="stat-num" id="stat-reports">0</span><span class="stat-label">Informes</span></div>
+        </div>
+      </div>
+      <div class="section-label">Acción principal</div>
+      <button class="btn-primary big" onclick="showPage('new-scan')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Registrar Scanner
+      </button>
+      <div class="section-label" style="margin-top:24px">Registros de hoy</div>
+      <div id="today-list" class="scan-list"></div>
+      <div id="btn-close-day-wrap" class="hidden">
+        <button class="btn-secondary" onclick="closeDayReport()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+          Generar Informe del Día
+        </button>
+      </div>
+    </div>
+
+    <!-- NEW SCAN -->
+    <div id="page-new-scan" class="page">
+      <div class="section-label">Tipo de operación</div>
+      <div class="op-type-row">
+        <button class="op-btn active" data-op="mantenimiento" onclick="setOpType('mantenimiento',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Mantenimiento</button>
+        <button class="op-btn" data-op="instalacion" onclick="setOpType('instalacion',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Instalación</button>
+        <button class="op-btn" data-op="reemplazo" onclick="setOpType('reemplazo',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>Reemplazo</button>
+      </div>
+      <div class="form-section" style="margin-top:16px">
+        <div class="form-group"><label>Nombre del paso / inspección</label><input type="text" id="inp-paso" placeholder="Ej: Limpieza óptica" maxlength="80"></div>
+        <div class="form-row">
+          <div class="form-group"><label>N° de Puesto</label><input type="text" id="inp-puesto" placeholder="Ej: 05-A" maxlength="20"></div>
+          <div class="form-group" id="serie-normal-group"><label>N° de Serie</label><input type="text" id="inp-serie" placeholder="Ej: SC2024-001" maxlength="30"></div>
+        </div>
+        <div id="reemplazo-fields" class="hidden">
+          <div class="reemplazo-box">
+            <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
+            <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+          </div>
+        </div>
+        <div class="form-group"><label>Notas adicionales</label><textarea id="inp-notas" placeholder="Observaciones del estado del scanner..." rows="3"></textarea></div>
+      </div>
+
+      <div class="section-label">Fotografías <span class="photo-count-badge" id="photo-count-badge">0/10</span></div>
+      <div id="photos-grid" class="photos-grid"></div>
+      <div class="photo-actions">
+        <button class="btn-photo-add" onclick="startCamera()" id="btn-add-photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>Tomar foto</button>
+        <button class="btn-photo-add" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>Galería</button>
+        <input type="file" id="file-upload" accept="image/*" multiple class="hidden" onchange="handleFileUpload(event)">
+      </div>
+
+      <div class="section-label" style="margin-top:20px">Datos desde PC <span class="badge-new">QR</span></div>
+      <button class="btn-qr" onclick="startQRScan()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="17" y1="19" x2="20" y2="19"/></svg>Escanear QR del Script PS</button>
+      <div id="qr-data-preview" class="qr-data-preview hidden"></div>
+      <video id="qr-stream" autoplay playsinline class="hidden" style="width:100%;border-radius:12px;margin-top:8px"></video>
+      <div id="qr-controls" class="hidden" style="text-align:center;margin-top:8px"><button class="btn-ghost" onclick="stopQRScan()">Cancelar QR</button></div>
+
+      <video id="camera-stream" autoplay playsinline class="hidden"></video>
+      <div id="camera-controls" class="hidden">
+        <div class="cam-live-overlay" id="cam-live-overlay"></div>
+        <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
+        <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
+      </div>
+
+      <button class="btn-primary" style="margin-top:24px" onclick="saveScan()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+        Guardar Registro
+      </button>
+    </div>
+
+    <!-- REPORT -->
+    <div id="page-report" class="page">
+      <div class="report-header">
+        <div class="report-date" id="report-date-label"></div>
+        <div class="report-count" id="report-count-label"></div>
+      </div>
+      <div id="report-scan-list" class="report-list"></div>
+      <div class="section-label" style="margin-top:24px">Inspector responsable</div>
+      <div class="form-group" style="margin-bottom:16px"><label>Nombre completo del inspector que firma</label><input type="text" id="inp-inspector-name" placeholder="Ej: Ing. Carlos Rodríguez"></div>
+      <div class="section-label">Firma</div>
+      <div class="signature-zone">
+        <canvas id="sig-canvas" width="320" height="140"></canvas>
+        <div class="sig-hint" id="sig-hint">Firmar aquí</div>
+        <div class="sig-actions">
+          <button class="btn-ghost" onclick="clearSignature()">Limpiar</button>
+          <button class="btn-primary small" onclick="saveReport()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/></svg>Guardar Informe</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW REPORT -->
+    <div id="page-view-report" class="page">
+      <div id="view-report-content"></div>
+      <div class="action-row" style="flex-wrap:wrap;gap:10px;margin-top:4px">
+        <button class="btn-secondary" style="flex:1;min-width:130px" onclick="downloadReportPDF()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Exportar PDF</button>
+        <button class="btn-secondary" style="flex:1;min-width:130px" onclick="sendToJira()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Enviar a Jira</button>
+        <button class="btn-ghost danger" style="width:100%" onclick="deleteReport()">Eliminar informe</button>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="page-history" class="page">
+      <div id="history-list" class="history-list"></div>
+    </div>
+
+    <!-- SUPERVISOR -->
+    <div id="page-supervisor" class="page">
+      <div class="sup-tabs">
+        <button class="sup-tab active" onclick="supTab('informes',this)">Informes</button>
+        <button class="sup-tab" onclick="supTab('tecnicos',this)">Técnicos</button>
+        <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
+      </div>
+      <div id="sup-informes" class="sup-panel"><div id="sup-informes-list"></div></div>
+      <div id="sup-tecnicos" class="sup-panel hidden"><div id="sup-tecnicos-list"></div></div>
+      <div id="sup-mapa" class="sup-panel hidden">
+        <div id="live-map-container">
+          <div class="map-placeholder" id="map-placeholder">
+            <div class="pulse-dot"></div>
+            <p>Cargando ubicaciones en tiempo real...</p>
+            <span>Conectado a Firebase</span>
+          </div>
+          <div id="live-locations-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JIRA CONFIG -->
+    <div id="page-jira-config" class="page">
+      <div class="config-section">
+        <div class="config-header"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg><h3>Configuración Jira</h3></div>
+        <p class="config-desc">Necesitás un API Token de Atlassian. Se genera en tu perfil de Atlassian.</p>
+        <div class="form-group"><label>Dominio Jira</label><input type="text" value="danaide-enterprise.atlassian.net" readonly style="opacity:.6"></div>
+        <div class="form-group"><label>Tu email de Jira</label><input type="email" id="jira-email" placeholder="tu@danaide.com"></div>
+        <div class="form-group"><label>API Token</label><input type="password" id="jira-token" placeholder="Pegá tu token aquí">
+          <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" class="config-link">→ Generar API Token en Atlassian</a>
+        </div>
+        <div class="form-group"><label>Clave del Proyecto (Project Key)</label><input type="text" id="jira-project" placeholder="Ej: SC o SCAN"></div>
+        <button class="btn-primary" onclick="saveJiraConfig()" style="margin-top:8px">Guardar configuración</button>
+      </div>
+    </div>
+
+  </div><!-- /pages -->
+  <div id="toast" class="toast hidden"></div>
+</div><!-- /app -->
+
+<!-- SCAN MODAL -->
+<div id="modal-scan" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-scan')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="modal-scan-content"></div>
+    <button class="btn-ghost danger" onclick="deleteScanFromModal()" style="width:100%;margin-top:8px">Eliminar registro</button>
+  </div>
+</div>
+
+<!-- JIRA MODAL -->
+<div id="modal-jira" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-jira')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="modal-jira-content"></div>
+    <button class="btn-ghost" onclick="closeModal('modal-jira')" style="width:100%;margin-top:8px">Cerrar</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
