@@ -61,9 +61,11 @@ export async function fbSaveScan(scan) {
 }
 
 export async function fbGetMyScans(userId) {
-  const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
+  const q = query(collection(db, "scans"), where("userId","==",userId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+  return r;
 }
 
 export async function fbDeleteScan(fbId) {
@@ -90,37 +92,18 @@ export async function fbGetSignature(reportFbId) {
 }
 
 export async function fbGetAllReports() {
-  // Try with orderBy first, fall back without if index missing
-  try {
-    const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  } catch(e) {
-    console.warn("fbGetAllReports fallback (no orderBy):", e.code);
-    const snap = await getDocs(collection(db, "reports"));
-    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    r.sort((a,b) => {
-      const ta = a.createdAt?.seconds||new Date(a.date||0).getTime()/1000;
-      const tb = b.createdAt?.seconds||new Date(b.date||0).getTime()/1000;
-      return tb-ta;
-    });
-    return r;
-  }
+  const snap = await getDocs(collection(db, "reports"));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbGetMyReports(userId) {
-  try {
-    const q = query(collection(db, "reports"), where("userId","==",userId), orderBy("createdAt","desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  } catch(e) {
-    console.warn("fbGetMyReports fallback:", e.code);
-    const q = query(collection(db, "reports"), where("userId","==",userId));
-    const snap = await getDocs(q);
-    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    r.sort((a,b) => new Date(b.createdAt?.seconds*1000||b.date||0)-new Date(a.createdAt?.seconds*1000||a.date||0));
-    return r;
-  }
+  const q = query(collection(db, "reports"), where("userId","==",userId));
+  const snap = await getDocs(q);
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbDeleteReport(fbId) {
@@ -143,9 +126,11 @@ export function fbWatchLocations(cb) {
 }
 
 export function fbWatchAllReports(cb) {
-  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-  return onSnapshot(q, snap => {
-    cb(snap.docs.map(d => ({ fbId: d.id, ...d.data() })));
+  // No orderBy to avoid index requirement — sort client-side
+  return onSnapshot(collection(db, "reports"), snap => {
+    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+    r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    cb(r);
   });
 }
 
