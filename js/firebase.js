@@ -72,16 +72,8 @@ export async function fbDeleteScan(fbId) {
 
 // ── REPORTS ───────────────────────────────────────────────
 export async function fbSaveReport(report) {
-  const { signature, scansSnapshot, ...meta } = report;
+  const { signature, ...meta } = report;
   meta.createdAt = serverTimestamp();
-  // Store scansSnapshot without photos (photos are too large for Firestore)
-  if (scansSnapshot) {
-    meta.scansSnapshot = scansSnapshot.map(s => {
-      const { photos, ...scanMeta } = s;
-      scanMeta.photoCount = (photos||[]).length;
-      return scanMeta;
-    });
-  }
   const ref = await addDoc(collection(db, "reports"), meta);
   // Store signature separately (can be large)
   await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
