@@ -1,4 +1,5 @@
 // ======== FIREBASE IMPORTS ========
+import { DANAIDE_LOGO } from './logo.js';
 import {
   fbRegister, fbLogin, fbLogout, fbOnAuthChange,
   fbSaveScan, fbGetMyScans, fbDeleteScan,
@@ -184,6 +185,11 @@ function updateUserUI() {
   document.getElementById('menu-user-email').textContent = currentUser.email;
   document.getElementById('menu-user-role').textContent = currentUser.role === 'supervisor' ? 'Supervisor' : 'Técnico';
   if (currentUser.role === 'supervisor') document.getElementById('btn-supervisor-menu').classList.remove('hidden');
+  // Inject Danaide logo into header
+  const logoWrap = document.getElementById('header-logo');
+  if (logoWrap && DANAIDE_LOGO) {
+    logoWrap.innerHTML = `<img src="${DANAIDE_LOGO}" style="height:28px;object-fit:contain;opacity:.9">`;
+  }
 }
 
 function setSyncStatus(state) {
@@ -504,42 +510,54 @@ function processQRData(raw) {
       raw.split('\n').forEach(line=>{ const [k,...v]=line.split('='); if(k&&v.length) data[k.trim()]=v.join('=').trim(); });
     }
 
-    // Mapeo claves cortas del script PS -> campos del formulario
-    // Claves largas (compatibilidad hacia atras) y claves cortas nuevas
-    const puestoVal = data.PC || data.NombrePC || data.ComputerName || data.Hostname || '';
-    const serieVal  = data.SN || data.Serial   || data.SerialNumber || '';
-
+    // Mapeo completo de claves cortas y largas del inventario.ps1
+    const g = (a,b,c) => data[a]||data[b]||data[c]||''; // get with fallbacks
+    const puestoVal = g('PC','NombrePC','ComputerName');
+    const serieVal  = g('SN','Serial','SerialNumber');
     if (puestoVal) { const el=document.getElementById('inp-puesto'); if(el&&!el.value) el.value=puestoVal; }
-    if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal;  }
+    if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
 
-    // Armar notas automaticas
+    // Construir notas completas con TODA la info del inventario
     const notasEl = document.getElementById('inp-notas');
     if (notasEl && !notasEl.value) {
-      const parts = [];
-      const fab = data.Fab || data.Fabricante || '';
-      const mod = data.Mod || data.Modelo     || '';
-      const ip  = data.IP  || '';
-      const cpu = data.CPU || '';
-      const ram = data.RAM || '';
-      const aid = data.AID || data.AssureID_Engine || '';
-      const adl = data.ADL || data.AssureID_DocLib || '';
-      const aed = data.AED || data.AssureID_Edicion || '';
-      const avn = data.AVN || data.AssureID_Vencimiento || '';
-      const alk = data.ALK || data.AssureID_LicenseKey || '';
-      const aac = data.AAD || data.AssureID_ActivationID || '';
-      if (fab || mod) parts.push('Equipo: ' + [fab,mod].filter(Boolean).join(' '));
-      if (ip)  parts.push('IP: ' + ip);
-      if (cpu) parts.push('CPU uso: ' + cpu);
-      if (ram) parts.push('RAM: ' + ram);
-      if (aid && aid !== 'No instalado') {
-        parts.push('AssureID Engine: ' + aid);
-        if (adl && adl !== 'No instalado') parts.push('DocLib: ' + adl);
-        if (aed && aed !== 'N/A') parts.push('Edicion: ' + aed);
-        if (avn && avn !== 'N/A') parts.push('Lic.vence: ' + avn);
-        if (alk && alk !== 'N/A') parts.push('LicKey: ' + alk);
-        if (aac && aac !== 'N/A') parts.push('ActivID: ' + aac);
+      const fab  = g('FAB','Fabricante','');
+      const mod  = g('MOD','Modelo','');
+      const ip   = g('IP','','');
+      const mac  = g('MAC','','');
+      const cpu  = g('CPU','','');
+      const cpup = g('CPUP','UsoCPU_Porcentaje','');
+      const ramt = g('RAMT','MemoriaTotal_GB','');
+      const ramu = g('RAMU','MemoriaUsada_GB','');
+      const ramp = g('RAMP','UsoMemoria_Porcentaje','');
+      const usr  = g('USR','Usuario','');
+      const aev  = g('AEV','AssureID_Engine_Version','AssureID_Engine');
+      const adl  = g('ADL','AssureID_DocLib_Version','AssureID_DocLib');
+      const aed  = g('AED','AssureID_Edicion','');
+      const alk  = g('ALK','AssureID_LicenseKey','');
+      const ati  = g('ATI','AssureID_Tipo','');
+      const aac  = g('AAC','AssureID_Activacion','');
+      const avn  = g('AVN','AssureID_Vencimiento','');
+      const aai  = g('AAI','AssureID_ActivationID','');
+      const ts   = g('TS','Fecha','');
+      const lines = [];
+      if (fab||mod)  lines.push('Equipo: '+[fab,mod].filter(Boolean).join(' '));
+      if (usr)       lines.push('Usuario PC: '+usr);
+      if (ip)        lines.push('IP: '+ip+'  MAC: '+mac);
+      if (cpu)       lines.push('CPU: '+cpu+' ('+cpup+'%)');
+      if (ramt)      lines.push('RAM: '+ramu+'/'+ramt+' GB ('+ramp+'% uso)');
+      if (aev && aev!=='No instalado') {
+        lines.push('--- AssureID ---');
+        lines.push('Engine: v'+aev);
+        if (adl && adl!=='No instalado') lines.push('DocLib: v'+adl);
+        if (aed && aed!=='N/A')          lines.push('Edicion: '+aed);
+        if (ati && ati!=='N/A')          lines.push('Tipo lic: '+ati);
+        if (alk && alk!=='N/A')          lines.push('LicKey: '+alk);
+        if (aac && aac!=='N/A')          lines.push('Activacion: '+aac);
+        if (avn && avn!=='N/A')          lines.push('Vencimiento: '+avn);
+        if (aai && aai!=='N/A')          lines.push('ActivationID: '+aai);
       }
-      notasEl.value = parts.join('\n');
+      if (ts) lines.push('Relevado: '+ts);
+      notasEl.value = lines.join('\n');
     }
 
     // Preview completo
@@ -788,7 +806,10 @@ async function viewReport(id) {
     </div>`;
   }).join('');
   document.getElementById('view-report-content').innerHTML=`
-    <div class="vr-title">Informe de Visita</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="vr-title" style="margin:0">Informe de Visita</div>
+      <img src="${DANAIDE_LOGO}" style="height:24px;object-fit:contain;opacity:.85">
+    </div>
     <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
@@ -822,10 +843,12 @@ async function downloadReportPDF() {
     const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
     const W=210, M=15; let y=M;
     doc.setFillColor(15,32,39); doc.rect(0,0,W,28,'F');
-    doc.setTextColor(0,212,170); doc.setFontSize(18); doc.setFont('helvetica','bold');
-    doc.text('ScanCheck',M,12);
+    // Logo Danaide en PDF
+    try { doc.addImage(DANAIDE_LOGO,'PNG',M,4,36,14); } catch(e){}
+    doc.setTextColor(0,212,170); doc.setFontSize(16); doc.setFont('helvetica','bold');
+    doc.text('ScanCheck',M+40,11);
     doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(139,175,196);
-    doc.text('Control de Mantenimiento Preventivo — Danaide Enterprise',M,18);
+    doc.text('Control de Mantenimiento Preventivo — Danaide Enterprise',M+40,18);
     const d=new Date(rep.date+'T12:00:00');
     const label=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     doc.setTextColor(200,220,230); doc.setFontSize(8);
@@ -1061,7 +1084,10 @@ async function viewReportSupervisor(id) {
   const d=new Date(rep.date+'T12:00:00');
   const label=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('view-report-content').innerHTML=`
-    <div class="vr-title">Informe de Visita</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="vr-title" style="margin:0">Informe de Visita</div>
+      <img src="${DANAIDE_LOGO}" style="height:24px;object-fit:contain;opacity:.85">
+    </div>
     <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
