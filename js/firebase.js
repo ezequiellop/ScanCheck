@@ -74,10 +74,18 @@ export async function fbDeleteScan(fbId) {
 
 // ── REPORTS ───────────────────────────────────────────────
 export async function fbSaveReport(report) {
-  const { signature, ...meta } = report;
+  const { signature, scansSnapshot, ...meta } = report;
   meta.createdAt = serverTimestamp();
+  // Strip photos from scansSnapshot — photos stay local, metadata goes to Firestore
+  // This avoids the 1MB Firestore document size limit
+  if (scansSnapshot && scansSnapshot.length > 0) {
+    meta.scansSnapshot = scansSnapshot.map(({ photos, ...scanMeta }) => ({
+      ...scanMeta,
+      photoCount: (photos||[]).length
+    }));
+  }
   const ref = await addDoc(collection(db, "reports"), meta);
-  // Store signature separately (can be large)
+  // Store signature separately (large binary data)
   await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
   return ref.id;
 }
