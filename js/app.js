@@ -979,21 +979,17 @@ async function downloadReportPDF() {
       });
       y += rows*rowH + 3;
 
-      // Photos
+      // Photos — todas, grilla de 2 columnas
       const photos = s.photos||[];
       if (photos.length > 0) {
-        const maxPhotos = Math.min(photos.length,3);
-        const pw = (W-M*2 - (maxPhotos-1)*3) / maxPhotos;
-        const ph = pw * 0.65;
-        if (y+ph > 272) { doc.addPage(); y=M; }
-        for (let pi=0; pi<maxPhotos; pi++) {
-          try { doc.addImage(photos[pi],'JPEG', M+pi*(pw+3), y, pw, ph, '', 'FAST'); } catch(e){}
-        }
-        y += ph + 3;
-        if (photos.length > 3) {
-          doc.setFontSize(7); doc.setTextColor(74,106,125);
-          doc.text('+ '+(photos.length-3)+' fotos adicionales', M, y+3);
-          y += 6;
+        const cols = Math.min(photos.length, 2);
+        const pw = (W - M*2 - (cols-1)*4) / cols;
+        const ph = pw * 0.62;
+        for (let pi=0; pi<photos.length; pi++) {
+          const col = pi % cols;
+          if (col === 0 && (y + ph) > 272) { doc.addPage(); y = M; }
+          try { doc.addImage(photos[pi], 'JPEG', M + col*(pw+4), y, pw, ph, '', 'FAST'); } catch(e){}
+          if (col === cols-1 || pi === photos.length-1) { y += ph + 4; }
         }
       }
 
@@ -1038,7 +1034,7 @@ async function downloadReportPDF() {
     // ── FIRMA ──
     doc.addPage(); y=M;
     doc.setFillColor(15,32,39); doc.rect(0,0,W,18,'F');
-    try { doc.addImage(DANAIDE_LOGO,'PNG',M,2,36,14); } catch(e){}
+    try { doc.addImage(DANAIDE_LOGO,'JPEG',M,2,36,14); } catch(e){}
     doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
     doc.text('Firma del Inspector Responsable', M+40, 11);
     y = 26;
@@ -1147,10 +1143,20 @@ window.supTab = supTab;
 let liveMapStarted=false;
 async function renderSupervisor() {
   // Informes
-  let allReports=localReports;
-  try { allReports=await fbGetAllReports(); } catch(e) {}
   const supList=document.getElementById('sup-informes-list');
-  if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes</p></div>`; }
+  supList.innerHTML='<div class="empty-state"><p style="color:var(--accent)">Cargando informes...</p></div>';
+  let allReports=[];
+  try {
+    allReports = await fbGetAllReports();
+  } catch(e) {
+    console.error('fbGetAllReports error:', e);
+    // Fallback to local
+    allReports = localReports;
+    supList.innerHTML=`<div style="background:rgba(255,160,64,.1);border:1px solid rgba(255,160,64,.3);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--warning)">
+      Sin conexión a Firebase. Mostrando datos locales (${localReports.length} informes).
+    </div>`;
+  }
+  if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes registrados aún</p></div>`; }
   else {
     supList.innerHTML=allReports.map(rep=>{
       const d=new Date(rep.date+'T12:00:00');
@@ -1229,7 +1235,9 @@ async function viewReportSupervisor(id) {
   viewingReportId=id;
   let allScans=localScans;
   try{const ms=await fbGetMyScans(rep.userId);allScans=[...localScans,...ms];}catch(e){}
-  const scans=allScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+  let scans=allScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+  // Fallback to scansSnapshot if no scans found locally
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) scans = rep.scansSnapshot;
   let sig=rep.signature;
   if(!sig&&rep.fbId){try{sig=await fbGetSignature(rep.fbId);}catch(e){}}
   const d=new Date(rep.date+'T12:00:00');
