@@ -61,9 +61,11 @@ export async function fbSaveScan(scan) {
 }
 
 export async function fbGetMyScans(userId) {
-  const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
+  const q = query(collection(db, "scans"), where("userId","==",userId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+  return r;
 }
 
 export async function fbDeleteScan(fbId) {
@@ -72,10 +74,18 @@ export async function fbDeleteScan(fbId) {
 
 // ── REPORTS ───────────────────────────────────────────────
 export async function fbSaveReport(report) {
-  const { signature, ...meta } = report;
+  const { signature, scansSnapshot, ...meta } = report;
   meta.createdAt = serverTimestamp();
+  // Strip photos from scansSnapshot — photos stay local, metadata goes to Firestore
+  // This avoids the 1MB Firestore document size limit
+  if (scansSnapshot && scansSnapshot.length > 0) {
+    meta.scansSnapshot = scansSnapshot.map(({ photos, ...scanMeta }) => ({
+      ...scanMeta,
+      photoCount: (photos||[]).length
+    }));
+  }
   const ref = await addDoc(collection(db, "reports"), meta);
-  // Store signature separately (can be large)
+  // Store signature separately (large binary data)
   await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
   return ref.id;
 }
@@ -90,15 +100,18 @@ export async function fbGetSignature(reportFbId) {
 }
 
 export async function fbGetAllReports() {
-  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const snap = await getDocs(collection(db, "reports"));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbGetMyReports(userId) {
-  const q = query(collection(db, "reports"), where("userId","==",userId), orderBy("createdAt","desc"));
+  const q = query(collection(db, "reports"), where("userId","==",userId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbDeleteReport(fbId) {
@@ -121,9 +134,11 @@ export function fbWatchLocations(cb) {
 }
 
 export function fbWatchAllReports(cb) {
-  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-  return onSnapshot(q, snap => {
-    cb(snap.docs.map(d => ({ fbId: d.id, ...d.data() })));
+  // No orderBy to avoid index requirement — sort client-side
+  return onSnapshot(collection(db, "reports"), snap => {
+    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+    r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    cb(r);
   });
 }
 
