@@ -821,6 +821,16 @@ async function viewReport(id) {
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
+  // Merge scansSnapshot photos back into scans for display
+  let scans = localScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) {
+    // Use snapshot, merging photos from localScans where available
+    scans = rep.scansSnapshot.map(snap => {
+      const local = localScans.find(s => s.id===snap.id || s.fbId===snap.fbId);
+      return local || snap;
+    });
+  }
+
   document.getElementById('view-report-content').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div class="vr-title" style="margin:0">Informe de Visita</div>
@@ -855,23 +865,19 @@ async function downloadReportPDF() {
   if (!rep) { showToast('Informe no encontrado','error'); return; }
   showToast('Generando PDF...','success');
 
-  // Scan lookup priority:
-  // 1. scansSnapshot embedded in report (most reliable)
-  // 2. localScans cache
-  // 3. Firebase fetch
   const scanIds = rep.scanIds || [];
   let scans = [];
 
-  // Priority 1: embedded snapshot
-  if (rep.scansSnapshot && rep.scansSnapshot.length > 0) {
-    scans = rep.scansSnapshot;
-    console.log('Using embedded scansSnapshot:', scans.length);
-  }
+  // Priority 1: localScans (has photos)
+  scans = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
 
-  // Priority 2: local cache
-  if (scans.length === 0) {
-    scans = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
-    console.log('Using localScans:', scans.length);
+  // Priority 2: scansSnapshot embedded in report, merged with local photos
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) {
+    scans = rep.scansSnapshot.map(snap => {
+      const local = localScans.find(s => s.id===snap.id || s.fbId===snap.id);
+      // Merge: snapshot has all fields, local has photos
+      return local ? { ...snap, photos: local.photos||[] } : snap;
+    });
   }
 
   // Priority 3: Firebase
@@ -880,8 +886,9 @@ async function downloadReportPDF() {
       const fbScans = await fbGetMyScans(rep.userId);
       scans = fbScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
       fbScans.forEach(s => { if (!localScans.find(ls=>ls.id===s.id||ls.fbId===s.fbId)) localScans.push(s); });
-      console.log('Fetched from Firebase:', scans.length);
-    } catch(e) { console.warn('Firebase fetch failed:', e); }
+      // If still nothing, use snapshot
+      if (scans.length === 0 && rep.scansSnapshot?.length > 0) scans = rep.scansSnapshot;
+    } catch(e) { if (rep.scansSnapshot?.length > 0) scans = rep.scansSnapshot; }
   }
 
   try {
@@ -1234,6 +1241,16 @@ async function viewReportSupervisor(id) {
   if(!sig&&rep.fbId){try{sig=await fbGetSignature(rep.fbId);}catch(e){}}
   const d=new Date(rep.date+'T12:00:00');
   const label=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  // Merge scansSnapshot photos back into scans for display
+  let scans = localScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) {
+    // Use snapshot, merging photos from localScans where available
+    scans = rep.scansSnapshot.map(snap => {
+      const local = localScans.find(s => s.id===snap.id || s.fbId===snap.fbId);
+      return local || snap;
+    });
+  }
+
   document.getElementById('view-report-content').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div class="vr-title" style="margin:0">Informe de Visita</div>
