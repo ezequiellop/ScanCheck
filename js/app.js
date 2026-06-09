@@ -175,42 +175,36 @@ async function loadMyData() {
     fbGetMyScans(currentUser.id),
     fbGetMyReports(currentUser.id)
   ]);
-  // Restore photos from localStorage for each scan
-  localScans = scans.map(s => {
-    const scanId = s.id || s.fbId;
-    if (!s.photos || s.photos.length === 0) {
-      try {
-        const stored = localStorage.getItem('scancheck_photos_'+scanId);
-        if (stored) s.photos = JSON.parse(stored);
-      } catch(e) {}
-    }
-    return s;
-  });
-  // Also restore any local-only scans not yet in Firebase
-  const fbIds = new Set(scans.map(s => s.id||s.fbId));
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('scancheck_photos_')) {
-      const scanId = key.replace('scancheck_photos_', '');
-      if (!fbIds.has(scanId)) {
-        // This scan exists locally but not yet in Firebase
-        // It will be in localScans already if it was saved this session
+  // For each scan from Firebase, try to restore photos from localStorage
+  // Photos were saved with the LOCAL scan.id (e.g. sc_1234567890)
+  // Firebase stores the scan with fbId (Firestore document ID)
+  // We need to match them up
+
+  // Build a lookup of all stored photo keys
+  const photoLookup = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('scancheck_photos_')) {
+        const scanId = key.replace('scancheck_photos_','');
+        try { photoLookup[scanId] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
       }
     }
-  }
-  localReports = reports;
-  // Restore photos into scansSnapshot of reports
-  localReports = localReports.map(rep => {
+  } catch(e) {}
+
+  localScans = scans.map(s => {
+    if (s.photos && s.photos.length > 0) return s;
+    // Try id and fbId
+    const photos = photoLookup[s.id] || photoLookup[s.fbId] || [];
+    return { ...s, photos };
+  });
+
+  localReports = reports.map(rep => {
     if (rep.scansSnapshot) {
       rep.scansSnapshot = rep.scansSnapshot.map(snap => {
-        const scanId = snap.id || snap.fbId;
-        if (!snap.photos || snap.photos.length === 0) {
-          try {
-            const stored = localStorage.getItem('scancheck_photos_'+scanId);
-            if (stored) snap.photos = JSON.parse(stored);
-          } catch(e) {}
-        }
-        return snap;
+        if (snap.photos && snap.photos.length > 0) return snap;
+        const photos = photoLookup[snap.id] || photoLookup[snap.fbId] || [];
+        return { ...snap, photos };
       });
     }
     return rep;
@@ -648,10 +642,14 @@ async function saveScan() {
 
   stopCamera(); stopQRScan();
   localScans.push(scan);
-  // Persist photos to localStorage so they survive app reload
+  // Persist photos to localStorage with scan.id key (survives app reload)
   if (scan.photos && scan.photos.length > 0) {
-    try { localStorage.setItem('scancheck_photos_'+scan.id, JSON.stringify(scan.photos)); } catch(e) {
-      console.warn('Could not store photos in localStorage:', e);
+    try {
+      const photosJson = JSON.stringify(scan.photos);
+      localStorage.setItem('scancheck_photos_'+scan.id, photosJson);
+    } catch(e) {
+      // If storage full, store compressed (just count)
+      console.warn('localStorage photo save failed:', e.message);
     }
   }
   updateStats(); renderTodayList();
@@ -683,8 +681,8 @@ function viewScan(id) {
       ${fTag('Serie',scan.serie)} ${fTag('Tipo',opLabel(scan.opType))}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
-    ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
-    ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
+    ${scan.notas ? renderNotasFormatted(scan.notas) : ''}
+    ${scan.pcData ? `<div class="modal-notas" style="font-family:var(--mono);font-size:10px;color:var(--accent2);line-height:1.6">${escHtml(scan.pcData)}</div>` : ''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
     ${scan.address?`<div style="font-size:11px;color:var(--text3)">📍 ${escHtml(scan.address)}</div>`:''}
   `;
@@ -693,6 +691,28 @@ function viewScan(id) {
 window.viewScan = viewScan;
 
 function fTag(label,val) { return val?`<div class="field-tag"><span>${label}</span><strong>${escHtml(val)}</strong></div>`:''; }
+
+function renderNotasFormatted(notas) {
+  if (!notas || !notas.trim()) return '';
+  const lines = notas.split('\n').filter(l => l.trim());
+  const rows = lines.map(line => {
+    if (line.startsWith('---')) {
+      const title = line.replace(/---/g,'').trim();
+      return `<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">${escHtml(title)}</div>`;
+    }
+    const ci = line.indexOf(':');
+    if (ci > 0) {
+      const key = line.substring(0,ci).trim();
+      const val = line.substring(ci+1).trim();
+      return `<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-size:11px;color:var(--text3);min-width:90px;flex-shrink:0">${escHtml(key)}</span>
+        <span style="font-size:11px;color:var(--text);font-family:var(--mono);word-break:break-all">${escHtml(val)}</span>
+      </div>`;
+    }
+    return `<div style="font-size:11px;color:var(--text2);padding:2px 0">${escHtml(line)}</div>`;
+  }).join('');
+  return `<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px">${rows}</div>`;
+}
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 window.closeModal = closeModal;
 
@@ -833,7 +853,14 @@ function renderHistory() {
     container.innerHTML=`<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>Sin informes guardados</p></div>`;
     return;
   }
-  container.innerHTML=localReports.map(rep=>{
+  // Add sync button if any reports are not yet in Firebase
+  const unsynced = localReports.filter(r => !r.fbId);
+  const syncBanner = unsynced.length > 0 ? `
+    <div style="background:rgba(0,174,255,.1);border:1px solid rgba(0,174,255,.25);border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-size:12px;color:var(--accent2)">${unsynced.length} informe${unsynced.length!==1?'s':''} sin sincronizar con Firebase</div>
+      <button onclick="syncAllReports()" style="background:var(--accent2);color:#0a1628;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sincronizar</button>
+    </div>` : '';
+  container.innerHTML = syncBanner + localReports.map(rep=>{
     const d=new Date(rep.date+'T12:00:00');
     const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const count=rep.scanIds.length;
@@ -855,6 +882,15 @@ async function viewReport(id) {
   const rep = localReports.find(r=>(r.id===id||r.fbId===id));
   if (!rep) return;
   viewingReportId = id;
+  // Auto-sync to Firebase if not yet synced (no fbId means it was never saved to Firebase)
+  if (!rep.fbId && currentUser) {
+    try {
+      const fbId = await fbSaveReport(rep);
+      const idx = localReports.findIndex(r=>r.id===id);
+      if (idx>=0) { localReports[idx].fbId = fbId; rep.fbId = fbId; }
+      console.log('Auto-synced report to Firebase:', fbId);
+    } catch(e) { console.warn('Auto-sync failed:', e.message); }
+  }
   let sig = rep.signature;
   if (!sig && rep.fbId) {
     try { sig = await fbGetSignature(rep.fbId); } catch(e) {}
@@ -921,10 +957,16 @@ async function downloadReportPDF() {
   // Helper: restore photos from localStorage
   const restorePhotos = (s) => {
     if (s.photos && s.photos.length > 0) return s;
-    try {
-      const stored = localStorage.getItem('scancheck_photos_'+(s.id||s.fbId));
-      if (stored) return { ...s, photos: JSON.parse(stored) };
-    } catch(e) {}
+    const tryKeys = [s.id, s.fbId].filter(Boolean);
+    for (const k of tryKeys) {
+      try {
+        const stored = localStorage.getItem('scancheck_photos_'+k);
+        if (stored) {
+          const photos = JSON.parse(stored);
+          if (photos && photos.length > 0) return { ...s, photos };
+        }
+      } catch(e) {}
+    }
     return s;
   };
 
@@ -1265,6 +1307,9 @@ async function renderSupervisor() {
         Los informes anteriores se guardaron solo en el celular del técnico.<br>
         Los nuevos informes aparecerán aquí automáticamente.
       </p>
+      <p style="font-size:11px;color:var(--accent2);max-width:280px;text-align:center;margin-top:8px">
+        El técnico debe abrir la app → Historial → tocar cada informe → se sincroniza solo.
+      </p>
     </div>`;
   } else {
     supList.innerHTML = allReports.map(rep => {
@@ -1376,6 +1421,25 @@ async function viewReportSupervisor(id) {
   showPage('view-report');
 }
 window.viewReportSupervisor = viewReportSupervisor;
+
+// ======== SYNC ALL REPORTS ========
+async function syncAllReports() {
+  const unsynced = localReports.filter(r => !r.fbId);
+  if (!unsynced.length) { showToast('Todo sincronizado','success'); return; }
+  showToast(`Sincronizando ${unsynced.length} informes...`,'success');
+  let ok = 0;
+  for (const rep of unsynced) {
+    try {
+      const fbId = await fbSaveReport(rep);
+      const idx = localReports.findIndex(r=>r.id===rep.id);
+      if (idx>=0) localReports[idx].fbId = fbId;
+      ok++;
+    } catch(e) { console.warn('Sync failed for', rep.id, e.message); }
+  }
+  renderHistory();
+  showToast(`✓ ${ok} informe${ok!==1?'s':''} sincronizado${ok!==1?'s':''}`, 'success');
+}
+window.syncAllReports = syncAllReports;
 
 // ======== TOAST ========
 let toastTimer;
