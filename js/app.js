@@ -764,7 +764,7 @@ function renderReportPage(scans, dateKey) {
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
       </div>
-      ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
+      ${s.notas?`<div style="padding:4px 14px 12px">${renderNotasFormatted(s.notas)}</div>`:''}
     </div>`;
   }).join('');
   sigHasDraw=false;
@@ -882,14 +882,17 @@ async function viewReport(id) {
   const rep = localReports.find(r=>(r.id===id||r.fbId===id));
   if (!rep) return;
   viewingReportId = id;
-  // Auto-sync to Firebase if not yet synced (no fbId means it was never saved to Firebase)
+  // Auto-sync to Firebase (strip photos to stay under 1MB Firestore limit)
   if (!rep.fbId && currentUser) {
-    try {
-      const fbId = await fbSaveReport(rep);
-      const idx = localReports.findIndex(r=>r.id===id);
-      if (idx>=0) { localReports[idx].fbId = fbId; rep.fbId = fbId; }
-      console.log('Auto-synced report to Firebase:', fbId);
-    } catch(e) { console.warn('Auto-sync failed:', e.message); }
+    const repFb = {
+      ...rep,
+      scansSnapshot: (rep.scansSnapshot||[]).map(({photos,...m})=>({...m,photoCount:(photos||[]).length}))
+    };
+    fbSaveReport(repFb).then(fbId => {
+      const ri = localReports.findIndex(r=>r.id===id);
+      if (ri>=0) { localReports[ri].fbId = fbId; rep.fbId = fbId; }
+      setSyncStatus('ok');
+    }).catch(e => console.warn('Auto-sync failed:', e.code||e.message));
   }
   let sig = rep.signature;
   if (!sig && rep.fbId) {
@@ -1427,18 +1430,27 @@ window.viewReportSupervisor = viewReportSupervisor;
 async function syncAllReports() {
   const unsynced = localReports.filter(r => !r.fbId);
   if (!unsynced.length) { showToast('Todo sincronizado','success'); return; }
-  showToast(`Sincronizando ${unsynced.length} informes...`,'success');
-  let ok = 0;
+  showToast(`Sincronizando ${unsynced.length} informe${unsynced.length!==1?'s':''}...`);
+  let ok = 0, lastErr = '';
   for (const rep of unsynced) {
     try {
-      const fbId = await fbSaveReport(rep);
-      const idx = localReports.findIndex(r=>r.id===rep.id);
-      if (idx>=0) localReports[idx].fbId = fbId;
+      // Strip photos — Firestore 1MB limit
+      const repFb = {
+        ...rep,
+        scansSnapshot: (rep.scansSnapshot||[]).map(({photos,...m})=>({...m,photoCount:(photos||[]).length}))
+      };
+      const fbId = await fbSaveReport(repFb);
+      const ri = localReports.findIndex(r=>r.id===rep.id);
+      if (ri>=0) localReports[ri].fbId = fbId;
       ok++;
-    } catch(e) { console.warn('Sync failed for', rep.id, e.message); }
+    } catch(e) {
+      lastErr = e.code||e.message||'Error';
+      console.error('Sync failed:', rep.id, lastErr);
+    }
   }
   renderHistory();
-  showToast(`✓ ${ok} informe${ok!==1?'s':''} sincronizado${ok!==1?'s':''}`, 'success');
+  if (ok > 0) showToast(`✓ ${ok} informe${ok!==1?'s':''} sincronizado${ok!==1?'s':''}`, 'success');
+  else showToast(`Fallo: ${lastErr}`, 'error');
 }
 window.syncAllReports = syncAllReports;
 
