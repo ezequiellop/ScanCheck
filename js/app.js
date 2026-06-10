@@ -430,14 +430,14 @@ async function startCamera() {
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:960}}});
     const vid = document.getElementById('camera-stream');
     vid.srcObject = cameraStream;
-    // Show camera - support both old HTML (no wrap) and new HTML (with wrap)
+    // Show video wrap and controls
     const wrap = document.getElementById('camera-wrap');
-    if (wrap) {
-      wrap.classList.remove('hidden');
-    } else {
-      vid.classList.remove('hidden');
-    }
-    document.getElementById('camera-controls').classList.remove('hidden');
+    if (wrap) wrap.classList.remove('hidden');
+    else vid.classList.remove('hidden');
+    const ctrl = document.getElementById('camera-controls');
+    if (ctrl) ctrl.classList.remove('hidden');
+    // Force video to play
+    try { await vid.play(); } catch(e) {}
     updateLiveOverlay();
     overlayTimer = setInterval(updateLiveOverlay, 1000);
     requestLocation();
@@ -492,6 +492,8 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 
 // ======== QR SCAN ========
 function startQRScan() {
+  // Stop main camera first to free the camera resource
+  stopCamera();
   // Listen for result from the QR scanner window
   window.addEventListener('message', onQRMessage);
 
