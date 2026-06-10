@@ -52,11 +52,11 @@ export function fbOnAuthChange(cb) {
 
 // ── SCANS ─────────────────────────────────────────────────
 export async function fbSaveScan(scan) {
-  // Strip large base64 photos from Firestore (store only metadata, photos stay local)
   const { photos, ...meta } = scan;
   meta.photoCount = (photos || []).length;
   meta.createdAt = serverTimestamp();
-  const ref = await addDoc(collection(db, "scans"), meta);
+  const cleanMeta = cleanForFirestore(meta);
+  const ref = await addDoc(collection(db, "scans"), cleanMeta);
   return ref.id;
 }
 
@@ -71,12 +71,35 @@ export async function fbDeleteScan(fbId) {
 }
 
 // ── REPORTS ───────────────────────────────────────────────
+// Remove undefined/NaN/Infinity — Firestore rejects them with invalid-argument
+function cleanForFirestore(obj) {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanForFirestore).filter(v => v !== undefined);
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const clean = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === undefined) continue;
+      if (typeof v === 'number' && (isNaN(v) || !isFinite(v))) { clean[k] = null; continue; }
+      clean[k] = cleanForFirestore(v);
+    }
+    return clean;
+  }
+  return obj;
+}
+
 export async function fbSaveReport(report) {
-  const { signature, ...meta } = report;
+  const { signature, scansSnapshot, ...meta } = report;
   meta.createdAt = serverTimestamp();
-  const ref = await addDoc(collection(db, "reports"), meta);
-  // Store signature separately (can be large)
-  await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
+  // Strip photos from scansSnapshot (Firestore 1MB limit)
+  if (scansSnapshot && scansSnapshot.length > 0) {
+    meta.scansSnapshot = scansSnapshot.map(({ photos, ...s }) => ({
+      ...s, photoCount: (photos||[]).length
+    }));
+  }
+  // Clean all undefined/NaN values
+  const cleanMeta = cleanForFirestore(meta);
+  const ref = await addDoc(collection(db, "reports"), cleanMeta);
+  await setDoc(doc(db, "signatures", ref.id), { data: signature||'', reportId: ref.id });
   return ref.id;
 }
 

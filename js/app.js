@@ -294,42 +294,64 @@ function loadLocalData() {
 }
 
 async function loadMyData() {
-  const [scans, reports] = await Promise.all([
-    fbGetMyScans(currentUser.id),
-    fbGetMyReports(currentUser.id)
-  ]);
-
-  // Build photo lookup from localStorage (keyed by scanId)
+  // Build photo cache from localStorage first
   const photoCache = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('scancheck_photos_')) {
-        const scanId = key.replace('scancheck_photos_', '');
-        try { photoCache[scanId] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+        try { photoCache[key.replace('scancheck_photos_','')] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
       }
     }
   } catch(e) {}
 
-  // Restore photos into scans
-  localScans = scans.map(s => {
+  const restorePhotos = (s) => {
     if (s.photos && s.photos.length > 0) return s;
-    const photos = photoCache[s.id] || photoCache[s.fbId] || [];
-    return { ...s, photos };
-  });
+    return { ...s, photos: photoCache[s.id] || photoCache[s.fbId] || [] };
+  };
 
-  // Restore photos into report scansSnapshot
-  localReports = reports.map(rep => {
-    if (!rep.scansSnapshot) return rep;
-    return {
+  // Load from Firebase
+  const [fbScans, fbReports] = await Promise.all([
+    fbGetMyScans(currentUser.id),
+    fbGetMyReports(currentUser.id)
+  ]);
+
+  // Load local-only data (not yet synced to Firebase)
+  let localOnlyScans = [], localOnlyReports = [];
+  try {
+    const ls = localStorage.getItem('scancheck_local_scans_' + currentUser.id);
+    if (ls) {
+      const parsed = JSON.parse(ls);
+      // Keep only scans not already in Firebase (no fbId)
+      const fbScanIds = new Set(fbScans.map(s => s.id||s.fbId));
+      localOnlyScans = parsed.filter(s => !fbScanIds.has(s.id) && !fbScanIds.has(s.fbId));
+    }
+  } catch(e) {}
+  try {
+    const lr = localStorage.getItem('scancheck_local_reports_' + currentUser.id);
+    if (lr) {
+      const parsed = JSON.parse(lr);
+      const fbRepIds = new Set(fbReports.map(r => r.id||r.fbId));
+      localOnlyReports = parsed.filter(r => !r.fbId && !fbRepIds.has(r.id));
+    }
+  } catch(e) {}
+
+  // Merge: Firebase data + local-only data, restore photos for all
+  localScans = [...fbScans.map(restorePhotos), ...localOnlyScans.map(restorePhotos)];
+  localReports = [
+    ...fbReports.map(rep => ({
       ...rep,
-      scansSnapshot: rep.scansSnapshot.map(snap => {
-        if (snap.photos && snap.photos.length > 0) return snap;
-        const photos = photoCache[snap.id] || photoCache[snap.fbId] || [];
-        return { ...snap, photos };
-      })
-    };
-  });
+      scansSnapshot: (rep.scansSnapshot||[]).map(restorePhotos)
+    })),
+    ...localOnlyReports.map(rep => ({
+      ...rep,
+      scansSnapshot: (rep.scansSnapshot||[]).map(restorePhotos)
+    }))
+  ];
+
+  // Sort by date
+  localScans.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+  localReports.sort((a,b) => new Date(b.createdAt||b.date||0) - new Date(a.createdAt||a.date||0));
 }
 
 function updateUserUI() {
@@ -1458,6 +1480,33 @@ async function viewReportSupervisor(id) {
   showPage('view-report');
 }
 window.viewReportSupervisor = viewReportSupervisor;
+
+// ======== SYNC ALL ========
+async function syncAllReports() {
+  const unsynced = localReports.filter(r => !r.fbId);
+  if (!unsynced.length) { showToast('Todo sincronizado','success'); return; }
+  showToast(`Sincronizando ${unsynced.length} informe${unsynced.length!==1?'s':''}...`);
+  let ok = 0, lastErr = '';
+  for (const rep of unsynced) {
+    try {
+      const repFb = {
+        ...rep,
+        scansSnapshot: (rep.scansSnapshot||[]).map(({photos,...m})=>({...m,photoCount:(photos||[]).length}))
+      };
+      const fbId = await fbSaveReport(repFb);
+      const ri = localReports.findIndex(r=>r.id===rep.id);
+      if (ri>=0) localReports[ri].fbId = fbId;
+      ok++;
+    } catch(e) {
+      lastErr = e.code||e.message||'Error';
+      console.error('Sync failed:', rep.id, lastErr);
+    }
+  }
+  renderHistory();
+  if (ok > 0) showToast(`✓ ${ok} informe${ok!==1?'s':''} sincronizado${ok!==1?'s':''}`, 'success');
+  else showToast(`Fallo: ${lastErr}`, 'error');
+}
+window.syncAllReports = syncAllReports;
 
 // ======== TOAST ========
 let toastTimer;
