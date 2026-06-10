@@ -76,38 +76,18 @@ export async function fbDeleteScan(fbId) {
 export async function fbSaveReport(report) {
   const { signature, scansSnapshot, ...meta } = report;
   meta.createdAt = serverTimestamp();
-
-  // Strip photos and clean scansSnapshot for Firestore
+  // Strip photos from scansSnapshot — photos stay local, metadata goes to Firestore
+  // This avoids the 1MB Firestore document size limit
   if (scansSnapshot && scansSnapshot.length > 0) {
-    meta.scansSnapshot = scansSnapshot.map(({ photos, ...s }) =>
-      cleanForFirestore({
-        ...s,
-        photoCount: (photos||[]).length
-      })
-    );
+    meta.scansSnapshot = scansSnapshot.map(({ photos, ...scanMeta }) => ({
+      ...scanMeta,
+      photoCount: (photos||[]).length
+    }));
   }
-
-  // Clean meta object — Firestore rejects undefined, NaN, Infinity
-  const cleanMeta = cleanForFirestore(meta);
-  const ref = await addDoc(collection(db, "reports"), cleanMeta);
-  await setDoc(doc(db, "signatures", ref.id), { data: signature || '', reportId: ref.id });
+  const ref = await addDoc(collection(db, "reports"), meta);
+  // Store signature separately (large binary data)
+  await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
   return ref.id;
-}
-
-// Remove undefined/NaN/Infinity values that Firestore rejects
-function cleanForFirestore(obj) {
-  if (obj === null || obj === undefined) return null;
-  if (Array.isArray(obj)) return obj.map(cleanForFirestore).filter(v => v !== undefined);
-  if (typeof obj === 'object' && !(obj instanceof Date)) {
-    const clean = {};
-    for (const [k, v] of Object.entries(obj)) {
-      if (v === undefined) continue;
-      if (typeof v === 'number' && (isNaN(v) || !isFinite(v))) { clean[k] = null; continue; }
-      clean[k] = cleanForFirestore(v);
-    }
-    return clean;
-  }
-  return obj;
 }
 
 export async function fbUpdateReport(fbId, fields) {
