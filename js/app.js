@@ -1158,33 +1158,47 @@ async function downloadReportPDF() {
 
     // ── FIRMA ──
     doc.addPage(); y=M;
+    // Header bar con fondo oscuro
     doc.setFillColor(15,32,39); doc.rect(0,0,W,18,'F');
-    try { doc.addImage(DANAIDE_LOGO,'PNG',M,2,36,14); } catch(e){}
-    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
+    try { doc.addImage(DANAIDE_LOGO,'JPEG',M,2,36,14); } catch(e){}
+    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,180,130);
     doc.text('Firma del Inspector Responsable', M+40, 11);
-    y = 26;
-    doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(74,106,125);
-    doc.text('Inspector:', M, y); doc.setTextColor(232,244,248); doc.text(rep.inspectorName||'—', M+28, y); y+=7;
-    doc.text('Técnico:',   M, y); doc.setTextColor(232,244,248); doc.text(rep.technicianName||'—', M+28, y); y+=7;
-    doc.text('Fecha:',     M, y); doc.setTextColor(232,244,248); doc.text(dateLabel, M+28, y); y+=14;
+    y = 28;
+    // Labels en gris oscuro legible sobre blanco
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
+    doc.text('Inspector:', M, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
+    doc.text(rep.inspectorName||'—', M+28, y); y+=8;
+    doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
+    doc.text('Técnico:', M, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
+    doc.text(rep.technicianName||'—', M+28, y); y+=8;
+    doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
+    doc.text('Fecha:', M, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
+    doc.text(dateLabel, M+28, y); y+=14;
+    // Línea separadora
+    doc.setDrawColor(0,180,130); doc.setLineWidth(0.5);
+    doc.line(M, y, W-M, y); y+=8;
 
     let sig = rep.signature;
     if (!sig && rep.fbId) { try { sig = await fbGetSignature(rep.fbId); } catch(e){} }
     if (sig) {
       try {
         doc.addImage(sig,'PNG',M,y,90,40);
-        doc.setDrawColor(0,212,170); doc.setLineWidth(0.4);
+        doc.setDrawColor(0,180,130); doc.setLineWidth(0.4);
         doc.rect(M,y,90,40);
         y += 44;
-        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(74,106,125);
+        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(20,20,20);
         doc.text(rep.inspectorName||'', M, y);
-        doc.setFontSize(7); doc.setFont('helvetica','normal');
+        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80);
         doc.text('Firma del inspector responsable', M, y+5);
       } catch(e){}
     }
     y += 20;
+    // Footer
     doc.setFillColor(15,32,39); doc.rect(0,275,W,22,'F');
-    doc.setFontSize(7); doc.setTextColor(74,106,125);
+    doc.setFontSize(7); doc.setTextColor(180,200,210);
     doc.text('ScanCheck — Danaide Enterprise  |  '+new Date().toLocaleString('es-AR'), W/2, 283, {align:'center'});
 
     doc.save('informe-scancheck-'+rep.date+'.pdf');
