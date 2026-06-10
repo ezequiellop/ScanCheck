@@ -430,13 +430,7 @@ async function startCamera() {
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:960}}});
     const vid = document.getElementById('camera-stream');
     vid.srcObject = cameraStream;
-    // Show video wrap and controls
-    const wrap = document.getElementById('camera-wrap');
-    if (wrap) wrap.classList.remove('hidden');
-    else vid.classList.remove('hidden');
-    const ctrl = document.getElementById('camera-controls');
-    if (ctrl) ctrl.classList.remove('hidden');
-    // Force video to play
+    document.getElementById('camera-container').style.display = 'block';
     try { await vid.play(); } catch(e) {}
     updateLiveOverlay();
     overlayTimer = setInterval(updateLiveOverlay, 1000);
@@ -452,11 +446,9 @@ function stopCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
   clearInterval(overlayTimer); overlayTimer=null;
   const vid = document.getElementById('camera-stream');
-  if (vid) { vid.srcObject=null; vid.classList.add('hidden'); }
-  const wrap = document.getElementById('camera-wrap');
-  if (wrap) wrap.classList.add('hidden');
-  const ctrl = document.getElementById('camera-controls');
-  if (ctrl) ctrl.classList.add('hidden');
+  if (vid) { vid.srcObject=null; }
+  const container = document.getElementById('camera-container');
+  if (container) container.style.display = 'none';
 }
 window.stopCamera = stopCamera;
 
