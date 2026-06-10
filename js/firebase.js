@@ -61,11 +61,9 @@ export async function fbSaveScan(scan) {
 }
 
 export async function fbGetMyScans(userId) {
-  const q = query(collection(db, "scans"), where("userId","==",userId));
+  const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
   const snap = await getDocs(q);
-  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
-  return r;
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
 export async function fbDeleteScan(fbId) {
@@ -74,40 +72,12 @@ export async function fbDeleteScan(fbId) {
 
 // ── REPORTS ───────────────────────────────────────────────
 export async function fbSaveReport(report) {
-  const { signature, scansSnapshot, ...meta } = report;
+  const { signature, ...meta } = report;
   meta.createdAt = serverTimestamp();
-
-  // Strip photos and clean scansSnapshot for Firestore
-  if (scansSnapshot && scansSnapshot.length > 0) {
-    meta.scansSnapshot = scansSnapshot.map(({ photos, ...s }) =>
-      cleanForFirestore({
-        ...s,
-        photoCount: (photos||[]).length
-      })
-    );
-  }
-
-  // Clean meta object — Firestore rejects undefined, NaN, Infinity
-  const cleanMeta = cleanForFirestore(meta);
-  const ref = await addDoc(collection(db, "reports"), cleanMeta);
-  await setDoc(doc(db, "signatures", ref.id), { data: signature || '', reportId: ref.id });
+  const ref = await addDoc(collection(db, "reports"), meta);
+  // Store signature separately (can be large)
+  await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
   return ref.id;
-}
-
-// Remove undefined/NaN/Infinity values that Firestore rejects
-function cleanForFirestore(obj) {
-  if (obj === null || obj === undefined) return null;
-  if (Array.isArray(obj)) return obj.map(cleanForFirestore).filter(v => v !== undefined);
-  if (typeof obj === 'object' && !(obj instanceof Date)) {
-    const clean = {};
-    for (const [k, v] of Object.entries(obj)) {
-      if (v === undefined) continue;
-      if (typeof v === 'number' && (isNaN(v) || !isFinite(v))) { clean[k] = null; continue; }
-      clean[k] = cleanForFirestore(v);
-    }
-    return clean;
-  }
-  return obj;
 }
 
 export async function fbUpdateReport(fbId, fields) {
@@ -120,18 +90,15 @@ export async function fbGetSignature(reportFbId) {
 }
 
 export async function fbGetAllReports() {
-  const snap = await getDocs(collection(db, "reports"));
-  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  return r;
+  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
 export async function fbGetMyReports(userId) {
-  const q = query(collection(db, "reports"), where("userId","==",userId));
+  const q = query(collection(db, "reports"), where("userId","==",userId), orderBy("createdAt","desc"));
   const snap = await getDocs(q);
-  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  return r;
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
 export async function fbDeleteReport(fbId) {
@@ -154,11 +121,9 @@ export function fbWatchLocations(cb) {
 }
 
 export function fbWatchAllReports(cb) {
-  // No orderBy to avoid index requirement — sort client-side
-  return onSnapshot(collection(db, "reports"), snap => {
-    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
-    r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-    cb(r);
+  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
+  return onSnapshot(q, snap => {
+    cb(snap.docs.map(d => ({ fbId: d.id, ...d.data() })));
   });
 }
 

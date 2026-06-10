@@ -177,15 +177,11 @@
       <div id="qr-data-preview" class="qr-data-preview hidden"></div>
       <div id="qr-controls" style="display:none"></div>
 
-      <div id="camera-container" style="display:none;margin-bottom:8px">
-        <div style="position:relative;border-radius:12px;overflow:hidden;background:#000">
-          <video id="camera-stream" autoplay playsinline muted style="width:100%;display:block;max-height:60vh;object-fit:cover"></video>
-          <div id="cam-live-overlay" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.72);padding:8px 12px;font-size:11px;color:rgba(255,255,255,.92);font-family:monospace;white-space:pre-line;line-height:1.8;border-left:3px solid #00d4aa"></div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:10px">
-          <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
-          <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
-        </div>
+      <video id="camera-stream" autoplay playsinline class="hidden"></video>
+      <div id="camera-controls" class="hidden">
+        <div class="cam-live-overlay" id="cam-live-overlay"></div>
+        <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
+        <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
       </div>
 
       <button class="btn-primary" style="margin-top:24px" onclick="saveScan()">
