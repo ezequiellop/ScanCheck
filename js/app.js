@@ -218,7 +218,11 @@ function updateUserUI() {
   document.getElementById('menu-user-name').textContent = currentUser.name;
   document.getElementById('menu-user-email').textContent = currentUser.email;
   document.getElementById('menu-user-role').textContent = currentUser.role === 'supervisor' ? 'Supervisor' : 'Técnico';
-  if (currentUser.role === 'supervisor') document.getElementById('btn-supervisor-menu').classList.remove('hidden');
+  const supBtn = document.getElementById('btn-supervisor-menu');
+  if (supBtn) {
+    if (currentUser.role === 'supervisor') supBtn.classList.remove('hidden');
+    else supBtn.classList.add('hidden'); // ensure hidden for technicians
+  }
   // Inject Danaide logo into header
   const logoWrap = document.getElementById('header-logo');
   if (logoWrap && DANAIDE_LOGO) {
@@ -426,12 +430,21 @@ async function startCamera() {
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:960}}});
     const vid = document.getElementById('camera-stream');
     vid.srcObject = cameraStream;
-    document.getElementById('camera-wrap').classList.remove('hidden');
+    // Show camera - support both old HTML (no wrap) and new HTML (with wrap)
+    const wrap = document.getElementById('camera-wrap');
+    if (wrap) {
+      wrap.classList.remove('hidden');
+    } else {
+      vid.classList.remove('hidden');
+    }
     document.getElementById('camera-controls').classList.remove('hidden');
     updateLiveOverlay();
     overlayTimer = setInterval(updateLiveOverlay, 1000);
     requestLocation();
-  } catch(e) { showToast('No se pudo acceder a la cámara','error'); }
+  } catch(e) {
+    console.error('Camera error:', e);
+    showToast('No se pudo acceder a la cámara: '+e.message, 'error');
+  }
 }
 window.startCamera = startCamera;
 
@@ -439,9 +452,11 @@ function stopCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
   clearInterval(overlayTimer); overlayTimer=null;
   const vid = document.getElementById('camera-stream');
-  vid.srcObject=null; vid.onloadeddata=null;
-  document.getElementById('camera-wrap').classList.add('hidden');
-  document.getElementById('camera-controls').classList.add('hidden');
+  if (vid) { vid.srcObject=null; vid.classList.add('hidden'); }
+  const wrap = document.getElementById('camera-wrap');
+  if (wrap) wrap.classList.add('hidden');
+  const ctrl = document.getElementById('camera-controls');
+  if (ctrl) ctrl.classList.add('hidden');
 }
 window.stopCamera = stopCamera;
 
