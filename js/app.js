@@ -997,6 +997,7 @@ async function downloadReportPDF() {
       if (fbM.length > 0) scans = fbM.map(restorePhotos);
     } catch(e) {}
   }
+  try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     const W=210, M=15;
