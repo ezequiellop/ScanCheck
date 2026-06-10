@@ -5,7 +5,7 @@ import {
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport,
   fbUpdateLocation, fbWatchLocations, fbWatchAllReports,
   fbGetAllUsers
-} from './firebase.js?v=20';
+} from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
 const DANAIDE_LOGO = 'data:image/png;base64,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RERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERF//2Q==';
@@ -175,39 +175,37 @@ async function loadMyData() {
     fbGetMyScans(currentUser.id),
     fbGetMyReports(currentUser.id)
   ]);
-  // For each scan from Firebase, try to restore photos from localStorage
-  // Photos were saved with the LOCAL scan.id (e.g. sc_1234567890)
-  // Firebase stores the scan with fbId (Firestore document ID)
-  // We need to match them up
 
-  // Build a lookup of all stored photo keys
-  const photoLookup = {};
+  // Build photo lookup from localStorage (keyed by scanId)
+  const photoCache = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('scancheck_photos_')) {
-        const scanId = key.replace('scancheck_photos_','');
-        try { photoLookup[scanId] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+        const scanId = key.replace('scancheck_photos_', '');
+        try { photoCache[scanId] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
       }
     }
   } catch(e) {}
 
+  // Restore photos into scans
   localScans = scans.map(s => {
     if (s.photos && s.photos.length > 0) return s;
-    // Try id and fbId
-    const photos = photoLookup[s.id] || photoLookup[s.fbId] || [];
+    const photos = photoCache[s.id] || photoCache[s.fbId] || [];
     return { ...s, photos };
   });
 
+  // Restore photos into report scansSnapshot
   localReports = reports.map(rep => {
-    if (rep.scansSnapshot) {
-      rep.scansSnapshot = rep.scansSnapshot.map(snap => {
+    if (!rep.scansSnapshot) return rep;
+    return {
+      ...rep,
+      scansSnapshot: rep.scansSnapshot.map(snap => {
         if (snap.photos && snap.photos.length > 0) return snap;
-        const photos = photoLookup[snap.id] || photoLookup[snap.fbId] || [];
+        const photos = photoCache[snap.id] || photoCache[snap.fbId] || [];
         return { ...snap, photos };
-      });
-    }
-    return rep;
+      })
+    };
   });
 }
 
@@ -218,11 +216,7 @@ function updateUserUI() {
   document.getElementById('menu-user-name').textContent = currentUser.name;
   document.getElementById('menu-user-email').textContent = currentUser.email;
   document.getElementById('menu-user-role').textContent = currentUser.role === 'supervisor' ? 'Supervisor' : 'Técnico';
-  const supBtn = document.getElementById('btn-supervisor-menu');
-  if (supBtn) {
-    if (currentUser.role === 'supervisor') supBtn.classList.remove('hidden');
-    else supBtn.classList.add('hidden'); // ensure hidden for technicians
-  }
+  if (currentUser.role === 'supervisor') document.getElementById('btn-supervisor-menu').classList.remove('hidden');
   // Inject Danaide logo into header
   const logoWrap = document.getElementById('header-logo');
   if (logoWrap && DANAIDE_LOGO) {
@@ -429,16 +423,12 @@ async function startCamera() {
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:960}}});
     const vid = document.getElementById('camera-stream');
-    vid.srcObject = cameraStream;
-    document.getElementById('camera-container').style.display = 'block';
-    try { await vid.play(); } catch(e) {}
+    vid.srcObject = cameraStream; vid.classList.remove('hidden');
+    document.getElementById('camera-controls').classList.remove('hidden');
     updateLiveOverlay();
     overlayTimer = setInterval(updateLiveOverlay, 1000);
     requestLocation();
-  } catch(e) {
-    console.error('Camera error:', e);
-    showToast('No se pudo acceder a la cámara: '+e.message, 'error');
-  }
+  } catch(e) { showToast('No se pudo acceder a la cámara','error'); }
 }
 window.startCamera = startCamera;
 
@@ -446,9 +436,8 @@ function stopCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
   clearInterval(overlayTimer); overlayTimer=null;
   const vid = document.getElementById('camera-stream');
-  if (vid) { vid.srcObject=null; }
-  const container = document.getElementById('camera-container');
-  if (container) container.style.display = 'none';
+  vid.classList.add('hidden'); vid.srcObject=null;
+  document.getElementById('camera-controls').classList.add('hidden');
 }
 window.stopCamera = stopCamera;
 
@@ -484,8 +473,6 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 
 // ======== QR SCAN ========
 function startQRScan() {
-  // Stop main camera first to free the camera resource
-  stopCamera();
   // Listen for result from the QR scanner window
   window.addEventListener('message', onQRMessage);
 
@@ -651,15 +638,11 @@ async function saveScan() {
 
   stopCamera(); stopQRScan();
   localScans.push(scan);
-  // Persist photos to localStorage with scan.id key (survives app reload)
+  // Persist photos to localStorage — survives app close/reload
   if (scan.photos && scan.photos.length > 0) {
     try {
-      const photosJson = JSON.stringify(scan.photos);
-      localStorage.setItem('scancheck_photos_'+scan.id, photosJson);
-    } catch(e) {
-      // If storage full, store compressed (just count)
-      console.warn('localStorage photo save failed:', e.message);
-    }
+      localStorage.setItem('scancheck_photos_' + scan.id, JSON.stringify(scan.photos));
+    } catch(e) { console.warn('Photo storage failed:', e.message); }
   }
   updateStats(); renderTodayList();
   showPage('home');
@@ -690,8 +673,8 @@ function viewScan(id) {
       ${fTag('Serie',scan.serie)} ${fTag('Tipo',opLabel(scan.opType))}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
-    ${scan.notas ? renderNotasFormatted(scan.notas) : ''}
-    ${scan.pcData ? `<div class="modal-notas" style="font-family:var(--mono);font-size:10px;color:var(--accent2);line-height:1.6">${escHtml(scan.pcData)}</div>` : ''}
+    ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
+    ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
     ${scan.address?`<div style="font-size:11px;color:var(--text3)">📍 ${escHtml(scan.address)}</div>`:''}
   `;
@@ -700,28 +683,6 @@ function viewScan(id) {
 window.viewScan = viewScan;
 
 function fTag(label,val) { return val?`<div class="field-tag"><span>${label}</span><strong>${escHtml(val)}</strong></div>`:''; }
-
-function renderNotasFormatted(notas) {
-  if (!notas || !notas.trim()) return '';
-  const lines = notas.split('\n').filter(l => l.trim());
-  const rows = lines.map(line => {
-    if (line.startsWith('---')) {
-      const title = line.replace(/---/g,'').trim();
-      return `<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">${escHtml(title)}</div>`;
-    }
-    const ci = line.indexOf(':');
-    if (ci > 0) {
-      const key = line.substring(0,ci).trim();
-      const val = line.substring(ci+1).trim();
-      return `<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-        <span style="font-size:11px;color:var(--text3);min-width:90px;flex-shrink:0">${escHtml(key)}</span>
-        <span style="font-size:11px;color:var(--text);font-family:var(--mono);word-break:break-all">${escHtml(val)}</span>
-      </div>`;
-    }
-    return `<div style="font-size:11px;color:var(--text2);padding:2px 0">${escHtml(line)}</div>`;
-  }).join('');
-  return `<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px">${rows}</div>`;
-}
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 window.closeModal = closeModal;
 
@@ -773,7 +734,7 @@ function renderReportPage(scans, dateKey) {
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
       </div>
-      ${s.notas?`<div style="padding:4px 14px 12px">${renderNotasFormatted(s.notas)}</div>`:''}
+      ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
   sigHasDraw=false;
@@ -801,28 +762,18 @@ async function saveReport() {
   if (!inspectorName) { showToast('Ingresá el nombre del inspector','error'); return; }
   if (!currentReport) return;
 
-  // Embed full scan data in report — restore photos from localStorage if needed
+  // Embed full scan data in report (photos stored separately)
   const todayScans = localScans.filter(s => currentReport.scanIds.includes(s.id||s.fbId));
-  const scansSnapshot = todayScans.map(s => {
-    let photos = s.photos || [];
-    // If photos not in memory, try localStorage
-    if (photos.length === 0) {
-      try {
-        const stored = localStorage.getItem('scancheck_photos_'+(s.id||s.fbId));
-        if (stored) photos = JSON.parse(stored);
-      } catch(e) {}
-    }
-    return {
-      id: s.id, fbId: s.fbId,
-      paso: s.paso, puesto: s.puesto, serie: s.serie,
-      serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-      opType: s.opType, notas: s.notas,
-      lat: s.lat, lon: s.lon, address: s.address,
-      timestamp: s.timestamp, userId: s.userId,
-      photos,
-      pcData: s.pcData
-    };
-  });
+  const scansSnapshot = todayScans.map(s => ({
+    id: s.id, fbId: s.fbId,
+    paso: s.paso, puesto: s.puesto, serie: s.serie,
+    serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
+    opType: s.opType, notas: s.notas,
+    lat: s.lat, lon: s.lon, address: s.address,
+    timestamp: s.timestamp, userId: s.userId,
+    photos: s.photos || [],
+    pcData: s.pcData
+  }));
 
   const report = {
     id: 'rep_'+Date.now(),
@@ -862,14 +813,7 @@ function renderHistory() {
     container.innerHTML=`<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>Sin informes guardados</p></div>`;
     return;
   }
-  // Add sync button if any reports are not yet in Firebase
-  const unsynced = localReports.filter(r => !r.fbId);
-  const syncBanner = unsynced.length > 0 ? `
-    <div style="background:rgba(0,174,255,.1);border:1px solid rgba(0,174,255,.25);border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <div style="font-size:12px;color:var(--accent2)">${unsynced.length} informe${unsynced.length!==1?'s':''} sin sincronizar con Firebase</div>
-      <button onclick="syncAllReports()" style="background:var(--accent2);color:#0a1628;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sincronizar</button>
-    </div>` : '';
-  container.innerHTML = syncBanner + localReports.map(rep=>{
+  container.innerHTML=localReports.map(rep=>{
     const d=new Date(rep.date+'T12:00:00');
     const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const count=rep.scanIds.length;
@@ -891,18 +835,6 @@ async function viewReport(id) {
   const rep = localReports.find(r=>(r.id===id||r.fbId===id));
   if (!rep) return;
   viewingReportId = id;
-  // Auto-sync to Firebase (strip photos to stay under 1MB Firestore limit)
-  if (!rep.fbId && currentUser) {
-    const repFb = {
-      ...rep,
-      scansSnapshot: (rep.scansSnapshot||[]).map(({photos,...m})=>({...m,photoCount:(photos||[]).length}))
-    };
-    fbSaveReport(repFb).then(fbId => {
-      const ri = localReports.findIndex(r=>r.id===id);
-      if (ri>=0) { localReports[ri].fbId = fbId; rep.fbId = fbId; }
-      setSyncStatus('ok');
-    }).catch(e => console.warn('Auto-sync failed:', e.code||e.message));
-  }
   let sig = rep.signature;
   if (!sig && rep.fbId) {
     try { sig = await fbGetSignature(rep.fbId); } catch(e) {}
@@ -964,44 +896,31 @@ async function downloadReportPDF() {
   // 2. localScans cache
   // 3. Firebase fetch
   const scanIds = rep.scanIds || [];
-  let scans = [];
 
-  // Helper: restore photos from localStorage
+  // Build photo cache from localStorage
+  const photoCache = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('scancheck_photos_')) {
+        try { photoCache[key.replace('scancheck_photos_','')] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
   const restorePhotos = (s) => {
     if (s.photos && s.photos.length > 0) return s;
-    const tryKeys = [s.id, s.fbId].filter(Boolean);
-    for (const k of tryKeys) {
-      try {
-        const stored = localStorage.getItem('scancheck_photos_'+k);
-        if (stored) {
-          const photos = JSON.parse(stored);
-          if (photos && photos.length > 0) return { ...s, photos };
-        }
-      } catch(e) {}
-    }
-    return s;
+    const photos = photoCache[s.id] || photoCache[s.fbId] || [];
+    return { ...s, photos };
   };
 
-  // Priority 1: scansSnapshot + photos from localStorage
-  if (rep.scansSnapshot && rep.scansSnapshot.length > 0) {
+  // Get scans: localScans first (has photos in memory), then snapshot, then Firebase
+  let scans = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId)).map(restorePhotos);
+
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) {
     scans = rep.scansSnapshot.map(restorePhotos);
   }
 
-  // Priority 2: localScans — merge photos
-  const localMatches = localScans.filter(s => scanIds.includes(s.id) || scanIds.includes(s.fbId));
-  if (localMatches.length > 0) {
-    if (scans.length === 0) {
-      scans = localMatches.map(restorePhotos);
-    } else {
-      scans = scans.map(snap => {
-        const local = localMatches.find(s => s.id===snap.id || s.fbId===snap.fbId);
-        if (local && local.photos?.length > 0) return { ...snap, photos: local.photos };
-        return snap;
-      });
-    }
-  }
-
-  // Priority 3: Firebase fallback
   if (scans.length === 0 && rep.userId) {
     try {
       const fbScans = await fbGetMyScans(rep.userId);
@@ -1009,6 +928,7 @@ async function downloadReportPDF() {
       if (fbM.length > 0) scans = fbM.map(restorePhotos);
     } catch(e) {}
   }
+
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
@@ -1104,17 +1024,21 @@ async function downloadReportPDF() {
       });
       y += rows*rowH + 3;
 
-      // Photos — TODAS en grilla 2 columnas
+      // Photos
       const photos = s.photos||[];
       if (photos.length > 0) {
-        const cols = Math.min(photos.length, 2);
-        const pw = (W - M*2 - (cols > 1 ? 4 : 0)) / cols;
-        const ph = pw * 0.62;
-        for (let pi = 0; pi < photos.length; pi++) {
-          const col = pi % cols;
-          if (col === 0 && (y + ph) > 272) { doc.addPage(); y = M; }
-          try { doc.addImage(photos[pi], 'JPEG', M + col*(pw+4), y, pw, ph, '', 'FAST'); } catch(e){}
-          if (col === cols-1 || pi === photos.length-1) { y += ph + 4; }
+        const maxPhotos = Math.min(photos.length,3);
+        const pw = (W-M*2 - (maxPhotos-1)*3) / maxPhotos;
+        const ph = pw * 0.65;
+        if (y+ph > 272) { doc.addPage(); y=M; }
+        for (let pi=0; pi<maxPhotos; pi++) {
+          try { doc.addImage(photos[pi],'JPEG', M+pi*(pw+3), y, pw, ph, '', 'FAST'); } catch(e){}
+        }
+        y += ph + 3;
+        if (photos.length > 3) {
+          doc.setFontSize(7); doc.setTextColor(74,106,125);
+          doc.text('+ '+(photos.length-3)+' fotos adicionales', M, y+3);
+          y += 6;
         }
       }
 
@@ -1158,47 +1082,33 @@ async function downloadReportPDF() {
 
     // ── FIRMA ──
     doc.addPage(); y=M;
-    // Header bar con fondo oscuro
     doc.setFillColor(15,32,39); doc.rect(0,0,W,18,'F');
-    try { doc.addImage(DANAIDE_LOGO,'JPEG',M,2,36,14); } catch(e){}
-    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,180,130);
+    try { doc.addImage(DANAIDE_LOGO,'PNG',M,2,36,14); } catch(e){}
+    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,212,170);
     doc.text('Firma del Inspector Responsable', M+40, 11);
-    y = 28;
-    // Labels en gris oscuro legible sobre blanco
-    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
-    doc.text('Inspector:', M, y);
-    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
-    doc.text(rep.inspectorName||'—', M+28, y); y+=8;
-    doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
-    doc.text('Técnico:', M, y);
-    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
-    doc.text(rep.technicianName||'—', M+28, y); y+=8;
-    doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
-    doc.text('Fecha:', M, y);
-    doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
-    doc.text(dateLabel, M+28, y); y+=14;
-    // Línea separadora
-    doc.setDrawColor(0,180,130); doc.setLineWidth(0.5);
-    doc.line(M, y, W-M, y); y+=8;
+    y = 26;
+    doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(74,106,125);
+    doc.text('Inspector:', M, y); doc.setTextColor(232,244,248); doc.text(rep.inspectorName||'—', M+28, y); y+=7;
+    doc.text('Técnico:',   M, y); doc.setTextColor(232,244,248); doc.text(rep.technicianName||'—', M+28, y); y+=7;
+    doc.text('Fecha:',     M, y); doc.setTextColor(232,244,248); doc.text(dateLabel, M+28, y); y+=14;
 
     let sig = rep.signature;
     if (!sig && rep.fbId) { try { sig = await fbGetSignature(rep.fbId); } catch(e){} }
     if (sig) {
       try {
         doc.addImage(sig,'PNG',M,y,90,40);
-        doc.setDrawColor(0,180,130); doc.setLineWidth(0.4);
+        doc.setDrawColor(0,212,170); doc.setLineWidth(0.4);
         doc.rect(M,y,90,40);
         y += 44;
-        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(20,20,20);
+        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(74,106,125);
         doc.text(rep.inspectorName||'', M, y);
-        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80);
+        doc.setFontSize(7); doc.setFont('helvetica','normal');
         doc.text('Firma del inspector responsable', M, y+5);
       } catch(e){}
     }
     y += 20;
-    // Footer
     doc.setFillColor(15,32,39); doc.rect(0,275,W,22,'F');
-    doc.setFontSize(7); doc.setTextColor(180,200,210);
+    doc.setFontSize(7); doc.setTextColor(74,106,125);
     doc.text('ScanCheck — Danaide Enterprise  |  '+new Date().toLocaleString('es-AR'), W/2, 283, {align:'center'});
 
     doc.save('informe-scancheck-'+rep.date+'.pdf');
@@ -1235,16 +1145,16 @@ async function sendToJira() {
   const mkDoc=(text)=>({version:1,type:'doc',content:[{type:'paragraph',content:[{type:'text',text}]}]});
   try {
     const issueRes=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incident'}}})});
+      body:JSON.stringify({fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:'Task'}}})});
     if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
     const issue=await issueRes.json();
     const parentKey=issue.key;
     const subtaskKeys=[];
     for(const s of scans){
       const sr=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+        body:JSON.stringify({fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie}`,
           description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}`:''}`),
-          issuetype:{name:cfg.subIssueType||'Incident'}}})});
+          issuetype:{name:'Subtask'}}})});
       if(sr.ok){const st=await sr.json();subtaskKeys.push(st.key);}
     }
     // Update report with Jira key
@@ -1281,73 +1191,19 @@ window.supTab = supTab;
 
 let liveMapStarted=false;
 async function renderSupervisor() {
-  const supList   = document.getElementById('sup-informes-list');
-  const tecList   = document.getElementById('sup-tecnicos-list');
-  supList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--accent);font-size:13px">Cargando informes...</div>';
-
-  // ── Load ALL reports ─────────────────────────────────────────
-  let allReports = [];
-
-  // Step 1: always include local reports
-  allReports = [...localReports];
-
-  // Step 2: fetch from Firebase (multiple fallback strategies)
-  try {
-    let fbReports = [];
-    try {
-      // Strategy A: with orderBy (requires index)
-      const { query, collection, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-      fbReports = []; // will be overwritten
-    } catch(importErr) {}
-
-    // Use the already-imported db directly
-    fbReports = await fbGetAllReports();
-    // Merge: add FB reports not already in local
-    fbReports.forEach(fr => {
-      if (!allReports.find(r => r.id===fr.fbId || r.fbId===fr.fbId || r.id===fr.id)) {
-        allReports.push(fr);
-      }
-    });
-    console.log(`Supervisor: local=${localReports.length}, firebase=${fbReports.length}, merged=${allReports.length}`);
-  } catch(e) {
-    console.error('Firebase reports error:', e.code, e.message);
-    // Show error banner but continue with local data
-    supList.innerHTML += `<div style="background:rgba(255,85,85,.1);border:1px solid rgba(255,85,85,.3);border-radius:10px;padding:12px;font-size:12px;color:var(--danger);margin-bottom:12px">
-      Error Firebase: ${e.code||e.message}<br>
-      <span style="color:var(--text2)">Verificá las Reglas de Firestore (deben permitir lectura a usuarios autenticados)</span>
-    </div>`;
-  }
-
-  // Sort newest first
-  allReports.sort((a,b) => {
-    const ta = a.createdAt?.seconds ? a.createdAt.seconds*1000 : new Date(a.date+'T23:59').getTime();
-    const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date(b.date+'T23:59').getTime();
-    return tb - ta;
-  });
-
-  // ── Render reports list ──────────────────────────────────────
-  if (!allReports.length) {
-    supList.innerHTML = `<div class="empty-state">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <p>Sin informes en Firebase</p>
-      <p style="font-size:11px;color:var(--text3);max-width:280px;text-align:center;margin-top:4px">
-        Los informes anteriores se guardaron solo en el celular del técnico.<br>
-        Los nuevos informes aparecerán aquí automáticamente.
-      </p>
-      <p style="font-size:11px;color:var(--accent2);max-width:280px;text-align:center;margin-top:8px">
-        El técnico debe abrir la app → Historial → tocar cada informe → se sincroniza solo.
-      </p>
-    </div>`;
-  } else {
-    supList.innerHTML = allReports.map(rep => {
-      const d = new Date(rep.date+'T12:00:00');
-      const label = d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-      const count = rep.scanIds?.length || 0;
-      const repId = rep.fbId || rep.id;
-      return `<div class="sup-card" onclick="viewReportSupervisor('${repId}')">
+  // Informes
+  let allReports=localReports;
+  try { allReports=await fbGetAllReports(); } catch(e) {}
+  const supList=document.getElementById('sup-informes-list');
+  if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes</p></div>`; }
+  else {
+    supList.innerHTML=allReports.map(rep=>{
+      const d=new Date(rep.date+'T12:00:00');
+      const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const count=rep.scanIds?.length||0;
+      return `<div class="sup-card" onclick="viewReportSupervisor('${rep.fbId||rep.id}')">
         <div class="sup-card-top">
-          <div>
-            <div class="sup-card-title">${escHtml(rep.technicianName||'—')}</div>
+          <div><div class="sup-card-title">${escHtml(rep.technicianName||'—')}</div>
             <div class="sup-card-meta">${label} · ${count} dispositivo${count!==1?'s':''}</div>
             <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
           </div>
@@ -1360,15 +1216,15 @@ async function renderSupervisor() {
     }).join('');
   }
 
-  // ── Render technicians ───────────────────────────────────────
+  // Técnicos
   try {
-    const users = await fbGetAllUsers();
-    const tecs  = users.filter(u => u.role==='tecnico');
-    if (!tecs.length) {
-      tecList.innerHTML = '<div class="empty-state"><p>Sin técnicos registrados</p></div>';
-    } else {
-      tecList.innerHTML = tecs.map(u => {
-        const uReports = allReports.filter(r => r.userId===u.id);
+    const users=await fbGetAllUsers();
+    const tecList=document.getElementById('sup-tecnicos-list');
+    const tecs=users.filter(u=>u.role==='tecnico');
+    if(!tecs.length){tecList.innerHTML=`<div class="empty-state"><p>Sin técnicos registrados</p></div>`;}
+    else {
+      tecList.innerHTML=tecs.map(u=>{
+        const uReports=allReports.filter(r=>r.userId===u.id);
         return `<div class="sup-card">
           <div class="sup-card-top">
             <div>
@@ -1383,11 +1239,8 @@ async function renderSupervisor() {
         </div>`;
       }).join('');
     }
-  } catch(e) {
-    tecList.innerHTML = `<div class="empty-state"><p>Error cargando técnicos</p></div>`;
-  }
+  } catch(e) {}
 }
-
 
 function startLiveMap() {
   if (liveMapStarted) return;
@@ -1448,34 +1301,6 @@ async function viewReportSupervisor(id) {
   showPage('view-report');
 }
 window.viewReportSupervisor = viewReportSupervisor;
-
-// ======== SYNC ALL REPORTS ========
-async function syncAllReports() {
-  const unsynced = localReports.filter(r => !r.fbId);
-  if (!unsynced.length) { showToast('Todo sincronizado','success'); return; }
-  showToast(`Sincronizando ${unsynced.length} informe${unsynced.length!==1?'s':''}...`);
-  let ok = 0, lastErr = '';
-  for (const rep of unsynced) {
-    try {
-      // Strip photos — Firestore 1MB limit
-      const repFb = {
-        ...rep,
-        scansSnapshot: (rep.scansSnapshot||[]).map(({photos,...m})=>({...m,photoCount:(photos||[]).length}))
-      };
-      const fbId = await fbSaveReport(repFb);
-      const ri = localReports.findIndex(r=>r.id===rep.id);
-      if (ri>=0) localReports[ri].fbId = fbId;
-      ok++;
-    } catch(e) {
-      lastErr = e.code||e.message||'Error';
-      console.error('Sync failed:', rep.id, lastErr);
-    }
-  }
-  renderHistory();
-  if (ok > 0) showToast(`✓ ${ok} informe${ok!==1?'s':''} sincronizado${ok!==1?'s':''}`, 'success');
-  else showToast(`Fallo: ${lastErr}`, 'error');
-}
-window.syncAllReports = syncAllReports;
 
 // ======== TOAST ========
 let toastTimer;
