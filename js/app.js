@@ -1227,16 +1227,16 @@ async function sendToJira() {
   const mkDoc=(text)=>({version:1,type:'doc',content:[{type:'paragraph',content:[{type:'text',text}]}]});
   try {
     const issueRes=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incident'}}})});
+      body:JSON.stringify({fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:'Task'}}})});
     if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
     const issue=await issueRes.json();
     const parentKey=issue.key;
     const subtaskKeys=[];
     for(const s of scans){
       const sr=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+        body:JSON.stringify({fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie}`,
           description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}`:''}`),
-          issuetype:{name:cfg.subIssueType||'Incident'}}})});
+          issuetype:{name:'Subtask'}}})});
       if(sr.ok){const st=await sr.json();subtaskKeys.push(st.key);}
     }
     // Update report with Jira key
