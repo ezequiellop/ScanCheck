@@ -3,7 +3,7 @@
 // ============================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjid5hHW5v_wWjXM0sI3fuEdE3CYNV5KQ",
@@ -18,6 +18,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Enable offline cache — allows reads to work without network
+try {
+  enableIndexedDbPersistence(db).catch(err => {
+    console.warn('Firestore persistence not enabled:', err.code);
+  });
+} catch(e) {}
 
 // ── AUTH ──────────────────────────────────────────────────
 export async function fbRegister(name, email, password, role) {
@@ -44,9 +51,39 @@ export async function fbLogout() {
 export function fbOnAuthChange(cb) {
   return onAuthStateChanged(auth, async user => {
     if (!user) { cb(null); return; }
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const data = snap.exists() ? snap.data() : {};
-    cb({ id: user.uid, name: user.displayName || data.name || user.email, email: user.email, role: data.role || 'tecnico' });
+
+    // Try to load cached profile first (works offline)
+    let cached = null;
+    try {
+      const stored = localStorage.getItem('scancheck_user_' + user.uid);
+      if (stored) cached = JSON.parse(stored);
+    } catch(e) {}
+
+    if (!navigator.onLine) {
+      // Offline — use cached profile or fallback, don't wait for Firestore
+      if (cached) {
+        cb(cached);
+      } else {
+        cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico' });
+      }
+      return;
+    }
+
+    // Online — fetch fresh, with timeout fallback
+    try {
+      const snap = await Promise.race([
+        getDoc(doc(db, "users", user.uid)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
+      ]);
+      const data = snap.exists() ? snap.data() : {};
+      const profile = { id: user.uid, name: user.displayName || data.name || user.email, email: user.email, role: data.role || 'tecnico' };
+      try { localStorage.setItem('scancheck_user_' + user.uid, JSON.stringify(profile)); } catch(e) {}
+      cb(profile);
+    } catch(e) {
+      console.warn('Profile fetch failed/timeout, using cache:', e.message);
+      if (cached) cb(cached);
+      else cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico' });
+    }
   });
 }
 
