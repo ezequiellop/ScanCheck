@@ -76,7 +76,18 @@ try {
             if ($m.Count -gt 0) { $licActivationID = $m[$m.Count-1].Groups[1].Value.Trim() }
         }
     }
+# --- DESKO PentaScanner ---
+$deskoScanner = 'No detectado'
+$deskoSerial  = 'N/A'
+$deskoStatus  = 'N/A'
 
+$desko = Get-PnpDevice | Where-Object { $_.InstanceId -like "*VID_1AC2&PID_0205*" }
+if ($desko) {
+    $deskoScanner = $desko.FriendlyName
+    $deskoStatus  = $desko.Status
+    $m = [regex]::Match($desko.InstanceId, '\\(\d+_\d+)$')
+    if ($m.Success) { $deskoSerial = $m.Groups[1].Value -replace '_', ' ' }
+}
     $data = [PSCustomObject]@{
         Fecha                    = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         NombrePC                 = $env:COMPUTERNAME
@@ -100,6 +111,9 @@ try {
         AssureID_Activacion      = $licActivacion
         AssureID_Vencimiento     = $licVencimiento
         AssureID_ActivationID    = $licActivationID
+        DESKO_Scanner_Modelo = $deskoScanner
+        DESKO_Scanner_Serial = $deskoSerial
+        DESKO_Scanner_Status = $deskoStatus
     }
 
     # --- CSV ---
@@ -173,6 +187,9 @@ $jsonObj = [ordered]@{
     AVN  = $data.AssureID_Vencimiento
     AAI  = $data.AssureID_ActivationID
     TS   = $data.Fecha
+    DSKS = $data.DESKO_Scanner_Serial
+    DSKM = $data.DESKO_Scanner_Modelo
+    DSKO = $data.DESKO_Scanner_Status
 }
 
 $jsonStr = $jsonObj | ConvertTo-Json -Compress
