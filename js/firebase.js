@@ -52,18 +52,20 @@ export function fbOnAuthChange(cb) {
 
 // ── SCANS ─────────────────────────────────────────────────
 export async function fbSaveScan(scan) {
-  // Strip large base64 photos from Firestore (store only metadata, photos stay local)
   const { photos, ...meta } = scan;
   meta.photoCount = (photos || []).length;
   meta.createdAt = serverTimestamp();
-  const ref = await addDoc(collection(db, "scans"), meta);
+  const cleanMeta = cleanForFirestore(meta);
+  const ref = await addDoc(collection(db, "scans"), cleanMeta);
   return ref.id;
 }
 
 export async function fbGetMyScans(userId) {
-  const q = query(collection(db, "scans"), where("userId","==",userId), orderBy("timestamp","desc"));
+  const q = query(collection(db, "scans"), where("userId","==",userId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+  return r;
 }
 
 export async function fbDeleteScan(fbId) {
@@ -71,12 +73,33 @@ export async function fbDeleteScan(fbId) {
 }
 
 // ── REPORTS ───────────────────────────────────────────────
+// Remove undefined/NaN/Infinity — Firestore rejects them with invalid-argument
+function cleanForFirestore(obj) {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanForFirestore).filter(v => v !== undefined);
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const clean = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === undefined) continue;
+      if (typeof v === 'number' && (isNaN(v) || !isFinite(v))) { clean[k] = null; continue; }
+      clean[k] = cleanForFirestore(v);
+    }
+    return clean;
+  }
+  return obj;
+}
+
 export async function fbSaveReport(report) {
-  const { signature, ...meta } = report;
+  const { signature, scansSnapshot, ...meta } = report;
   meta.createdAt = serverTimestamp();
-  const ref = await addDoc(collection(db, "reports"), meta);
-  // Store signature separately (can be large)
-  await setDoc(doc(db, "signatures", ref.id), { data: signature, reportId: ref.id });
+  if (scansSnapshot && scansSnapshot.length > 0) {
+    meta.scansSnapshot = scansSnapshot.map(({ photos, ...s }) => ({
+      ...s, photoCount: (photos||[]).length
+    }));
+  }
+  const cleanMeta = cleanForFirestore(meta);
+  const ref = await addDoc(collection(db, "reports"), cleanMeta);
+  await setDoc(doc(db, "signatures", ref.id), { data: signature||'', reportId: ref.id });
   return ref.id;
 }
 
@@ -90,15 +113,18 @@ export async function fbGetSignature(reportFbId) {
 }
 
 export async function fbGetAllReports() {
-  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const snap = await getDocs(collection(db, "reports"));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbGetMyReports(userId) {
-  const q = query(collection(db, "reports"), where("userId","==",userId), orderBy("createdAt","desc"));
+  const q = query(collection(db, "reports"), where("userId","==",userId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  return r;
 }
 
 export async function fbDeleteReport(fbId) {
@@ -121,9 +147,10 @@ export function fbWatchLocations(cb) {
 }
 
 export function fbWatchAllReports(cb) {
-  const q = query(collection(db, "reports"), orderBy("createdAt","desc"));
-  return onSnapshot(q, snap => {
-    cb(snap.docs.map(d => ({ fbId: d.id, ...d.data() })));
+  return onSnapshot(collection(db, "reports"), snap => {
+    const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+    r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    cb(r);
   });
 }
 
