@@ -1,13 +1,27 @@
-const CACHE='scancheck-v37';
-const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});
+const CACHE='scancheck-v38';
+const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+];
+self.addEventListener('install',e=>{
+  e.waitUntil(caches.open(CACHE).then(c=>
+    Promise.all(ASSETS.map(url=>
+      c.add(url).catch(err=>console.warn('SW cache fail:',url,err))
+    ))
+  ).then(()=>self.skipWaiting()));
+});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
+  // Never intercept live Firebase API calls (auth/firestore data) — these need real network
   if(e.request.url.includes('firestore.googleapis')||e.request.url.includes('identitytoolkit')||
-     e.request.url.includes('securetoken')||e.request.url.includes('gstatic.com/firebasejs')||
+     e.request.url.includes('securetoken')||
      e.request.url.includes('nominatim')||e.request.url.includes('qrserver')||
      e.request.url.includes('fonts.googleapis')||e.request.url.includes('fonts.gstatic'))return;
+
+  // Cache-first for everything else (including Firebase SDK JS files, app code, CDN libs)
   e.respondWith(caches.match(e.request).then(cached=>{
     if(cached)return cached;
     return fetch(e.request).then(res=>{
@@ -15,6 +29,9 @@ self.addEventListener('fetch',e=>{
       const clone=res.clone();
       caches.open(CACHE).then(c=>c.put(e.request,clone));
       return res;
-    }).catch(()=>caches.match('./index.html'));
+    }).catch(()=>{
+      if(e.request.mode==='navigate') return caches.match('./index.html');
+      return new Response('', {status:503});
+    });
   }));
 });
