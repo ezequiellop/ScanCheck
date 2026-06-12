@@ -84,6 +84,7 @@ let currentLocation = null;
 let sigCanvas, sigCtx, sigDrawing = false, sigHasDraw = false;
 let overlayTimer = null;
 let qrScanning = false;
+let qrAssureEngine = null, qrAssureDocLib = null;
 let localScans = [];
 let localReports = [];
 let unsubLocations = null;
@@ -541,7 +542,7 @@ window.setOpType = setOpType;
 // ======== RESET FORM ========
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
-  capturedPhotos = []; currentOpType = 'mantenimiento';
+  capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null;
   document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
   document.getElementById('reemplazo-fields').classList.add('hidden');
@@ -721,12 +722,17 @@ function processQRData(raw) {
     const dskSerie  = g('DSKS','DESKO_Scanner_Serial','');
     const dskModelo = g('DSKM','DESKO_Scanner_Modelo','');
     const dskEstado = g('DKOS','DESKO_Scanner_Status','') || g('DSKO','DESKO_Scanner_Status','');
+    const assureEngine = g('AEV','AssureID_Engine_Version','');
+    const assureDocLib = g('ADL','AssureID_DocLib_Version','');
 
     if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
     if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el&&!el.value) el.value=dskSerie; }
     if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el&&!el.value) el.value=dskModelo; }
     if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el&&!el.value) el.value=dskEstado; }
+    // Store AssureID versions in module-level state for saveScan
+    if (assureEngine) qrAssureEngine = assureEngine;
+    if (assureDocLib) qrAssureDocLib = assureDocLib;
 
     // Construir notas completas con TODA la info del inventario
     const notasEl = document.getElementById('inp-notas');
@@ -813,6 +819,8 @@ async function saveScan() {
     opType: currentOpType,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
     pcNombre, scannerSerie, scannerModelo, scannerEstado,
+    assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib,
+    jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
     pcData,
     lat: currentLocation?.lat||null,
@@ -868,6 +876,7 @@ function viewScan(id) {
       ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
       ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
       ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''}
+      ${scan.jiraTicket?fTag('Jira',scan.jiraTicket):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
     ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
@@ -930,6 +939,7 @@ function renderReportPage(scans, dateKey) {
         ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''}
         ${s.scannerSerie?fTag('Serie Scanner',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo Scanner',s.scannerModelo):''}
         ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''}
+        ${s.jiraTicket?fTag('Jira',s.jiraTicket):''}
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
@@ -970,6 +980,7 @@ async function saveReport() {
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
     pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado,
+    assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
     timestamp: s.timestamp, userId: s.userId,
@@ -1412,15 +1423,39 @@ async function sendToJira() {
     const subtaskKeys=[];
     for(const s of scans){
       const sr=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie}`,
+        body:JSON.stringify({fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
           description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}`:''}`),
-          issuetype:{name:'Subtask'}}})});
-      if(sr.ok){const st=await sr.json();subtaskKeys.push(st.key);}
+          issuetype:{name:cfg.issueType||'Incident'}}})});
+      if(sr.ok){
+        const st=await sr.json();
+        subtaskKeys.push(st.key);
+        // Save Jira ticket key onto the scan record (for database/PowerBI export)
+        const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
+        if (si>=0) localScans[si].jiraTicket = st.key;
+      }
     }
     // Update report with Jira key
     const idx=localReports.findIndex(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
-    if(idx>=0){localReports[idx].jiraKey=parentKey;}
-    if(rep.fbId){try{await fbUpdateReport(rep.fbId,{jiraKey:parentKey});}catch(e){}}
+    if(idx>=0){
+      localReports[idx].jiraKey=parentKey;
+      // Update scansSnapshot with jiraTicket per device
+      if (localReports[idx].scansSnapshot) {
+        localReports[idx].scansSnapshot = localReports[idx].scansSnapshot.map(snap => {
+          const match = localScans.find(ls=>(ls.id===snap.id||ls.fbId===snap.fbId) && ls.jiraTicket);
+          return match ? {...snap, jiraTicket: match.jiraTicket} : snap;
+        });
+      }
+    }
+    if(rep.fbId){
+      try{
+        await fbUpdateReport(rep.fbId,{jiraKey:parentKey, scansSnapshot: localReports[idx]?.scansSnapshot});
+      }catch(e){}
+    }
+    // Persist locally
+    try {
+      localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(localScans.map(({photos,...s})=>({...s,photoCount:(photos||[]).length}))));
+      localStorage.setItem('scancheck_local_reports_' + currentUser.id, JSON.stringify(localReports.map(r=>({...r,scansSnapshot:(r.scansSnapshot||[]).map(({photos,...s})=>({...s}))}))));
+    } catch(e) {}
     document.getElementById('modal-jira-content').innerHTML=`
       <div style="text-align:center;padding:16px 0">
         <div style="font-size:36px;margin-bottom:10px">✅</div>
@@ -1444,7 +1479,7 @@ function showJiraError(msg) {
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','mapa'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','tecnicos','mapa','export'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') startLiveMap();
 }
 window.supTab = supTab;
@@ -1596,6 +1631,140 @@ async function syncAllReports() {
   else showToast(`Fallo: ${lastErr}`, 'error');
 }
 window.syncAllReports = syncAllReports;
+
+// ======== GOOGLE SHEETS EXPORT ========
+const GOOGLE_CLIENT_ID = '1033851892465-fdfkguq9uba6pfie61id75rhnnn4fj1h.apps.googleusercontent.com';
+const GOOGLE_SHEET_ID  = '17lJBVQaLyxrYC_KoTjalnoZ7UhOkX2pT9xm0LhoIA54';
+const SHEET_RANGE      = 'A:Z';
+
+let gsiTokenClient = null;
+let gsiAccessToken = null;
+
+function getGsiTokenClient() {
+  if (gsiTokenClient) return gsiTokenClient;
+  if (!window.google || !window.google.accounts) return null;
+  gsiTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    callback: () => {} // overridden per-request
+  });
+  return gsiTokenClient;
+}
+
+function getGoogleAccessToken() {
+  return new Promise((resolve, reject) => {
+    const client = getGsiTokenClient();
+    if (!client) { reject(new Error('Google Identity Services no cargó. Verificá tu conexión.')); return; }
+    gsiTokenClient.callback = (resp) => {
+      if (resp.error) { reject(new Error(resp.error)); return; }
+      gsiAccessToken = resp.access_token;
+      resolve(gsiAccessToken);
+    };
+    gsiTokenClient.requestAccessToken({ prompt: gsiAccessToken ? '' : 'consent' });
+  });
+}
+
+// Build flat rows from all scans (technician's own + supervisor sees all via fbGetAllReports)
+function buildExportRows(allScans) {
+  const headers = [
+    'Fecha', 'Técnico', 'Inspector', 'Paso', 'Tipo Operación',
+    'Puesto', 'Nombre PC', 'Serie PC',
+    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner',
+    'AssureID Engine', 'AssureID DocLib',
+    'Latitud', 'Longitud', 'Dirección',
+    'Serie Retira', 'Serie Nueva',
+    'Ticket Jira', 'Notas'
+  ];
+  const rows = allScans.map(s => [
+    s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
+    s.userName || '',
+    s.inspectorName || '',
+    s.paso || '',
+    opLabel(s.opType),
+    s.puesto || '',
+    s.pcNombre || '',
+    s.serie || '',
+    s.scannerSerie || '',
+    s.scannerModelo || '',
+    s.scannerEstado || '',
+    s.assureEngine || '',
+    s.assureDocLib || '',
+    s.lat != null ? s.lat : '',
+    s.lon != null ? s.lon : '',
+    s.address || '',
+    s.serieRetira || '',
+    s.serieNuevo || '',
+    s.jiraTicket || '',
+    (s.notas||'').replace(/\n/g,' ').substring(0,500)
+  ]);
+  return [headers, ...rows];
+}
+
+async function exportToGoogleSheets() {
+  const btn = document.getElementById('btn-export-sheets');
+  const statusEl = document.getElementById('export-status');
+  btn.disabled = true; btn.style.opacity = '0.6';
+  statusEl.textContent = 'Iniciando sesión con Google...';
+
+  try {
+    await getGoogleAccessToken();
+    statusEl.textContent = 'Recopilando datos de todos los técnicos...';
+
+    // Collect all scans: from all reports' scansSnapshot (supervisor sees all reports)
+    let allReports = [];
+    try {
+      allReports = await fbGetAllReports();
+    } catch(e) {
+      // Fallback to local data if offline
+      allReports = localReports;
+    }
+
+    const allScans = [];
+    allReports.forEach(rep => {
+      (rep.scansSnapshot||[]).forEach(s => {
+        allScans.push({ ...s, inspectorName: rep.inspectorName });
+      });
+    });
+
+    if (allScans.length === 0) {
+      statusEl.textContent = 'No hay registros para exportar.';
+      btn.disabled = false; btn.style.opacity = '1';
+      return;
+    }
+
+    statusEl.textContent = `Exportando ${allScans.length} registros...`;
+
+    const rows = buildExportRows(allScans);
+
+    // Clear existing content first, then write
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${SHEET_RANGE}:clear`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' }
+    });
+
+    const writeRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/A1?valueInputOption=RAW`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: rows })
+    });
+
+    if (!writeRes.ok) {
+      const err = await writeRes.json().catch(()=>({}));
+      throw new Error(err.error?.message || `HTTP ${writeRes.status}`);
+    }
+
+    statusEl.textContent = `✓ ${allScans.length} registros exportados correctamente.`;
+    showToast(`✓ ${allScans.length} registros exportados a Sheets`, 'success');
+
+  } catch(e) {
+    console.error('Export error:', e);
+    statusEl.textContent = 'Error: ' + e.message;
+    showToast('Error al exportar: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+window.exportToGoogleSheets = exportToGoogleSheets;
 
 // ======== TOAST ========
 let toastTimer;

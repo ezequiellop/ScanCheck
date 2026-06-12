@@ -228,6 +228,9 @@ $htmlContent = @"
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ScanCheck QR - $pc</title>
 <style>
@@ -259,6 +262,12 @@ $htmlContent = @"
   tr:nth-child(even) { background:rgba(255,255,255,.02); }
   .footer { font-size:10px; color:#4a6a7d; text-align:center; padding-top:8px; }
 </style>
+<script>
+// Forzar recarga si la pagina viene del cache del navegador (bfcache)
+window.addEventListener('pageshow', function(e) {
+  if (e.persisted) location.reload();
+});
+</script>
 </head>
 <body>
 <div class="container">

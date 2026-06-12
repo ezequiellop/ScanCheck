@@ -154,7 +154,12 @@ export async function fbSaveReport(report) {
 }
 
 export async function fbUpdateReport(fbId, fields) {
-  await updateDoc(doc(db, "reports", fbId), fields);
+  // Strip photos from scansSnapshot if present, and clean undefined/NaN
+  const clean = { ...fields };
+  if (clean.scansSnapshot) {
+    clean.scansSnapshot = clean.scansSnapshot.map(({photos,...s}) => ({...s, photoCount:(photos||[]).length}));
+  }
+  await updateDoc(doc(db, "reports", fbId), cleanForFirestore(clean));
 }
 
 export async function fbGetSignature(reportFbId) {

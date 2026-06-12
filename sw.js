@@ -1,4 +1,4 @@
-const CACHE='scancheck-v43';
+const CACHE='scancheck-v45';
 const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js',
@@ -18,7 +18,8 @@ self.addEventListener('fetch',e=>{
   if(e.request.url.includes('firestore.googleapis')||e.request.url.includes('identitytoolkit')||
      e.request.url.includes('securetoken')||
      e.request.url.includes('nominatim')||e.request.url.includes('qrserver')||
-     e.request.url.includes('fonts.googleapis')||e.request.url.includes('fonts.gstatic'))return;
+     e.request.url.includes('fonts.googleapis')||e.request.url.includes('fonts.gstatic')||
+     e.request.url.includes('accounts.google')||e.request.url.includes('sheets.googleapis'))return;
   e.respondWith(caches.match(e.request).then(cached=>{
     if(cached)return cached;
     return fetch(e.request).then(res=>{
