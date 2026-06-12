@@ -84,7 +84,7 @@ let currentLocation = null;
 let sigCanvas, sigCtx, sigDrawing = false, sigHasDraw = false;
 let overlayTimer = null;
 let qrScanning = false;
-let qrAssureEngine = null, qrAssureDocLib = null;
+let qrAssureEngine = null, qrAssureDocLib = null, qrAssureLicKey = null;
 let localScans = [];
 let localReports = [];
 let unsubLocations = null;
@@ -542,7 +542,7 @@ window.setOpType = setOpType;
 // ======== RESET FORM ========
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
-  capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null;
+  capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
   document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
   document.getElementById('reemplazo-fields').classList.add('hidden');
@@ -724,6 +724,7 @@ function processQRData(raw) {
     const dskEstado = g('DKOS','DESKO_Scanner_Status','') || g('DSKO','DESKO_Scanner_Status','');
     const assureEngine = g('AEV','AssureID_Engine_Version','');
     const assureDocLib = g('ADL','AssureID_DocLib_Version','');
+    const assureLicKey = g('ALK','AssureID_LicenseKey','');
 
     if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
@@ -733,6 +734,7 @@ function processQRData(raw) {
     // Store AssureID versions in module-level state for saveScan
     if (assureEngine) qrAssureEngine = assureEngine;
     if (assureDocLib) qrAssureDocLib = assureDocLib;
+    if (assureLicKey) qrAssureLicKey = assureLicKey;
 
     // Construir notas completas con TODA la info del inventario
     const notasEl = document.getElementById('inp-notas');
@@ -819,7 +821,7 @@ async function saveScan() {
     opType: currentOpType,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
     pcNombre, scannerSerie, scannerModelo, scannerEstado,
-    assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib,
+    assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
     pcData,
@@ -980,10 +982,10 @@ async function saveReport() {
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
     pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado,
-    assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, jiraTicket: s.jiraTicket,
+    assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
-    timestamp: s.timestamp, userId: s.userId,
+    timestamp: s.timestamp, userId: s.userId, userName: s.userName,
     photos: s.photos || [],
     pcData: s.pcData
   }));
@@ -1664,39 +1666,53 @@ function getGoogleAccessToken() {
   });
 }
 
-// Build flat rows from all scans (technician's own + supervisor sees all via fbGetAllReports)
+// Parse AssureID fields from legacy pcData text (older scans before structured fields existed)
+function parsePcDataAssure(pcData) {
+  if (!pcData) return {};
+  const get = (re) => { const m = pcData.match(re); return m ? m[1].trim() : ''; };
+  return {
+    engine: get(/Engine:\s*([^\s]+)/i),
+    docLib: get(/DocLib:\s*([^\s]+)/i),
+    licKey: get(/LicKey:\s*([^\s]+)/i)
+  };
+}
+
+// Build flat rows from all scans (supervisor sees all via fbGetAllReports)
 function buildExportRows(allScans) {
   const headers = [
     'Fecha', 'Técnico', 'Inspector', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
     'Serie Scanner', 'Modelo Scanner', 'Estado Scanner',
-    'AssureID Engine', 'AssureID DocLib',
+    'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
     'Latitud', 'Longitud', 'Dirección',
     'Serie Retira', 'Serie Nueva',
-    'Ticket Jira', 'Notas'
+    'Ticket Jira'
   ];
-  const rows = allScans.map(s => [
-    s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
-    s.userName || '',
-    s.inspectorName || '',
-    s.paso || '',
-    opLabel(s.opType),
-    s.puesto || '',
-    s.pcNombre || '',
-    s.serie || '',
-    s.scannerSerie || '',
-    s.scannerModelo || '',
-    s.scannerEstado || '',
-    s.assureEngine || '',
-    s.assureDocLib || '',
-    s.lat != null ? s.lat : '',
-    s.lon != null ? s.lon : '',
-    s.address || '',
-    s.serieRetira || '',
-    s.serieNuevo || '',
-    s.jiraTicket || '',
-    (s.notas||'').replace(/\n/g,' ').substring(0,500)
-  ]);
+  const rows = allScans.map(s => {
+    const legacy = parsePcDataAssure(s.pcData);
+    return [
+      s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
+      s.userName || s.technicianName || '',
+      s.inspectorName || '',
+      s.paso || '',
+      opLabel(s.opType),
+      s.puesto || '',
+      s.pcNombre || '',
+      s.serie || '',
+      s.scannerSerie || '',
+      s.scannerModelo || '',
+      s.scannerEstado || '',
+      s.assureEngine || legacy.engine || '',
+      s.assureDocLib || legacy.docLib || '',
+      s.assureLicKey || legacy.licKey || '',
+      s.lat != null ? s.lat : '',
+      s.lon != null ? s.lon : '',
+      s.address || '',
+      s.serieRetira || '',
+      s.serieNuevo || '',
+      s.jiraTicket || ''
+    ];
+  });
   return [headers, ...rows];
 }
 
@@ -1722,7 +1738,7 @@ async function exportToGoogleSheets() {
     const allScans = [];
     allReports.forEach(rep => {
       (rep.scansSnapshot||[]).forEach(s => {
-        allScans.push({ ...s, inspectorName: rep.inspectorName });
+        allScans.push({ ...s, inspectorName: rep.inspectorName, technicianName: rep.technicianName });
       });
     });
 
