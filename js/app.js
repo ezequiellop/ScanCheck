@@ -1688,8 +1688,10 @@ function buildExportRows(allScans) {
     'Serie Retira', 'Serie Nueva',
     'Ticket Jira'
   ];
+  console.log('Export debug — sample scan:', allScans[0]);
   const rows = allScans.map(s => {
     const legacy = parsePcDataAssure(s.pcData);
+    if (!s.assureEngine && !legacy.engine) console.warn('No AssureID data for scan', s.id, '— pcData:', s.pcData?.substring(0,100));
     return [
       s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
       s.userName || s.technicianName || '',
