@@ -375,9 +375,13 @@ function updateUserUI() {
 async function resendVerification() {
   try {
     await fbResendVerification();
-    showToast('✓ Email de verificación reenviado','success');
+    showToast('✓ Email de verificación reenviado — revisá spam','success');
   } catch(e) {
-    showToast('Error al reenviar. Probá de nuevo en unos minutos.','error');
+    console.error('Verification error:', e.code, e.message);
+    let msg = 'Error al reenviar';
+    if (e.code === 'auth/too-many-requests') msg = 'Demasiados intentos. Esperá unos minutos.';
+    else if (e.code) msg = 'Error: ' + e.code;
+    showToast(msg, 'error');
   }
 }
 window.resendVerification = resendVerification;
@@ -1253,8 +1257,11 @@ async function downloadReportPDF() {
       const colW = (W-M*2)/4;
       const rowH = 13;
       const rows = Math.ceil(fields.length/4);
+      // Reserve extra space for address line inside the same box
+      const addrLines = s.address ? doc.splitTextToSize('Dirección: '+s.address, W-M*2-8) : [];
+      const addrH = addrLines.length ? (addrLines.length*4 + 4) : 0;
       doc.setFillColor(22,36,54);
-      doc.roundedRect(M,y,W-M*2,rows*rowH,2,2,'F');
+      doc.roundedRect(M,y,W-M*2,rows*rowH+addrH,2,2,'F');
       fields.forEach(([lbl,val],fi) => {
         const col = fi%4, row = Math.floor(fi/4);
         const cx = M+4+col*colW;
@@ -1264,18 +1271,12 @@ async function downloadReportPDF() {
         doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248); doc.setFontSize(8);
         doc.text(String(val).substring(0,22), cx, cy+11);
       });
-      y += rows*rowH;
-
-      // Dirección — fila completa debajo de los campos (texto largo)
-      if (s.address) {
-        const addrLines = doc.splitTextToSize('📍 '+s.address, W-M*2-8);
-        doc.setFillColor(18,30,44);
-        doc.roundedRect(M,y,W-M*2,4+addrLines.length*4,0,0,'F');
+      // Dirección dentro del mismo recuadro, debajo de los campos
+      if (addrLines.length) {
         doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(139,175,196);
-        doc.text(addrLines, M+4, y+4.5);
-        y += 4+addrLines.length*4;
+        doc.text(addrLines, M+4, y+rows*rowH+4);
       }
-      y += 3;
+      y += rows*rowH + addrH + 3;
 
       // Photos — TODAS en grilla de 2 columnas
       const photos = s.photos||[];
