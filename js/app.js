@@ -478,7 +478,7 @@ window.setOpType = setOpType;
 
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
   capturedPhotos = []; currentOpType = 'mantenimiento';
   document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
@@ -531,8 +531,9 @@ async function startCamera() {
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:960}}});
     const vid = document.getElementById('camera-stream');
-    vid.srcObject = cameraStream; vid.classList.remove('hidden');
-    document.getElementById('camera-controls').classList.remove('hidden');
+    vid.srcObject = cameraStream;
+    document.getElementById('camera-container').style.display = 'block';
+    try { await vid.play(); } catch(e) {}
     updateLiveOverlay();
     overlayTimer = setInterval(updateLiveOverlay, 1000);
     requestLocation();
@@ -544,8 +545,9 @@ function stopCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
   clearInterval(overlayTimer); overlayTimer=null;
   const vid = document.getElementById('camera-stream');
-  vid.classList.add('hidden'); vid.srcObject=null;
-  document.getElementById('camera-controls').classList.add('hidden');
+  if (vid) vid.srcObject=null;
+  const container = document.getElementById('camera-container');
+  if (container) container.style.display = 'none';
 }
 window.stopCamera = stopCamera;
 
@@ -658,7 +660,7 @@ function processQRData(raw) {
     const dskModelo = g('DSKM','DESKO_Scanner_Modelo','');
     const dskEstado = g('DKOS','DESKO_Scanner_Status','') || g('DSKO','DESKO_Scanner_Status','');
 
-    if (puestoVal) { const el=document.getElementById('inp-puesto'); if(el&&!el.value) el.value=puestoVal; }
+    if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
     if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el&&!el.value) el.value=dskSerie; }
     if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el&&!el.value) el.value=dskModelo; }
@@ -737,6 +739,7 @@ async function saveScan() {
   const qrEl=document.getElementById('qr-data-preview');
   const pcData=!qrEl.classList.contains('hidden') ? qrEl.textContent : null;
 
+  const pcNombre      = document.getElementById('inp-pc-nombre').value.trim();
   const scannerSerie  = document.getElementById('inp-scanner-serie').value.trim();
   const scannerModelo = document.getElementById('inp-scanner-modelo').value.trim();
   const scannerEstado = document.getElementById('inp-scanner-estado').value.trim();
@@ -747,7 +750,7 @@ async function saveScan() {
     userName: currentUser.name,
     opType: currentOpType,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    scannerSerie, scannerModelo, scannerEstado,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado,
     photos: capturedPhotos.map(p=>p.dataUrl),
     pcData,
     lat: currentLocation?.lat||null,
@@ -800,6 +803,7 @@ function viewScan(id) {
     <div class="modal-fields">
       ${fTag('Paso',scan.paso)} ${fTag('Puesto',scan.puesto)}
       ${fTag('Serie PC',scan.serie)} ${fTag('Tipo',opLabel(scan.opType))}
+      ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
       ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
       ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
@@ -861,6 +865,7 @@ function renderReportPage(scans, dateKey) {
       ${strip}
       <div class="report-item-fields">
         ${fTag('Puesto',s.puesto)} ${fTag('Serie PC',s.serie)}
+        ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''}
         ${s.scannerSerie?fTag('Serie Scanner',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo Scanner',s.scannerModelo):''}
         ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''}
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
@@ -901,7 +906,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
     timestamp: s.timestamp, userId: s.userId,
@@ -1176,6 +1181,7 @@ async function downloadReportPDF() {
       const fields = [
         ['PUESTO',    s.puesto||'—'],
         ['SERIE PC',  s.serie||'—'],
+        ['NOMBRE PC', s.pcNombre||'—'],
         ['HORA',      new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
         ['TIPO OP.',  opLabel(s.opType)],
       ];

@@ -1,4 +1,4 @@
-const CACHE='scancheck-v38';
+const CACHE='scancheck-v39';
 const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js',
@@ -15,13 +15,10 @@ self.addEventListener('install',e=>{
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
-  // Never intercept live Firebase API calls (auth/firestore data) — these need real network
   if(e.request.url.includes('firestore.googleapis')||e.request.url.includes('identitytoolkit')||
      e.request.url.includes('securetoken')||
      e.request.url.includes('nominatim')||e.request.url.includes('qrserver')||
      e.request.url.includes('fonts.googleapis')||e.request.url.includes('fonts.gstatic'))return;
-
-  // Cache-first for everything else (including Firebase SDK JS files, app code, CDN libs)
   e.respondWith(caches.match(e.request).then(cached=>{
     if(cached)return cached;
     return fetch(e.request).then(res=>{
