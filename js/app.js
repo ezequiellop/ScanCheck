@@ -1,6 +1,6 @@
 // ======== FIREBASE IMPORTS ========
 import {
-  fbRegister, fbLogin, fbLogout, fbOnAuthChange,
+  fbRegister, fbLogin, fbLogout, fbOnAuthChange, fbSendPasswordReset, fbResendVerification,
   fbSaveScan, fbGetMyScans, fbDeleteScan,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport,
   fbUpdateLocation, fbWatchLocations, fbWatchAllReports,
@@ -145,13 +145,13 @@ async function doRegister() {
   const name  = document.getElementById('reg-name').value.trim();
   const email = document.getElementById('reg-email').value.trim().toLowerCase();
   const pass  = document.getElementById('reg-pass').value;
-  const role  = document.getElementById('reg-role').value;
   document.getElementById('reg-error').classList.add('hidden');
   if (!name || !email || !pass) { showRegError('Completá todos los campos'); return; }
   if (pass.length < 6) { showRegError('La contraseña debe tener al menos 6 caracteres'); return; }
   setLoading('btn-register', true, 'Creando cuenta...');
   try {
-    await fbRegister(name, email, pass, role);
+    await fbRegister(name, email, pass);
+    showToast('✓ Cuenta creada. Revisá tu email para verificarla.', 'success');
     // onAuthChange handles the rest
   } catch(e) {
     setLoading('btn-register', false, 'Crear cuenta');
@@ -176,6 +176,42 @@ function showRegister() { document.getElementById('login-form').classList.add('h
 function hideRegister() { document.getElementById('register-form').classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden'); }
 window.showRegister = showRegister;
 window.hideRegister = hideRegister;
+
+function showForgotPassword() {
+  document.getElementById('login-form').classList.add('hidden');
+  document.getElementById('forgot-form').classList.remove('hidden');
+  document.getElementById('forgot-error').classList.add('hidden');
+  document.getElementById('forgot-success').classList.add('hidden');
+  const le = document.getElementById('login-email').value;
+  if (le) document.getElementById('forgot-email').value = le;
+}
+function hideForgotPassword() {
+  document.getElementById('forgot-form').classList.add('hidden');
+  document.getElementById('login-form').classList.remove('hidden');
+}
+window.showForgotPassword = showForgotPassword;
+window.hideForgotPassword = hideForgotPassword;
+
+async function doForgotPassword() {
+  const email = document.getElementById('forgot-email').value.trim();
+  const errEl = document.getElementById('forgot-error');
+  const okEl  = document.getElementById('forgot-success');
+  errEl.classList.add('hidden'); okEl.classList.add('hidden');
+  if (!email) { errEl.textContent='Ingresá tu email'; errEl.classList.remove('hidden'); return; }
+  setLoading('btn-forgot', true, 'Enviando...');
+  try {
+    await fbSendPasswordReset(email);
+    okEl.textContent = 'Listo. Revisá tu correo (y la carpeta de spam) para restablecer tu contraseña.';
+    okEl.classList.remove('hidden');
+  } catch(e) {
+    errEl.textContent = e.code==='auth/invalid-email' ? 'Email inválido' :
+                         e.code==='auth/user-not-found' ? 'No existe una cuenta con ese email' :
+                         'Error al enviar el correo. Probá de nuevo.';
+    errEl.classList.remove('hidden');
+  }
+  setLoading('btn-forgot', false, 'Enviar enlace');
+}
+window.doForgotPassword = doForgotPassword;
 function togglePass() { const i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
 window.togglePass = togglePass;
 
@@ -328,7 +364,23 @@ function updateUserUI() {
   if (logoWrap && DANAIDE_LOGO) {
     logoWrap.innerHTML = `<img src="${DANAIDE_LOGO}" style="height:28px;object-fit:contain;opacity:.9">`;
   }
+  // Show email verification reminder if applicable
+  const banner = document.getElementById('verify-email-banner');
+  if (banner) {
+    if (currentUser.emailVerified === false) banner.classList.remove('hidden');
+    else banner.classList.add('hidden');
+  }
 }
+
+async function resendVerification() {
+  try {
+    await fbResendVerification();
+    showToast('✓ Email de verificación reenviado','success');
+  } catch(e) {
+    showToast('Error al reenviar. Probá de nuevo en unos minutos.','error');
+  }
+}
+window.resendVerification = resendVerification;
 
 function setSyncStatus(state) {
   const dot = document.querySelector('.sync-dot');
@@ -380,7 +432,13 @@ function getWatermarkLines() {
   const fecha = now.toLocaleDateString('es-AR', { day:'2-digit', month:'short', year:'numeric' });
   const hora  = now.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
   const coords = currentLocation ? `${currentLocation.lat.toFixed(6)}, ${currentLocation.lon.toFixed(6)}` : 'GPS no disponible';
-  return [`${fecha}  ${hora}`, coords];
+  const lines = [`${fecha}  ${hora}`, coords];
+  if (currentLocation?.address) {
+    // Shorten address to keep watermark compact (max ~60 chars)
+    const addr = currentLocation.address.length > 60 ? currentLocation.address.substring(0,57)+'...' : currentLocation.address;
+    lines.push(addr);
+  }
+  return lines;
 }
 
 // ======== NAVIGATION ========
@@ -871,6 +929,7 @@ function renderReportPage(scans, dateKey) {
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
+        ${s.address?fTag('Dirección',s.address):''}
       </div>
       ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
     </div>`;
@@ -1031,7 +1090,7 @@ async function viewReport(id) {
         <div style="color:var(--text2)">Serie: <span style="color:var(--text)">${escHtml(s.serie||'—')}</span></div>
         ${s.serieRetira?`<div style="color:var(--text2)">Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
         ${s.serieNuevo?`<div style="color:var(--text2)">Nuevo: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
-        ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}</div>`:''}
+        ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
     </div>`;
@@ -1205,7 +1264,18 @@ async function downloadReportPDF() {
         doc.setFont('helvetica','normal'); doc.setTextColor(232,244,248); doc.setFontSize(8);
         doc.text(String(val).substring(0,22), cx, cy+11);
       });
-      y += rows*rowH + 3;
+      y += rows*rowH;
+
+      // Dirección — fila completa debajo de los campos (texto largo)
+      if (s.address) {
+        const addrLines = doc.splitTextToSize('📍 '+s.address, W-M*2-8);
+        doc.setFillColor(18,30,44);
+        doc.roundedRect(M,y,W-M*2,4+addrLines.length*4,0,0,'F');
+        doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(139,175,196);
+        doc.text(addrLines, M+4, y+4.5);
+        y += 4+addrLines.length*4;
+      }
+      y += 3;
 
       // Photos — TODAS en grilla de 2 columnas
       const photos = s.photos||[];

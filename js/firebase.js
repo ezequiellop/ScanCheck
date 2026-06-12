@@ -2,7 +2,7 @@
 // SCANCHECK — Firebase Integration Layer
 // ============================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -27,14 +27,27 @@ try {
 } catch(e) {}
 
 // ── AUTH ──────────────────────────────────────────────────
-export async function fbRegister(name, email, password, role) {
+export async function fbRegister(name, email, password) {
+  // Role is always "tecnico" on self-registration.
+  // Supervisor access must be granted manually in Firestore by an administrator.
+  const role = 'tecnico';
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(cred.user, { displayName: name });
   await setDoc(doc(db, "users", cred.user.uid), {
     name, email, role,
     createdAt: serverTimestamp()
   });
+  // Send email verification (non-blocking)
+  try { await sendEmailVerification(cred.user); } catch(e) { console.warn('Email verification failed:', e.message); }
   return { id: cred.user.uid, name, email, role };
+}
+
+export async function fbSendPasswordReset(email) {
+  await sendPasswordResetEmail(auth, email);
+}
+
+export async function fbResendVerification() {
+  if (auth.currentUser) await sendEmailVerification(auth.currentUser);
 }
 
 export async function fbLogin(email, password) {
@@ -62,9 +75,9 @@ export function fbOnAuthChange(cb) {
     if (!navigator.onLine) {
       // Offline — use cached profile or fallback, don't wait for Firestore
       if (cached) {
-        cb(cached);
+        cb({ ...cached, emailVerified: user.emailVerified });
       } else {
-        cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico' });
+        cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico', emailVerified: user.emailVerified });
       }
       return;
     }
@@ -76,13 +89,13 @@ export function fbOnAuthChange(cb) {
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
       ]);
       const data = snap.exists() ? snap.data() : {};
-      const profile = { id: user.uid, name: user.displayName || data.name || user.email, email: user.email, role: data.role || 'tecnico' };
+      const profile = { id: user.uid, name: user.displayName || data.name || user.email, email: user.email, role: data.role || 'tecnico', emailVerified: user.emailVerified };
       try { localStorage.setItem('scancheck_user_' + user.uid, JSON.stringify(profile)); } catch(e) {}
       cb(profile);
     } catch(e) {
       console.warn('Profile fetch failed/timeout, using cache:', e.message);
-      if (cached) cb(cached);
-      else cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico' });
+      if (cached) cb({ ...cached, emailVerified: user.emailVerified });
+      else cb({ id: user.uid, name: user.displayName || user.email, email: user.email, role: 'tecnico', emailVerified: user.emailVerified });
     }
   });
 }

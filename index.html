@@ -62,18 +62,28 @@
         <div id="login-error" class="login-error hidden"></div>
         <button class="btn-primary" onclick="doLogin()" id="btn-login">Ingresar</button>
         <button class="btn-ghost" onclick="showRegister()" style="width:100%;margin-top:6px">Crear cuenta nueva</button>
+        <button class="btn-ghost" onclick="showForgotPassword()" style="width:100%;margin-top:2px;font-size:12px;color:var(--text3)">¿Olvidaste tu contraseña?</button>
       </div>
       <div id="register-form" class="hidden">
         <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">Nueva cuenta</div>
         <div class="form-group"><label>Nombre completo</label><input type="text" id="reg-name" placeholder="Juan Pérez"></div>
         <div class="form-group"><label>Correo electrónico</label><input type="email" id="reg-email" placeholder="tecnico@danaide.com"></div>
         <div class="form-group"><label>Contraseña (mín. 6 caracteres)</label><input type="password" id="reg-pass" placeholder="••••••••"></div>
-        <div class="form-group"><label>Rol</label>
-          <select id="reg-role"><option value="tecnico">Técnico</option><option value="supervisor">Supervisor</option></select>
-        </div>
         <div id="reg-error" class="login-error hidden"></div>
+        <p style="font-size:11px;color:var(--text3);margin-top:-4px">Tu cuenta se crea con perfil de Técnico. El acceso de Supervisor lo asigna el administrador.</p>
         <button class="btn-primary" onclick="doRegister()" id="btn-register">Crear cuenta</button>
         <button class="btn-ghost" onclick="hideRegister()" style="width:100%;margin-top:6px">Cancelar</button>
+      </div>
+
+      <!-- FORGOT PASSWORD -->
+      <div id="forgot-form" class="hidden">
+        <h3 style="margin-bottom:4px">Recuperar contraseña</h3>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Ingresá tu email y te enviaremos un enlace para restablecer tu contraseña.</p>
+        <div class="form-group"><label>Email</label><input type="email" id="forgot-email" placeholder="tu@danaide.com"></div>
+        <div id="forgot-error" class="login-error hidden"></div>
+        <div id="forgot-success" class="login-success hidden" style="font-size:12px;color:var(--accent);background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);border-radius:8px;padding:10px;margin-bottom:10px"></div>
+        <button class="btn-primary" onclick="doForgotPassword()" id="btn-forgot">Enviar enlace</button>
+        <button class="btn-ghost" onclick="hideForgotPassword()" style="width:100%;margin-top:6px">Cancelar</button>
       </div>
     </div>
   </div>
@@ -118,6 +128,10 @@
 
     <!-- HOME -->
     <div id="page-home" class="page active">
+      <div id="verify-email-banner" class="hidden" style="background:rgba(255,160,64,.1);border:1px solid rgba(255,160,64,.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--warning);display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>📧 Verificá tu email para confirmar tu cuenta</span>
+        <button onclick="resendVerification()" style="background:none;border:1px solid var(--warning);color:var(--warning);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">Reenviar</button>
+      </div>
       <div class="home-hero">
         <div class="hero-date" id="hero-date"></div>
         <div class="hero-stats">
