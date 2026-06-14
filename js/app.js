@@ -1678,7 +1678,28 @@ function parsePcDataAssure(pcData) {
 }
 
 // Build flat rows from all scans (supervisor sees all via fbGetAllReports)
+function deduplicateScans(allScans) {
+  // Por cada combinación de fecha (día) + serie scanner, conservar solo el registro más reciente
+  const map = new Map();
+  allScans.forEach(s => {
+    const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
+    const serie = (s.scannerSerie || '').trim() || 'sin-serie';
+    const key = `${day}__${serie}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, s);
+    } else {
+      // Quedarse con el más reciente
+      const existingTs = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
+      const newTs = s.timestamp ? new Date(s.timestamp).getTime() : 0;
+      if (newTs > existingTs) map.set(key, s);
+    }
+  });
+  return Array.from(map.values());
+}
+
 function buildExportRows(allScans) {
+  const deduplicated = deduplicateScans(allScans);
   const headers = [
     'Fecha', 'Técnico', 'Inspector', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
@@ -1688,8 +1709,8 @@ function buildExportRows(allScans) {
     'Serie Retira', 'Serie Nueva',
     'Ticket Jira'
   ];
-  console.log('Export debug — sample scan:', allScans[0]);
-  const rows = allScans.map(s => {
+  console.log(`Export: ${allScans.length} registros → ${deduplicated.length} tras deduplicar`);
+  const rows = deduplicated.map(s => {
     const legacy = parsePcDataAssure(s.pcData);
     if (!s.assureEngine && !legacy.engine) console.warn('No AssureID data for scan', s.id, '— pcData:', s.pcData?.substring(0,100));
     return [
@@ -1753,6 +1774,8 @@ async function exportToGoogleSheets() {
     statusEl.textContent = `Exportando ${allScans.length} registros...`;
 
     const rows = buildExportRows(allScans);
+    const exportedCount = rows.length - 1; // -1 por headers
+    const duplicatesRemoved = allScans.length - exportedCount;
 
     // Clear existing content first, then write
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${SHEET_RANGE}:clear`, {
@@ -1771,8 +1794,9 @@ async function exportToGoogleSheets() {
       throw new Error(err.error?.message || `HTTP ${writeRes.status}`);
     }
 
-    statusEl.textContent = `✓ ${allScans.length} registros exportados correctamente.`;
-    showToast(`✓ ${allScans.length} registros exportados a Sheets`, 'success');
+    const dupMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicados eliminados)` : '';
+    statusEl.textContent = `✓ ${exportedCount} registros exportados${dupMsg}.`;
+    showToast(`✓ ${exportedCount} registros exportados a Sheets${dupMsg}`, 'success');
 
   } catch(e) {
     console.error('Export error:', e);
