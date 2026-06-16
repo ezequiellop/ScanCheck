@@ -297,6 +297,12 @@
           <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" class="config-link">→ Generar API Token en Atlassian</a>
         </div>
         <div class="form-group"><label>Clave del Proyecto (Project Key)</label><input type="text" id="jira-project" placeholder="Ej: SC o SCAN"></div>
+        <div class="form-group">
+          <label>Tipo de Incidencia (Issue Type)</label>
+          <input type="text" id="jira-issuetype" placeholder="Ej: Tarea, Incident, Task">
+          <button type="button" class="btn-ghost" style="margin-top:6px;width:100%;font-size:12px" onclick="detectJiraIssueTypes()">🔍 Detectar tipos disponibles en el proyecto</button>
+          <div id="jira-issuetype-results" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
+        </div>
         <button class="btn-primary" onclick="saveJiraConfig()" style="margin-top:8px">Guardar configuración</button>
       </div>
     </div>
