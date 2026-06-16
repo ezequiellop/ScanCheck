@@ -1412,22 +1412,39 @@ async function sendToJira() {
   const scans=localScans.filter(s=>rep.scanIds.includes(s.id||s.fbId));
   const d=new Date(rep.date+'T12:00:00');
   const dateLabel=d.toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
-  const auth=btoa(`${cfg.email}:${cfg.token}`);
   const base=`https://${cfg.domain}`;
   showToast('Enviando a Jira...','success');
   const mkDoc=(text)=>({version:1,type:'doc',content:[{type:'paragraph',content:[{type:'text',text}]}]});
+
+  // Llamada via proxy (Cloudflare Worker) para evitar bloqueo CORS de Jira
+  const jiraCall = async (path, jiraBody, method='POST') => {
+    const r = await fetch(JIRA_PROXY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        jiraDomain: cfg.domain,
+        email: cfg.email,
+        apiToken: cfg.token,
+        path, method, jiraBody
+      })
+    });
+    return r;
+  };
+
   try {
-    const issueRes=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:'Task'}}})});
+    const issueRes = await jiraCall('/rest/api/3/issue', {
+      fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:'Task'}}
+    });
     if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
     const issue=await issueRes.json();
     const parentKey=issue.key;
     const subtaskKeys=[];
     for(const s of scans){
-      const sr=await fetch(`${base}/rest/api/3/issue`,{method:'POST',headers:{'Authorization':`Basic ${auth}`,'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+      const sr = await jiraCall('/rest/api/3/issue', {
+        fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
           description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}`:''}`),
-          issuetype:{name:cfg.issueType||'Incident'}}})});
+          issuetype:{name:cfg.issueType||'Incident'}}
+      });
       if(sr.ok){
         const st=await sr.json();
         subtaskKeys.push(st.key);
@@ -1635,6 +1652,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
+const JIRA_PROXY_URL = 'https://scancheck-jira-proxy.elopapa.workers.dev';
 const GOOGLE_CLIENT_ID = '1033851892465-fdfkguq9uba6pfie61id75rhnnn4fj1h.apps.googleusercontent.com';
 const GOOGLE_SHEET_ID  = '17lJBVQaLyxrYC_KoTjalnoZ7UhOkX2pT9xm0LhoIA54';
 const SHEET_RANGE      = 'A:Z';
