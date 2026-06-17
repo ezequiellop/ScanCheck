@@ -1515,7 +1515,7 @@ async function sendToJira() {
         fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
           description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}`),
           issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,
-          ...(hardwareAsociado ? { customfield_10050: hardwareAsociado } : {})}
+          ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
       });
       if(sr.ok){
         const st=await sr.json();
