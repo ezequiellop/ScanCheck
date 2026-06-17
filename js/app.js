@@ -1921,7 +1921,8 @@ function parsePcDataAssure(pcData) {
 // Build flat rows from all scans (supervisor sees all via fbGetAllReports)
 function deduplicateScans(allScans) {
   // Regla: un registro por scanner por día, pero:
-  // - Si el mismo scanner se conecta a otra PC/puesto el mismo día, se considera otro evento (no se fusiona).
+  // - Si el mismo scanner aparece en un PASO distinto ese día (cambia de PC, lo trasladan junto con
+  //   la PC a otro puesto, o cualquier combinación), se considera otro evento — no se fusiona.
   // - Los reemplazos (serie retira + serie nueva) SIEMPRE se conservan aparte, nunca se fusionan con
   //   otro evento del mismo día, porque documentan un cambio físico de equipo.
   const reemplazos = [];
@@ -1935,10 +1936,10 @@ function deduplicateScans(allScans) {
   normales.forEach(s => {
     const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
     const serie = (s.scannerSerie || '').trim();
-    const puestoKey = `${(s.pcNombre||'').trim()}__${(s.puesto||'').trim()}__${(s.serie||'').trim()}`;
+    const contextKey = `${(s.paso||'').trim()}__${(s.pcNombre||'').trim()}__${(s.puesto||'').trim()}__${(s.serie||'').trim()}`;
     const key = serie
-      ? `${day}__serie:${serie}__pc:${puestoKey}`
-      : `${day}__sinserie__pc:${puestoKey}`;
+      ? `${day}__serie:${serie}__ctx:${contextKey}`
+      : `${day}__sinserie__ctx:${contextKey}`;
     const existing = map.get(key);
     if (!existing) {
       map.set(key, s);
