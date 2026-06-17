@@ -1164,11 +1164,11 @@ async function viewReport(id) {
     </div>
     <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-      ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
+      ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector DNM',rep.inspectorName)}
     </div>
     ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scanRows}
-    <div class="vr-sig-label">Firma del Inspector — ${escHtml(rep.inspectorName||'')}</div>
+    <div class="vr-sig-label">Firma del Inspector DNM — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px">Sin firma guardada</div>'}
   `;
   showPage('view-report');
@@ -1251,7 +1251,7 @@ async function buildReportPDFDoc(rep) {
     doc.roundedRect(M,y,W-M*2,20,3,3,'F');
     const infoItems = [
       ['Técnico',      rep.technicianName||'—'],
-      ['Inspector',    rep.inspectorName||'—'],
+      ['Inspector DNM',    rep.inspectorName||'—'],
       ['Dispositivos', String(scanIds.length)],
       ['Jira',         rep.jiraKey||'Pendiente']
     ];
@@ -1405,10 +1405,10 @@ async function buildReportPDFDoc(rep) {
     doc.setFillColor(15,32,39); doc.rect(0,0,W,18,'F');
     try { doc.addImage(DANAIDE_LOGO,'JPEG',M,2,36,14); } catch(e){}
     doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(0,180,130);
-    doc.text('Firma del Inspector Responsable', M+40, 11);
+    doc.text('Firma del Inspector DNM Responsable', M+40, 11);
     y = 28;
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
-    doc.text('Inspector:', M, y);
+    doc.text('Inspector DNM:', M, y);
     doc.setFont('helvetica','normal'); doc.setTextColor(20,20,20);
     doc.text(rep.inspectorName||'—', M+28, y); y+=8;
     doc.setFont('helvetica','bold'); doc.setTextColor(80,80,80);
@@ -1818,7 +1818,7 @@ async function viewReportSupervisor(id) {
     </div>
     <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-      ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
+      ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector DNM',rep.inspectorName)}
     </div>
     ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
@@ -1829,7 +1829,7 @@ async function viewReportSupervisor(id) {
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
       ${checklistHtml(s.checklist)}
     </div>`).join('')}
-    <div class="vr-sig-label">Firma del Inspector — ${escHtml(rep.inspectorName||'')}</div>
+    <div class="vr-sig-label">Firma del Inspector DNM — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px;padding:8px">Sin firma</div>'}
   `;
   showPage('view-report');
@@ -1956,7 +1956,7 @@ function deduplicateScans(allScans) {
 function buildExportRows(allScans) {
   const deduplicated = deduplicateScans(allScans);
   const headers = [
-    'Fecha', 'Técnico', 'Inspector', 'Paso', 'Tipo Operación',
+    'Fecha', 'Técnico', 'Inspector DNM', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
     'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND',
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
