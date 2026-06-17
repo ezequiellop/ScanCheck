@@ -878,7 +878,7 @@ function viewScan(id) {
       ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
       ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
       ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''}
-      ${scan.jiraTicket?fTag('Jira',scan.jiraTicket):''}
+      ${scan.jiraTicket?fTagHtml('Jira',jiraTicketLink(scan.jiraTicket)):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
     ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
@@ -891,6 +891,8 @@ function viewScan(id) {
 window.viewScan = viewScan;
 
 function fTag(label,val) { return val?`<div class="field-tag"><span>${label}</span><strong>${escHtml(val)}</strong></div>`:''; }
+function fTagHtml(label,htmlVal) { return htmlVal?`<div class="field-tag"><span>${label}</span><strong>${htmlVal}</strong></div>`:''; }
+function jiraTicketLink(key) { return key?`<a href="${JIRA_BASE_URL}/browse/${escHtml(key)}" target="_blank" style="color:var(--accent);text-decoration:underline">${escHtml(key)}</a>`:''; }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 window.closeModal = closeModal;
 
@@ -941,7 +943,7 @@ function renderReportPage(scans, dateKey) {
         ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''}
         ${s.scannerSerie?fTag('Serie Scanner',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo Scanner',s.scannerModelo):''}
         ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''}
-        ${s.jiraTicket?fTag('Jira',s.jiraTicket):''}
+        ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
