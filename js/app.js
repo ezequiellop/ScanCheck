@@ -3,7 +3,7 @@ import {
   fbRegister, fbLogin, fbLogout, fbOnAuthChange, fbSendPasswordReset, fbResendVerification,
   fbSaveScan, fbGetMyScans, fbDeleteScan,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport,
-  fbUpdateLocation, fbWatchLocations, fbWatchAllReports,
+  fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
   fbGetAllUsers
 } from './firebase.js';
 
@@ -1656,12 +1656,19 @@ async function renderSupervisor() {
   // Técnicos
   try {
     const users=await fbGetAllUsers();
+    let locsByUser={};
+    try {
+      const locs=await fbGetAllLocations();
+      locs.forEach(l=>{ if(l.userId) locsByUser[l.userId]=l; });
+    } catch(e){}
     const tecList=document.getElementById('sup-tecnicos-list');
     const tecs=users.filter(u=>u.role==='tecnico');
     if(!tecs.length){tecList.innerHTML=`<div class="empty-state"><p>Sin técnicos registrados</p></div>`;}
     else {
       tecList.innerHTML=tecs.map(u=>{
         const uReports=allReports.filter(r=>r.userId===u.id);
+        const loc=locsByUser[u.id];
+        const t=loc?.updatedAt?.seconds?new Date(loc.updatedAt.seconds*1000).toLocaleString('es-AR'):'';
         return `<div class="sup-card">
           <div class="sup-card-top">
             <div>
@@ -1673,34 +1680,88 @@ async function renderSupervisor() {
               <div style="font-size:22px;font-weight:700;color:var(--accent);font-family:var(--mono)">${uReports.length}</div>
             </div>
           </div>
+          ${loc?.lat?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-end;gap:10px">
+            <div>
+              <div style="font-size:11px;color:var(--accent);font-family:var(--mono)">📍 ${loc.lat.toFixed(6)}, ${loc.lon.toFixed(6)}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml((loc.address||'').split(',').slice(0,2).join(','))}</div>
+              ${t?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${t}</div>`:''}
+            </div>
+            <a href="https://maps.google.com/?q=${loc.lat},${loc.lon}" target="_blank" style="background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.2);color:var(--accent);padding:6px 10px;border-radius:8px;font-size:11px;text-decoration:none;white-space:nowrap">Ver mapa →</a>
+          </div>`:`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">Sin ubicación reciente</div>`}
         </div>`;
       }).join('');
     }
   } catch(e) {}
 }
 
+let liveMapInstance = null;
+let liveMapMarkers = {}; // userId -> L.marker
+
 function startLiveMap() {
   if (liveMapStarted) return;
-  liveMapStarted=true;
-  document.getElementById('map-placeholder').innerHTML=`<div class="pulse-dot"></div><p>Escuchando ubicaciones en tiempo real...</p><span>Actualizando con Firebase</span>`;
-  unsubLocations=fbWatchLocations(locs=>{
-    const list=document.getElementById('live-locations-list');
-    if(!locs.length){list.innerHTML='';return;}
-    list.innerHTML=`<div class="section-label" style="margin-top:16px">Ubicaciones activas — ${locs.length} técnico${locs.length!==1?'s':''}</div>`+
-      locs.map(l=>{
-        const t=l.updatedAt?.seconds?new Date(l.updatedAt.seconds*1000).toLocaleString('es-AR'):new Date().toLocaleString('es-AR');
-        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div>
-              <div style="font-weight:600;font-size:14px;color:var(--text)">${escHtml(l.userName||'—')}</div>
-              <div style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-top:3px">📍 ${l.lat?.toFixed(6)}, ${l.lon?.toFixed(6)}</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml((l.address||'').split(',').slice(0,2).join(','))}</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">${t}</div>
+  liveMapStarted = true;
+
+  // Centro inicial aproximado (Buenos Aires); se ajusta automáticamente cuando llegan ubicaciones reales
+  liveMapInstance = L.map('leaflet-map', { zoomControl: true }).setView([-34.6, -58.4], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(liveMapInstance);
+
+  unsubLocations = fbWatchLocations(locs => {
+    const list = document.getElementById('live-locations-list');
+
+    // Lista debajo del mapa (igual que antes)
+    if (!locs.length) {
+      list.innerHTML = '';
+    } else {
+      list.innerHTML = `<div class="section-label" style="margin-top:16px">Ubicaciones activas — ${locs.length} técnico${locs.length!==1?'s':''}</div>` +
+        locs.map(l => {
+          const t = l.updatedAt?.seconds ? new Date(l.updatedAt.seconds*1000).toLocaleString('es-AR') : new Date().toLocaleString('es-AR');
+          return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div style="font-weight:600;font-size:14px;color:var(--text)">${escHtml(l.userName||'—')}</div>
+                <div style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-top:3px">📍 ${l.lat?.toFixed(6)}, ${l.lon?.toFixed(6)}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml((l.address||'').split(',').slice(0,2).join(','))}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px">${t}</div>
+              </div>
+              <a href="https://maps.google.com/?q=${l.lat},${l.lon}" target="_blank" style="background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.2);color:var(--accent);padding:6px 10px;border-radius:8px;font-size:11px;text-decoration:none;white-space:nowrap">Ver mapa →</a>
             </div>
-            <a href="https://maps.google.com/?q=${l.lat},${l.lon}" target="_blank" style="background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.2);color:var(--accent);padding:6px 10px;border-radius:8px;font-size:11px;text-decoration:none;white-space:nowrap">Ver mapa →</a>
-          </div>
-        </div>`;
-      }).join('');
+          </div>`;
+        }).join('');
+    }
+
+    // Marcadores en el mapa Leaflet
+    if (!liveMapInstance) return;
+    const seenIds = new Set();
+    locs.forEach(l => {
+      if (!l.lat || !l.lon) return;
+      const uid = l.userId || l.userName;
+      seenIds.add(uid);
+      const t = l.updatedAt?.seconds ? new Date(l.updatedAt.seconds*1000).toLocaleString('es-AR') : '';
+      const popupHtml = `<strong>${escHtml(l.userName||'—')}</strong><br>${escHtml((l.address||'').split(',').slice(0,2).join(','))}<br><span style="color:#888;font-size:11px">${t}</span>`;
+      if (liveMapMarkers[uid]) {
+        liveMapMarkers[uid].setLatLng([l.lat, l.lon]).setPopupContent(popupHtml);
+      } else {
+        liveMapMarkers[uid] = L.marker([l.lat, l.lon]).addTo(liveMapInstance).bindPopup(popupHtml);
+      }
+    });
+    // Quitar marcadores de técnicos que ya no están en la lista (dejaron de compartir ubicación)
+    Object.keys(liveMapMarkers).forEach(uid => {
+      if (!seenIds.has(uid)) {
+        liveMapInstance.removeLayer(liveMapMarkers[uid]);
+        delete liveMapMarkers[uid];
+      }
+    });
+    // Encuadrar el mapa para mostrar todos los marcadores activos
+    const activeMarkers = Object.values(liveMapMarkers);
+    if (activeMarkers.length === 1) {
+      liveMapInstance.setView(activeMarkers[0].getLatLng(), 14);
+    } else if (activeMarkers.length > 1) {
+      const group = L.featureGroup(activeMarkers);
+      liveMapInstance.fitBounds(group.getBounds(), { padding: [30,30] });
+    }
   });
 }
 

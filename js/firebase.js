@@ -201,6 +201,11 @@ export function fbWatchLocations(cb) {
   });
 }
 
+export async function fbGetAllLocations() {
+  const snap = await getDocs(collection(db, "locations"));
+  return snap.docs.map(d => d.data());
+}
+
 export function fbWatchAllReports(cb) {
   return onSnapshot(collection(db, "reports"), snap => {
     const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));

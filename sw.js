@@ -1,9 +1,11 @@
-const CACHE='scancheck-v63';
+const CACHE='scancheck-v64';
 const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'
 ];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>
