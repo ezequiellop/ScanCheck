@@ -1513,7 +1513,18 @@ async function sendToJira() {
     console.log('sendToJira: empezando loop de', scans.length, 'subtareas');
     for(const s of scans){
       console.log('sendToJira: creando subtarea para', s.id||s.fbId, s.serie);
-      const hardwareAsociado = [s.scannerSerie, s.scannerModelo].filter(Boolean).join(' — ') || undefined;
+      // Si el scan tiene GPS pero no se llegó a resolver la dirección en el momento del relevamiento, la buscamos ahora
+      if (s.lat && s.lon && !s.address) {
+        try {
+          const gr = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${s.lat}&lon=${s.lon}&zoom=16`);
+          const gd = await gr.json();
+          if (gd.display_name) s.address = gd.display_name;
+        } catch(e) {}
+      }
+      const hardwareAsociado = [
+        s.scannerModelo ? `Modelo: ${s.scannerModelo}` : null,
+        s.scannerSerie ? `N° Serie: ${s.scannerSerie}` : null
+      ].filter(Boolean).join('\n') || undefined;
       let sr;
       try {
         sr = await jiraCall('/rest/api/3/issue', {
