@@ -1129,7 +1129,7 @@ async function viewReport(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
     </div>
-    ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: ${rep.jiraKey}</div>`:''}
+    ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scanRows}
     <div class="vr-sig-label">Firma del Inspector — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px">Sin firma guardada</div>'}
@@ -1421,9 +1421,32 @@ function loadJiraConfig() {
 async function sendToJira() {
   const cfg=loadJiraConfig();
   if(!cfg.project){showToast('Error de configuración interna de Jira','error');return;}
-  const rep=localReports.find(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
-  if(!rep) return;
-  const scans=localScans.filter(s=>rep.scanIds.includes(s.id||s.fbId));
+
+  // Buscar el informe: primero en cache local (técnico propio), sino en Firestore (supervisor viendo otro técnico)
+  let rep=localReports.find(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
+  if(!rep){
+    try{
+      const allReports=await fbGetAllReports();
+      rep=allReports.find(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
+    }catch(e){}
+  }
+  if(!rep){ showToast('No se encontró el informe','error'); return; }
+
+  // Buscar los scans del informe: localScans (propio) → scansSnapshot embebido → Firestore del técnico dueño
+  let scans=localScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+  if(scans.length===0 && rep.scansSnapshot?.length>0){
+    scans=rep.scansSnapshot;
+  }
+  if(scans.length===0 && rep.userId){
+    try{
+      const fbScans=await fbGetMyScans(rep.userId);
+      scans=fbScans.filter(s=>rep.scanIds?.includes(s.id||s.fbId));
+    }catch(e){}
+  }
+  if(scans.length===0){
+    console.warn('sendToJira: no se encontraron scans para el informe', rep.id||rep.fbId, '— scanIds esperados:', rep.scanIds);
+  }
+
   const d=new Date(rep.date+'T12:00:00');
   const dateLabel=d.toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
   showToast('Enviando a Jira...','success');
@@ -1497,7 +1520,8 @@ async function sendToJira() {
       if(sr.ok){
         const st=await sr.json();
         subtaskKeys.push(st.key);
-        // Save Jira ticket key onto the scan record (for database/PowerBI export)
+        // Save Jira ticket key onto the scan object itself (covers both localScans and scansSnapshot-sourced scans)
+        s.jiraTicket = st.key;
         const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
         if (si>=0) localScans[si].jiraTicket = st.key;
       } else {
@@ -1505,21 +1529,16 @@ async function sendToJira() {
         console.error(`Error creando subtarea para scan ${s.id||s.fbId} (${s.serie}):`, errTxt);
       }
     }
-    // Update report with Jira key
+    // Update report with Jira key (busca en localReports; si no está ahí, se actualiza igual en Firestore más abajo)
     const idx=localReports.findIndex(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
+    let updatedSnapshot = scans; // scans ya tiene jiraTicket asignado en cada item del loop anterior
     if(idx>=0){
       localReports[idx].jiraKey=parentKey;
-      // Update scansSnapshot with jiraTicket per device
-      if (localReports[idx].scansSnapshot) {
-        localReports[idx].scansSnapshot = localReports[idx].scansSnapshot.map(snap => {
-          const match = localScans.find(ls=>(ls.id===snap.id||ls.fbId===snap.fbId) && ls.jiraTicket);
-          return match ? {...snap, jiraTicket: match.jiraTicket} : snap;
-        });
-      }
+      localReports[idx].scansSnapshot = updatedSnapshot;
     }
     if(rep.fbId){
       try{
-        await fbUpdateReport(rep.fbId,{jiraKey:parentKey, scansSnapshot: localReports[idx]?.scansSnapshot});
+        await fbUpdateReport(rep.fbId,{jiraKey:parentKey, scansSnapshot: updatedSnapshot});
       }catch(e){}
     }
     // Persist locally
@@ -1660,12 +1679,13 @@ async function viewReportSupervisor(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector',rep.inspectorName)}
     </div>
-    ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: ${rep.jiraKey}</div>`:''}
+    ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
       <div style="font-size:13px;font-weight:600;color:var(--accent)">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
       <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}</div>
-      ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}</div>`:''}
+      ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
+      ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
     </div>`).join('')}
     <div class="vr-sig-label">Firma del Inspector — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px;padding:8px">Sin firma</div>'}
