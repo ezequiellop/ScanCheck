@@ -1836,6 +1836,34 @@ async function viewReportSupervisor(id) {
 }
 window.viewReportSupervisor = viewReportSupervisor;
 
+// --- TEMPORAL: diagnóstico de deduplicación, llamar desde consola con debugDedup() ---
+window.debugDedup = async function() {
+  const users = await fbGetAllUsers();
+  let allScans = [];
+  for (const u of users) {
+    const s = await fbGetMyScans(u.id);
+    allScans = allScans.concat(s);
+  }
+  console.log('Total scans en la base:', allScans.length);
+  const map = new Map();
+  allScans.forEach(s => {
+    const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
+    const serie = (s.scannerSerie || '').trim() || 'sin-serie';
+    const key = `${day}__${serie}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  });
+  let colisiones = 0;
+  map.forEach((scans, key) => {
+    if (scans.length > 1) {
+      colisiones++;
+      console.log('COLISIÓN en clave', key, '—', scans.length, 'registros:', scans.map(s => ({puesto:s.puesto, serie:s.serie, scannerSerie:s.scannerSerie, paso:s.paso, ts:s.timestamp, userName:s.userName})));
+    }
+  });
+  console.log('Total de claves con colisión:', colisiones, 'de', map.size, 'claves únicas');
+};
+
+
 // ======== SYNC ALL ========
 async function syncAllReports() {
   const unsynced = localReports.filter(r => !r.fbId);
