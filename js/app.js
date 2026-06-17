@@ -1616,7 +1616,11 @@ function showJiraError(msg) {
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
   ['informes','tecnicos','mapa','export'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
-  if (tab==='mapa') startLiveMap();
+  if (tab==='mapa') {
+    startLiveMap();
+    // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
+    setTimeout(() => { if (liveMapInstance) liveMapInstance.invalidateSize(); }, 100);
+  }
 }
 window.supTab = supTab;
 
@@ -1709,29 +1713,6 @@ function startLiveMap() {
   }).addTo(liveMapInstance);
 
   unsubLocations = fbWatchLocations(locs => {
-    const list = document.getElementById('live-locations-list');
-
-    // Lista debajo del mapa (igual que antes)
-    if (!locs.length) {
-      list.innerHTML = '';
-    } else {
-      list.innerHTML = `<div class="section-label" style="margin-top:16px">Ubicaciones activas — ${locs.length} técnico${locs.length!==1?'s':''}</div>` +
-        locs.map(l => {
-          const t = l.updatedAt?.seconds ? new Date(l.updatedAt.seconds*1000).toLocaleString('es-AR') : new Date().toLocaleString('es-AR');
-          return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div>
-                <div style="font-weight:600;font-size:14px;color:var(--text)">${escHtml(l.userName||'—')}</div>
-                <div style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-top:3px">📍 ${l.lat?.toFixed(6)}, ${l.lon?.toFixed(6)}</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml((l.address||'').split(',').slice(0,2).join(','))}</div>
-                <div style="font-size:10px;color:var(--text3);margin-top:2px">${t}</div>
-              </div>
-              <a href="https://maps.google.com/?q=${l.lat},${l.lon}" target="_blank" style="background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.2);color:var(--accent);padding:6px 10px;border-radius:8px;font-size:11px;text-decoration:none;white-space:nowrap">Ver mapa →</a>
-            </div>
-          </div>`;
-        }).join('');
-    }
-
     // Marcadores en el mapa Leaflet
     if (!liveMapInstance) return;
     const seenIds = new Set();
