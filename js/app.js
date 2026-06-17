@@ -1056,11 +1056,17 @@ function renderHistory() {
       <div style="font-size:12px;color:var(--accent2)">${unsynced.length} informe${unsynced.length!==1?'s':''} pendiente${unsynced.length!==1?'s':''} de sincronizar</div>
       <button onclick="syncAllReports()" style="background:var(--accent2);color:#0a1628;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sincronizar</button>
     </div>` : '';
-  container.innerHTML = syncBanner + localReports.map(rep=>{
+  // Orden cronológico: más reciente primero
+  const sortedReports = [...localReports].sort((a,b) => {
+    const ta = a.createdAt?.seconds ? a.createdAt.seconds*1000 : new Date((a.date||'1970-01-01')+'T12:00:00').getTime();
+    const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date((b.date||'1970-01-01')+'T12:00:00').getTime();
+    return tb - ta;
+  });
+  container.innerHTML = syncBanner + sortedReports.map(rep=>{
     const d=new Date(rep.date+'T12:00:00');
     const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const count=rep.scanIds.length;
-    const jiraBadge=rep.jiraKey?`<span style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:var(--mono)">${rep.jiraKey}</span>`:'';
+    const jiraBadge=rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:var(--mono);text-decoration:underline">${rep.jiraKey}</a>`:'';
     return `<div class="history-item" onclick="viewReport('${rep.id||rep.fbId}')">
       <div class="history-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div>
       <div class="history-info">
@@ -1494,6 +1500,9 @@ async function sendToJira() {
         // Save Jira ticket key onto the scan record (for database/PowerBI export)
         const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
         if (si>=0) localScans[si].jiraTicket = st.key;
+      } else {
+        const errTxt = await sr.text();
+        console.error(`Error creando subtarea para scan ${s.id||s.fbId} (${s.serie}):`, errTxt);
       }
     }
     // Update report with Jira key
@@ -1551,6 +1560,12 @@ async function renderSupervisor() {
   // Informes
   let allReports=localReports;
   try { allReports=await fbGetAllReports(); } catch(e) {}
+  // Orden cronológico: más reciente primero (usa createdAt de Firestore si existe, sino la fecha del informe)
+  allReports = [...allReports].sort((a,b) => {
+    const ta = a.createdAt?.seconds ? a.createdAt.seconds*1000 : new Date(a.date+'T12:00:00').getTime();
+    const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date(b.date+'T12:00:00').getTime();
+    return tb - ta;
+  });
   const supList=document.getElementById('sup-informes-list');
   if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes</p></div>`; }
   else {
@@ -1565,7 +1580,7 @@ async function renderSupervisor() {
             <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
           </div>
           <div style="text-align:right">
-            ${rep.jiraKey?`<span style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:3px 8px;border-radius:8px;font-family:var(--mono);display:block;margin-bottom:6px">${rep.jiraKey}</span>`:''}
+            ${rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:3px 8px;border-radius:8px;font-family:var(--mono);display:block;margin-bottom:6px;text-decoration:underline">${rep.jiraKey}</a>`:''}
             <div class="history-badge">${count}</div>
           </div>
         </div>
