@@ -1836,32 +1836,6 @@ async function viewReportSupervisor(id) {
 }
 window.viewReportSupervisor = viewReportSupervisor;
 
-// --- TEMPORAL: diagnóstico de deduplicación, llamar desde consola con debugDedup() ---
-window.debugDedup = async function() {
-  const users = await fbGetAllUsers();
-  let allScans = [];
-  for (const u of users) {
-    const s = await fbGetMyScans(u.id);
-    allScans = allScans.concat(s);
-  }
-  console.log('Total scans en la base:', allScans.length);
-  const map = new Map();
-  allScans.forEach(s => {
-    const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
-    const serie = (s.scannerSerie || '').trim() || 'sin-serie';
-    const key = `${day}__${serie}`;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(s);
-  });
-  let colisiones = 0;
-  map.forEach((scans, key) => {
-    if (scans.length > 1) {
-      colisiones++;
-      console.log('COLISIÓN en clave', key, '—', scans.length, 'registros:', scans.map(s => ({puesto:s.puesto, serie:s.serie, scannerSerie:s.scannerSerie, paso:s.paso, ts:s.timestamp, userName:s.userName})));
-    }
-  });
-  console.log('Total de claves con colisión:', colisiones, 'de', map.size, 'claves únicas');
-};
 
 
 // ======== SYNC ALL ========
@@ -1946,12 +1920,25 @@ function parsePcDataAssure(pcData) {
 
 // Build flat rows from all scans (supervisor sees all via fbGetAllReports)
 function deduplicateScans(allScans) {
-  // Por cada combinación de fecha (día) + serie scanner, conservar solo el registro más reciente
-  const map = new Map();
+  // Regla: un registro por scanner por día, pero:
+  // - Si el mismo scanner se conecta a otra PC/puesto el mismo día, se considera otro evento (no se fusiona).
+  // - Los reemplazos (serie retira + serie nueva) SIEMPRE se conservan aparte, nunca se fusionan con
+  //   otro evento del mismo día, porque documentan un cambio físico de equipo.
+  const reemplazos = [];
+  const normales = [];
   allScans.forEach(s => {
+    if (s.opType === 'reemplazo' || s.serieRetira) reemplazos.push(s);
+    else normales.push(s);
+  });
+
+  const map = new Map();
+  normales.forEach(s => {
     const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
-    const serie = (s.scannerSerie || '').trim() || 'sin-serie';
-    const key = `${day}__${serie}`;
+    const serie = (s.scannerSerie || '').trim();
+    const puestoKey = `${(s.pcNombre||'').trim()}__${(s.puesto||'').trim()}__${(s.serie||'').trim()}`;
+    const key = serie
+      ? `${day}__serie:${serie}__pc:${puestoKey}`
+      : `${day}__sinserie__pc:${puestoKey}`;
     const existing = map.get(key);
     if (!existing) {
       map.set(key, s);
@@ -1962,7 +1949,8 @@ function deduplicateScans(allScans) {
       if (newTs > existingTs) map.set(key, s);
     }
   });
-  return Array.from(map.values());
+  // Los reemplazos se devuelven todos, sin pasar por deduplicación
+  return [...Array.from(map.values()), ...reemplazos];
 }
 
 function buildExportRows(allScans) {
