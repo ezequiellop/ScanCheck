@@ -1446,6 +1446,7 @@ async function sendToJira() {
   if(scans.length===0){
     console.warn('sendToJira: no se encontraron scans para el informe', rep.id||rep.fbId, '— scanIds esperados:', rep.scanIds);
   }
+  console.log('sendToJira: scans a procesar =', scans.length, scans);
 
   const d=new Date(rep.date+'T12:00:00');
   const dateLabel=d.toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
@@ -1509,17 +1510,27 @@ async function sendToJira() {
     }
 
     const subtaskKeys=[];
+    console.log('sendToJira: empezando loop de', scans.length, 'subtareas');
     for(const s of scans){
+      console.log('sendToJira: creando subtarea para', s.id||s.fbId, s.serie);
       const hardwareAsociado = [s.scannerSerie, s.scannerModelo].filter(Boolean).join(' — ') || undefined;
-      const sr = await jiraCall('/rest/api/3/issue', {
-        fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
-          description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}`),
-          issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,
-          ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
-      });
+      let sr;
+      try {
+        sr = await jiraCall('/rest/api/3/issue', {
+          fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}`),
+            issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,
+            ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
+        });
+        console.log('sendToJira: respuesta subtarea status=', sr.status, 'ok=', sr.ok);
+      } catch(loopErr) {
+        console.error('sendToJira: EXCEPCIÓN al llamar jiraCall para subtarea', s.id||s.fbId, loopErr);
+        continue;
+      }
       if(sr.ok){
         const st=await sr.json();
         subtaskKeys.push(st.key);
+        console.log('sendToJira: subtarea creada OK:', st.key);
         // Save Jira ticket key onto the scan object itself (covers both localScans and scansSnapshot-sourced scans)
         s.jiraTicket = st.key;
         const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
@@ -1529,6 +1540,7 @@ async function sendToJira() {
         console.error(`Error creando subtarea para scan ${s.id||s.fbId} (${s.serie}):`, errTxt);
       }
     }
+    console.log('sendToJira: loop terminado. subtaskKeys =', subtaskKeys);
     // Update report with Jira key (busca en localReports; si no está ahí, se actualiza igual en Firestore más abajo)
     const idx=localReports.findIndex(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
     let updatedSnapshot = scans; // scans ya tiene jiraTicket asignado en cada item del loop anterior
