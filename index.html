@@ -180,10 +180,20 @@
           <div class="form-group"><label>Modelo Scanner</label><input type="text" id="inp-scanner-modelo" placeholder="Se completa con QR" maxlength="60"></div>
           <div class="form-group"><label>Estado Scanner</label><input type="text" id="inp-scanner-estado" placeholder="Se completa con QR" maxlength="40"></div>
         </div>
+        <div class="form-group"><label>N° Inv. DND</label><input type="text" id="inp-inv-dnd" placeholder="Ej: DND-00123" maxlength="30"></div>
         <div id="reemplazo-fields" class="hidden">
           <div class="reemplazo-box">
             <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
             <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Checklist de inspección</label>
+          <div class="checklist-box">
+            <label class="checklist-item"><input type="checkbox" id="chk-vidrio"><span>Estado de Vidrio/Vidrio protector</span></label>
+            <label class="checklist-item"><input type="checkbox" id="chk-cable-usb"><span>Estado Cable USB</span></label>
+            <label class="checklist-item"><input type="checkbox" id="chk-fuente"><span>Estado de Fuente de alimentación (15Vdc)</span></label>
+            <label class="checklist-item"><input type="checkbox" id="chk-limpieza"><span>Inspección visual y limpieza del scanner</span></label>
           </div>
         </div>
         <div class="form-group"><label>Notas adicionales</label><textarea id="inp-notas" placeholder="Observaciones del estado del scanner..." rows="3"></textarea></div>

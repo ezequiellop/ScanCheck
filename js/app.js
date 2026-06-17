@@ -541,7 +541,8 @@ window.setOpType = setOpType;
 
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza'].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
   capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
   document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
@@ -813,6 +814,14 @@ async function saveScan() {
   const scannerSerie  = document.getElementById('inp-scanner-serie').value.trim();
   const scannerModelo = document.getElementById('inp-scanner-modelo').value.trim();
   const scannerEstado = document.getElementById('inp-scanner-estado').value.trim();
+  const invDnd        = document.getElementById('inp-inv-dnd').value.trim();
+
+  const checklist = {
+    vidrio:   document.getElementById('chk-vidrio').checked,
+    cableUsb: document.getElementById('chk-cable-usb').checked,
+    fuente:   document.getElementById('chk-fuente').checked,
+    limpieza: document.getElementById('chk-limpieza').checked
+  };
 
   const scan = {
     id: 'sc_'+Date.now(),
@@ -820,7 +829,7 @@ async function saveScan() {
     userName: currentUser.name,
     opType: currentOpType,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, checklist,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
@@ -877,10 +886,11 @@ function viewScan(id) {
       ${fTag('Serie PC',scan.serie)} ${fTag('Tipo',opLabel(scan.opType))}
       ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
       ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
-      ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''}
+      ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''} ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''}
       ${scan.jiraTicket?fTagHtml('Jira',jiraTicketLink(scan.jiraTicket)):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
+    ${checklistHtml(scan.checklist)}
     ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
     ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
@@ -893,6 +903,30 @@ window.viewScan = viewScan;
 function fTag(label,val) { return val?`<div class="field-tag"><span>${label}</span><strong>${escHtml(val)}</strong></div>`:''; }
 function fTagHtml(label,htmlVal) { return htmlVal?`<div class="field-tag"><span>${label}</span><strong>${htmlVal}</strong></div>`:''; }
 function jiraTicketLink(key) { return key?`<a href="${JIRA_BASE_URL}/browse/${escHtml(key)}" target="_blank" style="color:var(--accent);text-decoration:underline">${escHtml(key)}</a>`:''; }
+
+const CHECKLIST_LABELS = {
+  vidrio:   'Estado de Vidrio/Vidrio protector',
+  cableUsb: 'Estado Cable USB',
+  fuente:   'Estado de Fuente de alimentación (15Vdc)',
+  limpieza: 'Inspección visual y limpieza del scanner'
+};
+// Renderiza el checklist como lista de items con OK/— según corresponda (para modal, vista de informe, etc.)
+function checklistHtml(checklist) {
+  if (!checklist) return '';
+  const items = Object.keys(CHECKLIST_LABELS).map(key => {
+    const ok = !!checklist[key];
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:${ok?'var(--accent)':'var(--text3)'};min-width:28px">${ok?'OK':'—'}</span>
+      <span style="font-size:12px;color:${ok?'var(--text)':'var(--text3)'}">${escHtml(CHECKLIST_LABELS[key])}</span>
+    </div>`;
+  }).join('');
+  return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin:8px 0">${items}</div>`;
+}
+// Versión para el PDF (texto plano, sin HTML) — array de líneas "OK/— — etiqueta"
+function checklistLines(checklist) {
+  if (!checklist) return [];
+  return Object.keys(CHECKLIST_LABELS).map(key => `${checklist[key]?'OK':'—'} — ${CHECKLIST_LABELS[key]}`);
+}
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 window.closeModal = closeModal;
 
@@ -942,13 +976,14 @@ function renderReportPage(scans, dateKey) {
         ${fTag('Puesto',s.puesto)} ${fTag('Serie PC',s.serie)}
         ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''}
         ${s.scannerSerie?fTag('Serie Scanner',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo Scanner',s.scannerModelo):''}
-        ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''}
+        ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''} ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''}
         ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
         ${s.address?fTag('Dirección',s.address):''}
       </div>
+      ${checklistHtml(s.checklist)}
       ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
@@ -983,7 +1018,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, checklist: s.checklist,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
@@ -1115,8 +1150,10 @@ async function viewReport(id) {
         <div style="color:var(--text2)">Serie: <span style="color:var(--text)">${escHtml(s.serie||'—')}</span></div>
         ${s.serieRetira?`<div style="color:var(--text2)">Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
         ${s.serieNuevo?`<div style="color:var(--text2)">Nuevo: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
+        ${s.invDnd?`<div style="color:var(--text2)">N° Inv. DND: <span style="color:var(--text)">${escHtml(s.invDnd)}</span></div>`:''}
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
+      ${checklistHtml(s.checklist)}
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
@@ -1268,6 +1305,7 @@ async function buildReportPDFDoc(rep) {
       if (s.scannerSerie)  fields.push(['SERIE SCANNER', s.scannerSerie]);
       if (s.scannerModelo) fields.push(['MODELO SCANNER', s.scannerModelo]);
       if (s.scannerEstado) fields.push(['ESTADO SCANNER', s.scannerEstado]);
+      if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
       if (s.serieRetira) { fields.push(['SERIE RETIRA', s.serieRetira]); fields.push(['SERIE NUEVA', s.serieNuevo||'—']); }
       if (s.lat) fields.push(['GPS', s.lat.toFixed(5)+', '+s.lon.toFixed(5)]);
 
@@ -1294,6 +1332,21 @@ async function buildReportPDFDoc(rep) {
         doc.text(addrLines, M+4, y+rows*rowH+4);
       }
       y += rows*rowH + addrH + 3;
+
+      // Checklist de inspección
+      const cklLines = checklistLines(s.checklist);
+      if (cklLines.length > 0) {
+        if (y > 250) { doc.addPage(); y = M; }
+        doc.setFillColor(18,30,44);
+        doc.roundedRect(M, y, W-M*2, cklLines.length*5.5+4, 2, 2, 'F');
+        cklLines.forEach((line, li) => {
+          const isOk = line.startsWith('OK');
+          doc.setFontSize(7.5); doc.setFont('helvetica','bold');
+          doc.setTextColor(...(isOk ? [0,212,170] : [120,140,155]));
+          doc.text(line, M+4, y+5.5+li*5.5);
+        });
+        y += cklLines.length*5.5+4 + 3;
+      }
 
       // Photos — TODAS en grilla de 2 columnas
       const photos = s.photos||[];
@@ -1552,7 +1605,7 @@ async function sendToJira() {
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}`),
             issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
@@ -1771,9 +1824,10 @@ async function viewReportSupervisor(id) {
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
       <div style="font-size:13px;font-weight:600;color:var(--accent)">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
-      <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.invDnd?' · N° Inv. DND: '+escHtml(s.invDnd):''}</div>
       ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
+      ${checklistHtml(s.checklist)}
     </div>`).join('')}
     <div class="vr-sig-label">Firma del Inspector — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px;padding:8px">Sin firma</div>'}
@@ -1888,16 +1942,18 @@ function buildExportRows(allScans) {
   const headers = [
     'Fecha', 'Técnico', 'Inspector', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
-    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner',
+    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND',
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
     'Latitud', 'Longitud', 'Dirección',
     'Serie Retira', 'Serie Nueva',
-    'Ticket Jira'
+    'Ticket Jira',
+    'Check Vidrio', 'Check Cable USB', 'Check Fuente', 'Check Limpieza'
   ];
   console.log(`Export: ${allScans.length} registros → ${deduplicated.length} tras deduplicar`);
   const rows = deduplicated.map(s => {
     const legacy = parsePcDataAssure(s.pcData);
     if (!s.assureEngine && !legacy.engine) console.warn('No AssureID data for scan', s.id, '— pcData:', s.pcData?.substring(0,100));
+    const ck = s.checklist || {};
     return [
       s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
       s.userName || s.technicianName || '',
@@ -1910,6 +1966,7 @@ function buildExportRows(allScans) {
       s.scannerSerie || '',
       s.scannerModelo || '',
       s.scannerEstado || '',
+      s.invDnd || '',
       s.assureEngine || legacy.engine || '',
       s.assureDocLib || legacy.docLib || '',
       s.assureLicKey || legacy.licKey || '',
@@ -1918,7 +1975,11 @@ function buildExportRows(allScans) {
       s.address || '',
       s.serieRetira || '',
       s.serieNuevo || '',
-      s.jiraTicket || ''
+      s.jiraTicket || '',
+      ck.vidrio ? 'OK' : '',
+      ck.cableUsb ? 'OK' : '',
+      ck.fuente ? 'OK' : '',
+      ck.limpieza ? 'OK' : ''
     ];
   });
   return [headers, ...rows];
