@@ -1479,6 +1479,29 @@ async function sendToJira() {
     return r;
   };
 
+  // Busca el accountId de Jira correspondiente a un email, para poder asignar tickets automáticamente
+  const jiraFindAccountId = async (email) => {
+    if (!email) return null;
+    try {
+      const r = await jiraCall(`/rest/api/3/user/search?query=${encodeURIComponent(email)}`, null, 'GET');
+      if (!r.ok) return null;
+      const users = await r.json();
+      const match = users.find(u => (u.emailAddress||'').toLowerCase() === email.toLowerCase()) || users[0];
+      return match ? match.accountId : null;
+    } catch(e) {
+      console.warn('No se pudo resolver accountId de Jira para', email, e);
+      return null;
+    }
+  };
+
+  // Resolver el técnico dueño del informe — puede ser distinto de quien envía (ej: supervisor)
+  const technicianEmail = rep.technicianEmail || (rep.userId===currentUser?.id ? currentUser?.email : null);
+  const assigneeAccountId = await jiraFindAccountId(technicianEmail);
+  if (technicianEmail && !assigneeAccountId) {
+    console.warn('No se encontró cuenta de Jira para el email', technicianEmail, '— los tickets quedarán sin asignar');
+  }
+  const ASSIGNEE_FIELD = assigneeAccountId ? { assignee: { id: assigneeAccountId } } : {};
+
   // Campos fijos requeridos en todos los tickets ScanCheck
   const FIXED_FIELDS = {
     customfield_10058: { id: '10061' }, // Equipo asignado = Operaciones
@@ -1487,7 +1510,7 @@ async function sendToJira() {
 
   try {
     const issueRes = await jiraCall('/rest/api/3/issue', {
-      fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS}
+      fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD}
     });
     if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
     const issue=await issueRes.json();
@@ -1530,7 +1553,7 @@ async function sendToJira() {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
             description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}`),
-            issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,
+            issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
         console.log('sendToJira: respuesta subtarea status=', sr.status, 'ok=', sr.ok);
