@@ -1028,21 +1028,48 @@ async function deleteScanFromModal() {
 window.deleteScanFromModal = deleteScanFromModal;
 
 // ======== CLOSE DAY / REPORT ========
+let pendingReportQueue = []; // cola de grupos {paso, scans} pendientes de generar informe, uno por Paso
+let pendingReportTotal = 0;  // cantidad total de informes en esta tanda (para mostrar "Informe X de Y")
+
 function closeDayReport() {
   const today = getTodayKey();
-  const scans = localScans.filter(s=>localDateKey(s.timestamp) === today);
-  if (!scans.length) { showToast('No hay registros hoy','error'); return; }
-  currentReport = { date:today, scanIds:scans.map(s=>s.id||s.fbId) };
-  renderReportPage(scans, today);
-  showPage('report');
+  // Scans de hoy que todavía no forman parte de ningún informe ya guardado
+  const reportedScanIds = new Set(localReports.flatMap(r => r.scanIds || []));
+  const scans = localScans.filter(s => localDateKey(s.timestamp) === today && !reportedScanIds.has(s.id||s.fbId));
+  if (!scans.length) { showToast('No hay registros pendientes hoy','error'); return; }
+
+  // Agrupar por Paso — un informe independiente por cada Paso distinto visitado hoy
+  const groups = new Map();
+  scans.forEach(s => {
+    const key = (s.paso||'').trim() || '(Sin paso especificado)';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  });
+
+  pendingReportQueue = Array.from(groups.entries()).map(([paso, groupScans]) => ({ paso, scans: groupScans }));
+  pendingReportTotal = pendingReportQueue.length;
+  showNextPendingReport(today);
 }
 window.closeDayReport = closeDayReport;
 
-function renderReportPage(scans, dateKey) {
+function showNextPendingReport(dateKey) {
+  if (pendingReportQueue.length === 0) { pendingReportTotal = 0; showPage('home'); return; }
+  const { paso, scans } = pendingReportQueue[0];
+  const posicionActual = pendingReportTotal - pendingReportQueue.length + 1;
+  currentReport = { date: dateKey, scanIds: scans.map(s=>s.id||s.fbId), paso };
+  renderReportPage(scans, dateKey, paso, posicionActual, pendingReportTotal);
+  showPage('report');
+}
+
+function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
   const d     = new Date(dateKey+'T12:00:00');
   const label = d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  document.getElementById('report-date-label').textContent = label.charAt(0).toUpperCase()+label.slice(1);
+  const progresoLabel = totalEnCola > 1 ? ` · Informe ${posicionActual} de ${totalEnCola}` : '';
+  document.getElementById('report-date-label').textContent = label.charAt(0).toUpperCase()+label.slice(1) + (paso ? ` — ${paso}` : '') + progresoLabel;
   document.getElementById('report-count-label').textContent = `${scans.length} scanner${scans.length!==1?'s':''}`;
+  if (totalEnCola > 1 && posicionActual === 1) {
+    showToast(`Se generarán ${totalEnCola} informes — uno por cada Paso visitado hoy`, 'success');
+  }
   document.getElementById('inp-inspector-name').value = '';
   document.getElementById('report-scan-list').innerHTML = scans.map((s,i)=>{
     const photos=(s.photos||[]);
@@ -1138,8 +1165,17 @@ async function saveReport() {
   } catch(e) {}
 
   showToast('✓ Informe guardado','success');
+  const fechaActual = currentReport.date;
   currentReport=null;
-  showPage('history');
+
+  // Si quedan más Pasos pendientes en esta tanda, continuar automáticamente con el siguiente informe
+  pendingReportQueue.shift();
+  if (pendingReportQueue.length > 0) {
+    showNextPendingReport(fechaActual);
+  } else {
+    pendingReportTotal = 0;
+    showPage('history');
+  }
 
   // Save to Firebase (or queue if offline)
   if (navigator.onLine) {
