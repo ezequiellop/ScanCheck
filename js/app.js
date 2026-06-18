@@ -1907,7 +1907,33 @@ async function sendToJira() {
   // - Si hay algún reemplazo → Incidente
   // - Mantenimiento / Instalación → Solicitud de servicio
   const tieneReemplazo = scans.some(s => s.opType === 'reemplazo');
+  const tieneInstalacion = scans.some(s => s.opType === 'instalacion');
   const issueTypePadre = tieneReemplazo ? 'Incidente' : 'Solicitud de servicio';
+
+  // Modo del informe para el título (prioridad: reemplazo > instalacion > mantenimiento)
+  const modoLabel = tieneReemplazo ? 'Reemplazo' : tieneInstalacion ? 'Instalación' : 'Mantenimiento';
+
+  // Extraer provincia de la dirección GPS (Nominatim: "..., Provincia, CódigoPostal, Argentina")
+  const primerScan = scans.find(s => s.address) || scans[0];
+  const address = primerScan?.address || '';
+  const provincia = (() => {
+    if (!address) return '';
+    const parts = address.split(',').map(p => p.trim()).filter(Boolean);
+    // Nominatim termina en "Argentina", antes viene el código postal, y antes la provincia
+    const argIdx = parts.findLastIndex(p => p.toLowerCase() === 'argentina');
+    if (argIdx >= 2) return parts[argIdx - 2];
+    if (argIdx >= 1) return parts[argIdx - 1];
+    return parts[parts.length - 2] || '';
+  })();
+
+  // Paso del informe (primer scan con paso definido)
+  const pasoLabel = primerScan?.paso || rep.paso || '—';
+
+  // Título formateado del ticket: DND - Modo - Paso - Provincia
+  const tituloTicket = `DND - ${modoLabel} - ${pasoLabel}${provincia ? ' - ' + provincia : ''}`;
+
+  // Campo Hardware = Escaner (id: 10802), fijo para todos los tickets de ScanCheck
+  const HARDWARE_FIELD = { customfield_10049: { id: '10802' } };
 
   try {
     let parentKey;
@@ -1945,7 +1971,7 @@ async function sendToJira() {
     } else {
       // ── FLUJO: crear ticket nuevo ──
       const issueRes = await jiraCall('/rest/api/3/issue', {
-        fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:issueTypePadre},...FIXED_FIELDS,...ASSIGNEE_FIELD}
+        fields:{project:{key:cfg.project},summary:tituloTicket,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:issueTypePadre},...FIXED_FIELDS,...HARDWARE_FIELD,...ASSIGNEE_FIELD}
       });
       if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
       const issue=await issueRes.json();
