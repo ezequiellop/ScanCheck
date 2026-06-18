@@ -2065,6 +2065,20 @@ async function viewReportSupervisor(id) {
 }
 window.viewReportSupervisor = viewReportSupervisor;
 
+// --- TEMPORAL: diagnóstico, llamar desde consola con debugScans() ---
+window.debugScans = function() {
+  console.log('Total scans en memoria:', localScans.length);
+  if (localScans.length > 0) {
+    console.log('Último scan:', JSON.stringify(localScans[localScans.length-1], null, 2));
+  }
+  console.log('currentUser:', currentUser);
+  try {
+    const stored = localStorage.getItem('scancheck_local_scans_' + currentUser.id);
+    console.log('En localStorage hay:', stored ? JSON.parse(stored).length : 0, 'scans');
+  } catch(e) { console.log('Error leyendo localStorage:', e.message); }
+};
+
+
 
 
 // ======== SYNC ALL ========
