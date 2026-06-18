@@ -958,6 +958,31 @@ function checklistLines(checklist) {
   if (!checklist) return [];
   return Object.keys(CHECKLIST_LABELS).map(key => `${checklist[key]?'OK':'—'} — ${CHECKLIST_LABELS[key]}`);
 }
+
+// Convierte el trazo verde de la firma (dibujado así en pantalla) a negro, solo para uso en PDFs.
+// La firma en pantalla se mantiene verde; esta función no modifica el dato guardado.
+function signatureToBlack(sigDataUrl) {
+  return new Promise((resolve) => {
+    if (!sigDataUrl) { resolve(null); return; }
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, c.width, c.height);
+      const px = data.data;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i+3] > 0) { px[i] = 0; px[i+1] = 0; px[i+2] = 0; } // mismo alpha, RGB → negro
+      }
+      ctx.putImageData(data, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(sigDataUrl); // si falla la conversión, usar la original como respaldo
+    img.src = sigDataUrl;
+  });
+}
+
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 window.closeModal = closeModal;
 
@@ -1457,6 +1482,7 @@ async function buildReportPDFDoc(rep) {
 
     let sig = rep.signature;
     if (!sig && rep.fbId) { try { sig = await fbGetSignature(rep.fbId); } catch(e){} }
+    if (sig) { try { sig = await signatureToBlack(sig); } catch(e){} }
     if (sig) {
       try {
         doc.addImage(sig,'PNG',M,y,90,40);
@@ -1657,16 +1683,26 @@ async function buildActaReemplazoPDFDoc(rep, scan) {
   lines = doc.splitTextToSize(comodatoText, W-M*2);
   if (y + lines.length*4.2 > 250) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
   doc.setTextColor(30,30,30);
-  doc.text(lines, M, y); y += lines.length*4.2 + 18;
+  doc.text(lines, M, y); y += lines.length*4.2 + 8;
 
   // ── FIRMA ──
-  if (y > 255) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); y += 10; }
-  doc.setDrawColor(120,120,120);
-  doc.line(M+30, y, M+110, y); y += 5;
+  let sig = rep.signature;
+  if (!sig && rep.fbId) { try { sig = await fbGetSignature(rep.fbId); } catch(e){} }
+  if (sig) { try { sig = await signatureToBlack(sig); } catch(e){} }
+  const sigW = 80, sigH = 30;
+  if (y + sigH + 16 > 270) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  if (sig) {
+    try { doc.addImage(sig,'PNG',M+30,y,sigW,sigH); } catch(e) {}
+    y += sigH + 3;
+  } else {
+    y += 10;
+  }
+  doc.setDrawColor(60,60,60);
+  doc.line(M+30, y, M+30+sigW, y); y += 5;
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,32,39);
-  doc.text('Inspector DNM', M+70, y, {align:'center'}); y += 5;
+  doc.text('Inspector DNM', M+30+sigW/2, y, {align:'center'}); y += 5;
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(60,60,60);
-  doc.text(rep.inspectorName || '—', M+70, y, {align:'center'});
+  doc.text(rep.inspectorName || '—', M+30+sigW/2, y, {align:'center'});
 
   const totalPages = doc.internal.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
