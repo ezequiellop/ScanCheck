@@ -1665,9 +1665,9 @@ async function buildActaReemplazoPDFDoc(rep, scan) {
 
   drawField('Fecha de revisión técnica:', `${fechaStr}   Hora: ${horaStr}`);
   drawField('Dependencia / Paso fronterizo / Sede:', scan.paso || '—');
-  drawField('Marca:', marcaModeloViejo);
-  drawField('Modelo:', marcaModeloViejo);
-  drawField('Nro. de serie / Nro. Inventario DNM:', `${scan.scannerSerie||scan.serieRetira||'—'} / ${scan.invDnm||'—'}`);
+  drawField('Marca/Modelo:', marcaModeloViejo);
+  drawField('Nro. de serie:', scan.scannerSerie||scan.serieRetira||'—');
+  drawField('Nro. Inventario DNM:', scan.invDnm || '—');
   drawField('Técnico interviniente del Proveedor:', rep.technicianName || '—');
   y += 3;
 
@@ -1724,8 +1724,8 @@ async function buildActaReemplazoPDFDoc(rep, scan) {
   doc.text('DATOS DEL NUEVO LECTOR DOCUMENTAL INSTALADO', M, y); y += 6.5;
 
   const nuevoMarcaModelo = scan.actaReemplazo?.nuevoMarcaModelo || scan.scannerModelo || '—';
-  drawField('Marca:', nuevoMarcaModelo);
-  drawField('Modelo:', nuevoMarcaModelo);
+  drawField('Marca/Modelo:', nuevoMarcaModelo);
+  drawField('N° Serie:', scan.serieNuevo || '—');
   y += 3;
 
   doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(30,30,30);
