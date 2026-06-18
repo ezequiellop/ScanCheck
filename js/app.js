@@ -1903,6 +1903,12 @@ async function sendToJira() {
     customfield_10102: { id: '10337' }  // Contratos = Dirección Nacional de Migraciones
   };
 
+  // Determinar el tipo de ticket padre según las operaciones del informe:
+  // - Si hay algún reemplazo → Incidente
+  // - Mantenimiento / Instalación → Solicitud de servicio
+  const tieneReemplazo = scans.some(s => s.opType === 'reemplazo');
+  const issueTypePadre = tieneReemplazo ? 'Incidente' : 'Solicitud de servicio';
+
   try {
     let parentKey;
     const ticketExistente = rep.jiraTicketExistente?.trim().toUpperCase() || null;
@@ -1939,7 +1945,7 @@ async function sendToJira() {
     } else {
       // ── FLUJO: crear ticket nuevo ──
       const issueRes = await jiraCall('/rest/api/3/issue', {
-        fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD}
+        fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:issueTypePadre},...FIXED_FIELDS,...ASSIGNEE_FIELD}
       });
       if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
       const issue=await issueRes.json();
@@ -1981,9 +1987,9 @@ async function sendToJira() {
       let sr;
       try {
         sr = await jiraCall('/rest/api/3/issue', {
-          fields:{project:{key:cfg.project},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+          fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
             description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}`),
-            issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
+            issuetype:{name:'Subtarea'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
         console.log('sendToJira: respuesta subtarea status=', sr.status, 'ok=', sr.ok);
