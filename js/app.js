@@ -2077,6 +2077,12 @@ window.debugScans = function() {
     console.log('En localStorage hay:', stored ? JSON.parse(stored).length : 0, 'scans');
   } catch(e) { console.log('Error leyendo localStorage:', e.message); }
 };
+window.debugForceRender = function() {
+  try { renderTodayList(); console.log('renderTodayList() OK'); } catch(e) { console.error('renderTodayList() FALLÓ:', e); }
+};
+window.debugForceRenderSup = async function() {
+  try { await renderSupervisor(); console.log('renderSupervisor() OK'); } catch(e) { console.error('renderSupervisor() FALLÓ:', e); }
+};
 
 
 
