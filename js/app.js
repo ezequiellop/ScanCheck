@@ -921,6 +921,7 @@ function viewScan(id) {
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
     ${checklistHtml(scan.checklist)}
+    ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
     ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
     ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
@@ -953,10 +954,39 @@ function checklistHtml(checklist) {
   }).join('');
   return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin:8px 0">${items}</div>`;
 }
+// Checklist de "Tipo de falla detectada" (Acta de Reemplazo), para mostrar en pantalla junto al checklist general
+function fallaChecklistHtml(actaReemplazo) {
+  const fk = actaReemplazo?.fallaChecklist;
+  if (!fk) return '';
+  const items = Object.keys(FALLA_LABELS).map(key => {
+    const ok = !!fk[key];
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:${ok?'var(--warning)':'var(--text3)'};min-width:28px">${ok?'OK':'—'}</span>
+      <span style="font-size:12px;color:${ok?'var(--text)':'var(--text3)'}">${escHtml(FALLA_LABELS[key])}</span>
+    </div>`;
+  }).join('');
+  const otroItem = fk.otro ? `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:var(--warning);min-width:28px">OK</span>
+      <span style="font-size:12px;color:var(--text)">Otro: ${escHtml(fk.otroTexto||'(sin especificar)')}</span>
+    </div>` : '';
+  return `<div style="margin:8px 0">
+    <div style="font-size:11px;font-weight:700;color:var(--warning);margin-bottom:4px">TIPO DE FALLA DETECTADA (Acta de Reemplazo)</div>
+    <div style="background:var(--bg3);border-radius:10px;padding:10px 12px">${items}${otroItem}</div>
+  </div>`;
+}
 // Versión para el PDF (texto plano, sin HTML) — array de líneas "OK/— — etiqueta"
 function checklistLines(checklist) {
   if (!checklist) return [];
   return Object.keys(CHECKLIST_LABELS).map(key => `${checklist[key]?'OK':'—'} — ${CHECKLIST_LABELS[key]}`);
+}
+// Líneas del checklist de "Tipo de falla detectada" (Acta de Reemplazo), para mostrar también
+// en el informe PDF general cuando el registro es un reemplazo.
+function fallaChecklistLines(actaReemplazo) {
+  const fk = actaReemplazo?.fallaChecklist;
+  if (!fk) return [];
+  const lines = Object.keys(FALLA_LABELS).map(key => `${fk[key]?'OK':'—'} — ${FALLA_LABELS[key]}`);
+  if (fk.otro) lines.push(`OK — Otro: ${fk.otroTexto || '(sin especificar)'}`);
+  return lines;
 }
 
 // Convierte el trazo verde de la firma (dibujado así en pantalla) a negro, solo para uso en PDFs.
@@ -1040,6 +1070,7 @@ function renderReportPage(scans, dateKey) {
         ${s.address?fTag('Dirección',s.address):''}
       </div>
       ${checklistHtml(s.checklist)}
+      ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
@@ -1211,6 +1242,7 @@ async function viewReport(id) {
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
       ${checklistHtml(s.checklist)}
+      ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`;
@@ -1404,6 +1436,24 @@ async function buildReportPDFDoc(rep) {
           doc.text(line, M+4, y+5.5+li*5.5);
         });
         y += cklLines.length*5.5+4 + 3;
+      }
+
+      // Checklist de Tipo de Falla detectada (solo para reemplazos, viene del Acta)
+      const fallaLines = s.opType === 'reemplazo' ? fallaChecklistLines(s.actaReemplazo) : [];
+      if (fallaLines.length > 0) {
+        if (y + fallaLines.length*5.5+10 > 270) { doc.addPage(); y = M; }
+        doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,160,64);
+        doc.text('TIPO DE FALLA DETECTADA (Acta de Reemplazo)', M+4, y+3.5);
+        y += 5.5;
+        doc.setFillColor(18,30,44);
+        doc.roundedRect(M, y, W-M*2, fallaLines.length*5.5+4, 2, 2, 'F');
+        fallaLines.forEach((line, li) => {
+          const isOk = line.startsWith('OK');
+          doc.setFontSize(7.5); doc.setFont('helvetica','bold');
+          doc.setTextColor(...(isOk ? [255,160,64] : [120,140,155]));
+          doc.text(line, M+4, y+5.5+li*5.5);
+        });
+        y += fallaLines.length*5.5+4 + 3;
       }
 
       // Photos — TODAS en grilla de 2 columnas
@@ -2097,6 +2147,7 @@ async function viewReportSupervisor(id) {
       ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
       ${checklistHtml(s.checklist)}
+      ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`).join('')}
     <div class="vr-sig-label">Firma del Inspector DNM — ${escHtml(rep.inspectorName||'')}</div>
