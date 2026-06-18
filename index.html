@@ -180,11 +180,35 @@
           <div class="form-group"><label>Modelo Scanner</label><input type="text" id="inp-scanner-modelo" placeholder="Se completa con QR" maxlength="60"></div>
           <div class="form-group"><label>Estado Scanner</label><input type="text" id="inp-scanner-estado" placeholder="Se completa con QR" maxlength="40"></div>
         </div>
-        <div class="form-group"><label>N° Inv. DND</label><input type="text" id="inp-inv-dnd" placeholder="Ej: DND-00123" maxlength="30"></div>
+        <div class="form-row">
+          <div class="form-group"><label>N° Inv. DND</label><input type="text" id="inp-inv-dnd" placeholder="Ej: DND-00123" maxlength="30"></div>
+          <div class="form-group"><label>N° Inv. DNM</label><input type="text" id="inp-inv-dnm" placeholder="Opcional" maxlength="30"></div>
+        </div>
         <div id="reemplazo-fields" class="hidden">
           <div class="reemplazo-box">
             <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
             <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+            <div class="form-group">
+              <label>Tipo de falla detectada (Acta de Reemplazo)</label>
+              <div class="checklist-box">
+                <label class="checklist-item"><input type="checkbox" id="falla-alimentacion"><span>Falla de alimentación eléctrica</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-cristal"><span>Cristal roto u opaco / desgastado</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-usb"><span>Falla de conexión USB / Cables / comunicación con la estación de trabajo</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-mrz"><span>Falla de lectura MRZ</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-chip"><span>Falla de lectura de chip / documento electrónico</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-sensor"><span>Falla de sensor óptico</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-irrojo"><span>Falla de lectura infrarroja / ultravioleta</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-mecanica"><span>Falla mecánica</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-intermitente"><span>Falla intermitente recurrente</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-dano-fisico"><span>Daño físico visible</span></label>
+                <label class="checklist-item"><input type="checkbox" id="falla-obsolescencia"><span>Obsolescencia / desgaste</span></label>
+              </div>
+              <div class="form-group" style="margin-top:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="falla-otro-check" style="width:20px;height:20px;accent-color:var(--accent)"><span>Otro</span></label>
+                <input type="text" id="falla-otro-texto" placeholder="Especificar otra falla..." maxlength="200">
+              </div>
+            </div>
+            <div class="form-group"><label>Marca y Modelo del equipo NUEVO instalado</label><input type="text" id="inp-nuevo-marca-modelo" placeholder="Ej: DESKO Penta 4X" maxlength="80"></div>
           </div>
         </div>
         <div class="form-group">
