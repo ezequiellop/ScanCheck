@@ -1071,6 +1071,8 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
     showToast(`Se generarán ${totalEnCola} informes — uno por cada Paso visitado hoy`, 'success');
   }
   document.getElementById('inp-inspector-name').value = '';
+  const jiraTicketInput = document.getElementById('inp-jira-ticket-padre');
+  if (jiraTicketInput) jiraTicketInput.value = '';
   document.getElementById('report-scan-list').innerHTML = scans.map((s,i)=>{
     const photos=(s.photos||[]);
     const strip=photos.length>0
@@ -1124,6 +1126,7 @@ async function saveReport() {
   if (!sigHasDraw) { showToast('Por favor firmá el informe','error'); return; }
   const inspectorName=document.getElementById('inp-inspector-name').value.trim();
   if (!inspectorName) { showToast('Ingresá el nombre del inspector','error'); return; }
+  const jiraTicketPadreExistente = (document.getElementById('inp-jira-ticket-padre')?.value||'').trim().toUpperCase() || null;
   if (!currentReport) return;
 
   // Embed full scan data in report (photos stored separately)
@@ -1151,6 +1154,7 @@ async function saveReport() {
     technicianName: currentUser.name,
     technicianEmail: currentUser.email,
     userId: currentUser.id,
+    jiraTicketExistente: jiraTicketPadreExistente, // N° de ticket padre preexistente (si lo ingresó el técnico)
     createdAt: new Date().toISOString()
   };
 
@@ -1900,14 +1904,49 @@ async function sendToJira() {
   };
 
   try {
-    const issueRes = await jiraCall('/rest/api/3/issue', {
-      fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD}
-    });
-    if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
-    const issue=await issueRes.json();
-    const parentKey=issue.key;
+    let parentKey;
+    const ticketExistente = rep.jiraTicketExistente?.trim().toUpperCase() || null;
 
-    // Generar el PDF del informe y adjuntarlo al ticket padre
+    if (ticketExistente) {
+      // ── FLUJO: ticket ya existente en Jira ──
+      // Verificar que el ticket existe y es accesible
+      showToast('Verificando ticket existente...','success');
+      const checkRes = await jiraCall(`/rest/api/3/issue/${ticketExistente}`, null, 'GET');
+      if (!checkRes.ok) {
+        const err = await checkRes.text();
+        showJiraError(`No se encontró el ticket ${ticketExistente}. Verificá el número. Detalle: ${err}`);
+        return;
+      }
+      parentKey = ticketExistente;
+
+      // Actualizar la descripción del ticket existente con los datos del informe
+      const updateRes = await jiraCall(`/rest/api/3/issue/${parentKey}`, {
+        fields: {
+          description: mkDoc(`[ScanCheck] Informe cargado automáticamente\nFecha: ${dateLabel}\nTécnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos atendidos: ${scans.length}`)
+        }
+      }, 'PUT');
+      if (!updateRes.ok) {
+        console.warn('No se pudo actualizar la descripción del ticket existente:', await updateRes.text());
+      }
+
+      // Asignar al técnico si se resolvió el accountId
+      if (assigneeAccountId) {
+        await jiraCall(`/rest/api/3/issue/${parentKey}`, { fields: { assignee: { id: assigneeAccountId } } }, 'PUT');
+      }
+
+      showToast(`Usando ticket existente: ${parentKey}`, 'success');
+
+    } else {
+      // ── FLUJO: crear ticket nuevo ──
+      const issueRes = await jiraCall('/rest/api/3/issue', {
+        fields:{project:{key:cfg.project},summary:`Informe ScanCheck — ${dateLabel} — ${rep.technicianName}`,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:cfg.issueType||'Incidente'},...FIXED_FIELDS,...ASSIGNEE_FIELD}
+      });
+      if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
+      const issue=await issueRes.json();
+      parentKey=issue.key;
+    }
+
+    // Generar el PDF del informe y adjuntarlo al ticket padre (existente o nuevo)
     try {
       showToast('Adjuntando PDF al ticket...','success');
       const { doc, filename } = await buildReportPDFDoc(rep);
@@ -1917,7 +1956,7 @@ async function sendToJira() {
       if (!upRes.ok) {
         const errTxt = await upRes.text();
         console.error('Error al adjuntar PDF:', errTxt);
-        showToast('Ticket creado, pero no se pudo adjuntar el PDF', 'error');
+        showToast('Ticket actualizado, pero no se pudo adjuntar el PDF', 'error');
       }
     } catch(e) {
       console.error('Error generando/adjuntando PDF:', e);
@@ -2003,9 +2042,9 @@ async function sendToJira() {
     document.getElementById('modal-jira-content').innerHTML=`
       <div style="text-align:center;padding:16px 0">
         <div style="font-size:36px;margin-bottom:10px">✅</div>
-        <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px">Ticket creado en Jira</div>
+        <div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px">${ticketExistente ? 'Informe cargado en ticket existente' : 'Ticket creado en Jira'}</div>
         <div style="font-size:24px;font-weight:700;font-family:var(--mono);color:var(--text);margin-bottom:6px">${parentKey}</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${subtaskKeys.length} subtareas creadas</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${subtaskKeys.length} subtarea${subtaskKeys.length!==1?'s':''} creada${subtaskKeys.length!==1?'s':''}</div>
         <div style="font-size:11px;font-family:var(--mono);color:var(--text3);background:var(--bg3);padding:8px;border-radius:8px">${subtaskKeys.join(' · ')}</div>
         <a href="${JIRA_BASE_URL}/browse/${parentKey}" target="_blank" style="display:inline-block;margin-top:16px;padding:12px 24px;background:var(--accent);color:#0a1628;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">Abrir en Jira →</a>
       </div>`;

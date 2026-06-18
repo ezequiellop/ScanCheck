@@ -260,7 +260,13 @@
         <div class="report-count" id="report-count-label"></div>
       </div>
       <div id="report-scan-list" class="report-list"></div>
-      <div class="section-label" style="margin-top:24px">Inspector DNM responsable</div>
+      <div class="section-label" style="margin-top:24px">Ticket de Jira (opcional)</div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>N° Ticket existente en Jira</label>
+        <input type="text" id="inp-jira-ticket-padre" placeholder="Ej: DND-123 (dejar vacío para crear uno nuevo)" maxlength="30" style="text-transform:uppercase">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Si hay un ticket ya creado en Jira para esta visita, ingresá el número aquí. Si se deja vacío, se creará un ticket nuevo automáticamente.</div>
+      </div>
+      <div class="section-label">Inspector DNM responsable</div>
       <div class="form-group" style="margin-bottom:16px"><label>Nombre completo del Inspector DNM que firma</label><input type="text" id="inp-inspector-name" placeholder="Ej: Ing. Carlos Rodríguez"></div>
       <div class="section-label">Firma</div>
       <div class="signature-zone">
