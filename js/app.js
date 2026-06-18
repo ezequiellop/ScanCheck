@@ -495,7 +495,7 @@ function updateHeroDate() {
 }
 function updateStats() {
   const today = getTodayKey();
-  const todayScans = localScans.filter(s => (s.timestamp||'').startsWith(today));
+  const todayScans = localScans.filter(s => localDateKey(s.timestamp) === today);
   document.getElementById('stat-today').textContent   = todayScans.length;
   document.getElementById('stat-total').textContent   = localScans.length;
   document.getElementById('stat-reports').textContent = localReports.length;
@@ -503,9 +503,13 @@ function updateStats() {
 }
 
 // ======== TODAY LIST ========
+function localDateKey(timestamp) {
+  const d = timestamp ? new Date(timestamp) : new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function renderTodayList() {
   const today = getTodayKey();
-  const scans = localScans.filter(s => (s.timestamp||'').startsWith(today)).slice().reverse();
+  const scans = localScans.filter(s => localDateKey(s.timestamp) === today).slice().reverse();
   const container = document.getElementById('today-list');
   if (!scans.length) {
     container.innerHTML = `<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg><p>Sin registros hoy</p></div>`;
@@ -971,7 +975,7 @@ window.deleteScanFromModal = deleteScanFromModal;
 // ======== CLOSE DAY / REPORT ========
 function closeDayReport() {
   const today = getTodayKey();
-  const scans = localScans.filter(s=>(s.timestamp||'').startsWith(today));
+  const scans = localScans.filter(s=>localDateKey(s.timestamp) === today);
   if (!scans.length) { showToast('No hay registros hoy','error'); return; }
   currentReport = { date:today, scanIds:scans.map(s=>s.id||s.fbId) };
   renderReportPage(scans, today);
@@ -2064,25 +2068,6 @@ async function viewReportSupervisor(id) {
   showPage('view-report');
 }
 window.viewReportSupervisor = viewReportSupervisor;
-
-// --- TEMPORAL: diagnóstico, llamar desde consola con debugScans() ---
-window.debugScans = function() {
-  console.log('Total scans en memoria:', localScans.length);
-  if (localScans.length > 0) {
-    console.log('Último scan:', JSON.stringify(localScans[localScans.length-1], null, 2));
-  }
-  console.log('currentUser:', currentUser);
-  try {
-    const stored = localStorage.getItem('scancheck_local_scans_' + currentUser.id);
-    console.log('En localStorage hay:', stored ? JSON.parse(stored).length : 0, 'scans');
-  } catch(e) { console.log('Error leyendo localStorage:', e.message); }
-};
-window.debugForceRender = function() {
-  try { renderTodayList(); console.log('renderTodayList() OK'); } catch(e) { console.error('renderTodayList() FALLÓ:', e); }
-};
-window.debugForceRenderSup = async function() {
-  try { await renderSupervisor(); console.log('renderSupervisor() OK'); } catch(e) { console.error('renderSupervisor() FALLÓ:', e); }
-};
 
 
 
