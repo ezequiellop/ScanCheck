@@ -2033,16 +2033,25 @@ async function sendToJira() {
         if (si>=0) localScans[si].jiraTicket = st.key;
 
         // Si es un reemplazo, generar y adjuntar el Acta de Constatación Técnica y Reemplazo
+        // → a la subtarea (uso interno) Y al ticket padre (visible para el cliente en el portal)
         if (s.opType === 'reemplazo') {
           try {
             const { doc: actaDoc, filename: actaFilename } = await buildActaReemplazoPDFDoc(rep, s);
             const actaDataUri = actaDoc.output('datauristring');
             const actaBase64 = actaDataUri.split(',')[1];
-            const actaUpRes = await jiraUpload(st.key, actaFilename, actaBase64, 'application/pdf');
-            if (!actaUpRes.ok) {
-              console.error('Error al adjuntar Acta de Reemplazo:', await actaUpRes.text());
+            // Adjuntar a la subtarea (uso interno de Danaide)
+            const actaUpSubtask = await jiraUpload(st.key, actaFilename, actaBase64, 'application/pdf');
+            if (!actaUpSubtask.ok) {
+              console.error('Error al adjuntar Acta a subtarea:', await actaUpSubtask.text());
             } else {
-              console.log('Acta de Reemplazo adjuntada a', st.key);
+              console.log('Acta adjuntada a subtarea', st.key);
+            }
+            // Adjuntar también al ticket padre (visible para el cliente en el portal JSM)
+            const actaUpPadre = await jiraUpload(parentKey, actaFilename, actaBase64, 'application/pdf');
+            if (!actaUpPadre.ok) {
+              console.error('Error al adjuntar Acta al ticket padre:', await actaUpPadre.text());
+            } else {
+              console.log('Acta adjuntada al ticket padre', parentKey);
             }
           } catch(actaErr) {
             console.error('Error generando/adjuntando Acta de Reemplazo:', actaErr);
