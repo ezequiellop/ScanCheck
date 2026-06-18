@@ -1652,10 +1652,11 @@ async function buildActaReemplazoPDFDoc(rep, scan) {
   drawField('Modelo:', nuevoMarcaModelo);
   y += 3;
 
-  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(30,30,30);
   const comodatoText = 'El equipo provisto en reemplazo se entrega en carácter de comodato, sin costo adicional para la DNM, durante la vigencia del servicio contratado, conforme las previsiones del Renglón N° 1 del Pliego.';
   lines = doc.splitTextToSize(comodatoText, W-M*2);
   if (y + lines.length*4.2 > 250) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  doc.setTextColor(30,30,30);
   doc.text(lines, M, y); y += lines.length*4.2 + 18;
 
   // ── FIRMA ──
@@ -1663,9 +1664,9 @@ async function buildActaReemplazoPDFDoc(rep, scan) {
   doc.setDrawColor(120,120,120);
   doc.line(M+30, y, M+110, y); y += 5;
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,32,39);
-  doc.text('DANAIDE S.A.', M+70, y, {align:'center'}); y += 5;
+  doc.text('Inspector DNM', M+70, y, {align:'center'}); y += 5;
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(60,60,60);
-  doc.text(`Inspector DNM: ${rep.inspectorName || '—'}`, M+70, y, {align:'center'});
+  doc.text(rep.inspectorName || '—', M+70, y, {align:'center'});
 
   const totalPages = doc.internal.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
