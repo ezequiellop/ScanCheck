@@ -541,8 +541,8 @@ window.setOpType = setOpType;
 
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
-  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza'].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check'].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
   capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
   document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
@@ -815,6 +815,7 @@ async function saveScan() {
   const scannerModelo = document.getElementById('inp-scanner-modelo').value.trim();
   const scannerEstado = document.getElementById('inp-scanner-estado').value.trim();
   const invDnd        = document.getElementById('inp-inv-dnd').value.trim();
+  const invDnm        = document.getElementById('inp-inv-dnm').value.trim();
 
   const checklist = {
     vidrio:   document.getElementById('chk-vidrio').checked,
@@ -823,13 +824,37 @@ async function saveScan() {
     limpieza: document.getElementById('chk-limpieza').checked
   };
 
+  // Datos del Acta de Reemplazo — solo se completan/relevan cuando opType === 'reemplazo'
+  let actaReemplazo = null;
+  if (currentOpType === 'reemplazo') {
+    const fallaChecklist = {
+      alimentacion:   document.getElementById('falla-alimentacion').checked,
+      cristal:        document.getElementById('falla-cristal').checked,
+      usb:            document.getElementById('falla-usb').checked,
+      mrz:            document.getElementById('falla-mrz').checked,
+      chip:           document.getElementById('falla-chip').checked,
+      sensor:         document.getElementById('falla-sensor').checked,
+      irrojo:         document.getElementById('falla-irrojo').checked,
+      mecanica:       document.getElementById('falla-mecanica').checked,
+      intermitente:   document.getElementById('falla-intermitente').checked,
+      danoFisico:     document.getElementById('falla-dano-fisico').checked,
+      obsolescencia:  document.getElementById('falla-obsolescencia').checked,
+      otro:           document.getElementById('falla-otro-check').checked,
+      otroTexto:      document.getElementById('falla-otro-texto').value.trim()
+    };
+    actaReemplazo = {
+      fallaChecklist,
+      nuevoMarcaModelo: document.getElementById('inp-nuevo-marca-modelo').value.trim()
+    };
+  }
+
   const scan = {
     id: 'sc_'+Date.now(),
     userId: currentUser.id,
     userName: currentUser.name,
     opType: currentOpType,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, checklist,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
@@ -887,6 +912,7 @@ function viewScan(id) {
       ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
       ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
       ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''} ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''}
+      ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
       ${scan.jiraTicket?fTagHtml('Jira',jiraTicketLink(scan.jiraTicket)):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
     </div>
@@ -895,6 +921,7 @@ function viewScan(id) {
     ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
     ${scan.address?`<div style="font-size:11px;color:var(--text3)">📍 ${escHtml(scan.address)}</div>`:''}
+    ${scan.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:10px;width:100%" onclick="downloadActaReemplazo('${id}')">📄 Descargar Acta de Reemplazo</button>`:''}
   `;
   document.getElementById('modal-scan').classList.remove('hidden');
 }
@@ -1018,7 +1045,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, checklist: s.checklist,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
@@ -1151,10 +1178,12 @@ async function viewReport(id) {
         ${s.serieRetira?`<div style="color:var(--text2)">Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
         ${s.serieNuevo?`<div style="color:var(--text2)">Nuevo: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
         ${s.invDnd?`<div style="color:var(--text2)">N° Inv. DND: <span style="color:var(--text)">${escHtml(s.invDnd)}</span></div>`:''}
+        ${s.invDnm?`<div style="color:var(--text2)">N° Inv. DNM: <span style="color:var(--text)">${escHtml(s.invDnm)}</span></div>`:''}
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
       ${checklistHtml(s.checklist)}
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
+      ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`;
   }).join('');
   document.getElementById('view-report-content').innerHTML=`
@@ -1463,6 +1492,188 @@ async function downloadReportPDF() {
 }
 window.downloadReportPDF = downloadReportPDF;
 
+async function downloadActaReemplazo(scanId) {
+  const scan = localScans.find(s=>(s.id===scanId||s.fbId===scanId));
+  if (!scan) { showToast('Registro no encontrado','error'); return; }
+  // Buscar el informe que contiene este scan, para obtener técnico/inspector
+  let rep = localReports.find(r => (r.scanIds||[]).includes(scan.id) || (r.scanIds||[]).includes(scan.fbId));
+  if (!rep) {
+    // Respaldo: usar datos del propio scan/usuario actual si no se encuentra un informe asociado todavía
+    rep = { technicianName: scan.userName || currentUser?.name || '—', inspectorName: '—', date: scan.timestamp?.slice(0,10) };
+  }
+  showToast('Generando Acta...','success');
+  try {
+    const { doc, filename } = await buildActaReemplazoPDFDoc(rep, scan);
+    doc.save(filename);
+    showToast('✓ Acta descargada','success');
+  } catch(e) {
+    console.error('Error generando Acta de Reemplazo:', e);
+    showToast('Error al generar el Acta','error');
+  }
+}
+window.downloadActaReemplazo = downloadActaReemplazo;
+
+// ======== ACTA DE CONSTATACIÓN TÉCNICA Y REEMPLAZO ========
+// Documento legal — el texto y estructura NO deben modificarse (Licitación Pública N° 21-0004-LPU25,
+// Orden de Compra N° 21-0009-OCA25, Renglón N° 1, DNM / Danaide S.A.)
+const FALLA_LABELS = {
+  alimentacion:  'Falla de alimentación eléctrica',
+  cristal:       'Cristal roto u opaco / desgastado',
+  usb:           'Falla de conexión USB / Cables / comunicación con la estación de trabajo',
+  mrz:           'Falla de lectura MRZ',
+  chip:          'Falla de lectura de chip / documento electrónico',
+  sensor:        'Falla de sensor óptico',
+  irrojo:        'Falla de lectura infrarroja / ultravioleta',
+  mecanica:      'Falla mecánica',
+  intermitente:  'Falla intermitente recurrente',
+  danoFisico:    'Daño físico visible',
+  obsolescencia: 'Obsolescencia / desgaste'
+};
+
+async function buildActaReemplazoPDFDoc(rep, scan) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W=210, H=297, M=15;
+  let y;
+
+  const drawHeader = () => {
+    doc.setFillColor(15,32,39);
+    doc.rect(0,0,W,24,'F');
+    try { doc.addImage(DANAIDE_LOGO,'JPEG',M,4,38,16); } catch(e){}
+    doc.setTextColor(0,212,170); doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.text('ACTA DE CONSTATACIÓN TÉCNICA Y REEMPLAZO DE EQUIPAMIENTO', W-M, 11, {align:'right'});
+    doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(180,210,225);
+    doc.text('Licitación Pública N° 21-0004-LPU25 — Orden de Compra N° 21-0009-OCA25 — Renglón N° 1', W-M, 17, {align:'right'});
+    return 30;
+  };
+
+  const drawFooter = (pageNum, totalPages) => {
+    doc.setFillColor(15,32,39); doc.rect(0,287,W,10,'F');
+    doc.setFontSize(7); doc.setTextColor(180,200,210);
+    doc.text('DANAIDE S.A.', M, 293);
+    doc.text(`Página ${pageNum} de ${totalPages}`, W-M, 293, {align:'right'});
+  };
+
+  y = drawHeader();
+
+  // Texto introductorio
+  doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(30,30,30);
+  const introText = 'Entre la DIRECCIÓN NACIONAL DE MIGRACIONES, en adelante "la DNM", y la firma DANAIDE S.A., en adelante "el Proveedor", se suscribe la presente Acta de Constatación Técnica y Reemplazo de equipamiento.';
+  let lines = doc.splitTextToSize(introText, W-M*2);
+  doc.text(lines, M, y); y += lines.length*4.2 + 2;
+
+  const introText2 = 'La presente tiene por objeto dejar constancia de la evaluación técnica efectuada sobre un lector documental comprendido en el servicio contratado, su condición de fuera de servicio y el reemplazo por un nuevo equipo, conforme las previsiones contractuales aplicables.';
+  lines = doc.splitTextToSize(introText2, W-M*2);
+  doc.text(lines, M, y); y += lines.length*4.2 + 6;
+
+  // ── SECCIÓN 1: DATOS DEL LECTOR DOCUMENTAL ──
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(15,32,39);
+  doc.text('1. DATOS DEL LECTOR DOCUMENTAL', M, y); y += 6;
+
+  const fecha = new Date(scan.timestamp);
+  const fechaStr = fecha.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const horaStr = fecha.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  const marcaModeloViejo = scan.scannerModelo || '—';
+
+  const drawField = (label, value) => {
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(60,60,60);
+    doc.text(label, M, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(15,15,15);
+    doc.text(String(value||'—'), M+62, y);
+    y += 6.5;
+  };
+
+  drawField('Fecha de revisión técnica:', `${fechaStr}   Hora: ${horaStr}`);
+  drawField('Dependencia / Paso fronterizo / Sede:', scan.paso || '—');
+  drawField('Marca:', marcaModeloViejo);
+  drawField('Modelo:', marcaModeloViejo);
+  drawField('Nro. de serie / Nro. Inventario DNM:', `${scan.scannerSerie||scan.serieRetira||'—'} / ${scan.invDnm||'—'}`);
+  drawField('Técnico interviniente del Proveedor:', rep.technicianName || '—');
+  y += 3;
+
+  // ── SECCIÓN 2: DESCRIPCIÓN DE LA FALLA ──
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(15,32,39);
+  doc.text('2. DESCRIPCIÓN DE LA FALLA', M, y); y += 6;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(30,30,30);
+  const fallaIntro = 'Se deja constancia de que el lector documental identificado precedentemente fue evaluado técnicamente, constatándose que no se encuentra en condiciones de continuar prestando el servicio requerido.';
+  lines = doc.splitTextToSize(fallaIntro, W-M*2);
+  doc.text(lines, M, y); y += lines.length*4.2 + 3;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+  doc.text('Tipo de falla detectada:', M, y); y += 6;
+
+  const ck = scan.actaReemplazo?.fallaChecklist || {};
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  Object.keys(FALLA_LABELS).forEach(key => {
+    const checked = !!ck[key];
+    doc.setDrawColor(80,80,80);
+    doc.rect(M, y-3, 4, 4);
+    if (checked) {
+      doc.setFont('helvetica','bold');
+      doc.text('X', M+0.8, y-0.1);
+      doc.setFont('helvetica','normal');
+    }
+    doc.text(FALLA_LABELS[key], M+7, y);
+    y += 5.5;
+    if (y > 265) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  });
+  // Otro
+  doc.rect(M, y-3, 4, 4);
+  if (ck.otro) { doc.setFont('helvetica','bold'); doc.text('X', M+0.8, y-0.1); doc.setFont('helvetica','normal'); }
+  doc.text(`Otro: ${ck.otroTexto || '_______________________________'}`, M+7, y);
+  y += 8;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  const fallaConclusion = 'En función de lo expuesto, el Proveedor deja constancia de que el lector documental indicado se encuentra fuera de servicio y no resulta apto para garantizar la continuidad operativa del puesto documental en condiciones adecuadas.';
+  lines = doc.splitTextToSize(fallaConclusion, W-M*2);
+  if (y + lines.length*4.2 > 265) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  doc.text(lines, M, y); y += lines.length*4.2 + 6;
+
+  // ── SECCIÓN 3: CONSTANCIA DE REEMPLAZO ──
+  if (y > 245) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(15,32,39);
+  doc.text('3. CONSTANCIA DE REEMPLAZO', M, y); y += 6;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(30,30,30);
+  const reemplazoIntro = 'A efectos de asegurar la continuidad operativa del servicio, el Proveedor procede al reemplazo del lector documental indicado por un nuevo equipo, conforme el siguiente detalle:';
+  lines = doc.splitTextToSize(reemplazoIntro, W-M*2);
+  doc.text(lines, M, y); y += lines.length*4.2 + 4;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+  doc.text('DATOS DEL NUEVO LECTOR DOCUMENTAL INSTALADO', M, y); y += 6.5;
+
+  const nuevoMarcaModelo = scan.actaReemplazo?.nuevoMarcaModelo || scan.scannerModelo || '—';
+  drawField('Marca:', nuevoMarcaModelo);
+  drawField('Modelo:', nuevoMarcaModelo);
+  y += 3;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  const comodatoText = 'El equipo provisto en reemplazo se entrega en carácter de comodato, sin costo adicional para la DNM, durante la vigencia del servicio contratado, conforme las previsiones del Renglón N° 1 del Pliego.';
+  lines = doc.splitTextToSize(comodatoText, W-M*2);
+  if (y + lines.length*4.2 > 250) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); }
+  doc.text(lines, M, y); y += lines.length*4.2 + 18;
+
+  // ── FIRMA ──
+  if (y > 255) { drawFooter(doc.internal.getNumberOfPages(),0); doc.addPage(); y = drawHeader(); y += 10; }
+  doc.setDrawColor(120,120,120);
+  doc.line(M+30, y, M+110, y); y += 5;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,32,39);
+  doc.text('DANAIDE S.A.', M+70, y, {align:'center'}); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(60,60,60);
+  doc.text(`Inspector DNM: ${rep.inspectorName || '—'}`, M+70, y, {align:'center'});
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    drawFooter(p, totalPages);
+  }
+
+  const fechaArchivo = scan.timestamp ? scan.timestamp.slice(0,10) : rep.date;
+  return { doc, filename: `acta-reemplazo-${scan.scannerSerie||scan.serie||'sn'}-${fechaArchivo}.pdf` };
+}
+
+
 // ======== JIRA ========
 // Configuración fija — el proyecto y tipo de incidencia no son sensibles.
 // Las credenciales reales (email/token de Atlassian) viven solo como Secrets
@@ -1622,6 +1833,23 @@ async function sendToJira() {
         s.jiraTicket = st.key;
         const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
         if (si>=0) localScans[si].jiraTicket = st.key;
+
+        // Si es un reemplazo, generar y adjuntar el Acta de Constatación Técnica y Reemplazo
+        if (s.opType === 'reemplazo') {
+          try {
+            const { doc: actaDoc, filename: actaFilename } = await buildActaReemplazoPDFDoc(rep, s);
+            const actaDataUri = actaDoc.output('datauristring');
+            const actaBase64 = actaDataUri.split(',')[1];
+            const actaUpRes = await jiraUpload(st.key, actaFilename, actaBase64, 'application/pdf');
+            if (!actaUpRes.ok) {
+              console.error('Error al adjuntar Acta de Reemplazo:', await actaUpRes.text());
+            } else {
+              console.log('Acta de Reemplazo adjuntada a', st.key);
+            }
+          } catch(actaErr) {
+            console.error('Error generando/adjuntando Acta de Reemplazo:', actaErr);
+          }
+        }
       } else {
         const errTxt = await sr.text();
         console.error(`Error creando subtarea para scan ${s.id||s.fbId} (${s.serie}):`, errTxt);
@@ -1824,10 +2052,11 @@ async function viewReportSupervisor(id) {
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
       <div style="font-size:13px;font-weight:600;color:var(--accent)">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
-      <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.invDnd?' · N° Inv. DND: '+escHtml(s.invDnd):''}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.invDnd?' · N° Inv. DND: '+escHtml(s.invDnd):''}${s.invDnm?' · N° Inv. DNM: '+escHtml(s.invDnm):''}</div>
       ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
       ${checklistHtml(s.checklist)}
+      ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`).join('')}
     <div class="vr-sig-label">Firma del Inspector DNM — ${escHtml(rep.inspectorName||'')}</div>
     ${sig?`<img src="${sig}" class="vr-sig-img" alt="Firma">`:'<div style="color:var(--text3);font-size:12px;padding:8px">Sin firma</div>'}
@@ -1959,10 +2188,10 @@ function buildExportRows(allScans) {
   const headers = [
     'Fecha', 'Técnico', 'Inspector DNM', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
-    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND',
+    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND', 'N° Inv. DNM',
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
     'Latitud', 'Longitud', 'Dirección',
-    'Serie Retira', 'Serie Nueva',
+    'Serie Retira', 'Serie Nueva', 'Falla Detectada (Acta)',
     'Ticket Jira',
     'Check Vidrio', 'Check Cable USB', 'Check Fuente', 'Check Limpieza'
   ];
@@ -1971,6 +2200,8 @@ function buildExportRows(allScans) {
     const legacy = parsePcDataAssure(s.pcData);
     if (!s.assureEngine && !legacy.engine) console.warn('No AssureID data for scan', s.id, '— pcData:', s.pcData?.substring(0,100));
     const ck = s.checklist || {};
+    const fk = s.actaReemplazo?.fallaChecklist;
+    const fallaResumen = fk ? Object.keys(FALLA_LABELS).filter(k=>fk[k]).map(k=>FALLA_LABELS[k]).concat(fk.otro?[`Otro: ${fk.otroTexto||''}`]:[]).join(' | ') : '';
     return [
       s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
       s.userName || s.technicianName || '',
@@ -1984,6 +2215,7 @@ function buildExportRows(allScans) {
       s.scannerModelo || '',
       s.scannerEstado || '',
       s.invDnd || '',
+      s.invDnm || '',
       s.assureEngine || legacy.engine || '',
       s.assureDocLib || legacy.docLib || '',
       s.assureLicKey || legacy.licKey || '',
@@ -1992,6 +2224,7 @@ function buildExportRows(allScans) {
       s.address || '',
       s.serieRetira || '',
       s.serieNuevo || '',
+      fallaResumen,
       s.jiraTicket || '',
       ck.vidrio ? 'OK' : '',
       ck.cableUsb ? 'OK' : '',
