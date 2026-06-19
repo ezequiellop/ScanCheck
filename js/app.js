@@ -265,6 +265,8 @@ async function startApp() {
   renderTodayList();
   showPage('home', false);
   startLocationTracking();
+  // Cargar tickets Jira asignados al técnico (con delay para no bloquear el render inicial)
+  setTimeout(() => loadJiraTickets(), 2000);
 
   // Supervisor: watch all reports live
   if (currentUser.role === 'supervisor') {
@@ -589,7 +591,8 @@ function showPage(name, addHistory=true) {
   currentPage = name;
   document.getElementById('page-title').textContent = pageTitles[name] || name;
   document.getElementById('btn-back').classList.toggle('hidden', pageHistory.length === 0);
-  if (name === 'home')       { updateStats(); renderTodayList(); }
+  if (name === 'home')        { updateStats(); renderTodayList(); }
+  if (name === 'mis-tickets') { loadJiraTickets(); }
   if (name === 'history')    renderHistory();
   if (name === 'new-scan')   resetNewScanForm();
   if (name === 'supervisor') renderSupervisor();
@@ -2534,6 +2537,124 @@ async function viewReportSupervisor(id) {
   showPage('view-report');
 }
 window.viewReportSupervisor = viewReportSupervisor;
+
+// ======== MIS TICKETS JIRA ========
+// Carga los tickets de Jira asignados al técnico actual, filtrados por contrato DNM
+// y estado pendiente (no resueltos ni cerrados).
+let cachedJiraTickets = [];
+let jiraTicketsLoading = false;
+
+async function loadJiraTickets(forceRefresh = false) {
+  if (jiraTicketsLoading) return;
+  if (!currentUser?.email) return;
+  if (cachedJiraTickets.length && !forceRefresh) {
+    renderJiraTickets(cachedJiraTickets);
+    return;
+  }
+  jiraTicketsLoading = true;
+
+  // JQL: tickets del proyecto DND asignados al técnico, contrato DNM, no cerrados
+  const jql = `project = DND AND assignee = "${currentUser.email}" AND "Contratos" = "Dirección Nacional de Migraciones" AND status not in (Resuelto, Cerrado, Done, Closed) ORDER BY created DESC`;
+
+  try {
+    const res = await fetch(JIRA_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: `/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=20&fields=summary,status,priority,created,issuetype,customfield_10051`,
+        method: 'GET'
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    cachedJiraTickets = (data.issues || []).map(issue => ({
+      key: issue.key,
+      summary: issue.fields.summary,
+      status: issue.fields.status?.name || '—',
+      statusCategory: issue.fields.status?.statusCategory?.key || 'new',
+      priority: issue.fields.priority?.name || '—',
+      issuetype: issue.fields.issuetype?.name || '—',
+      tipoTarea: issue.fields.customfield_10051?.value || null,
+      created: issue.fields.created
+    }));
+    renderJiraTickets(cachedJiraTickets);
+    updateJiraBadge(cachedJiraTickets.length);
+  } catch(e) {
+    console.error('Error cargando tickets Jira:', e);
+    renderJiraTickets(null); // muestra error
+  } finally {
+    jiraTicketsLoading = false;
+  }
+}
+window.loadJiraTickets = loadJiraTickets;
+
+function updateJiraBadge(count) {
+  const badge = document.getElementById('jira-badge');
+  const badgeMenu = document.getElementById('jira-badge-menu');
+  const homeWrap = document.getElementById('jira-tickets-home-wrap');
+  if (count > 0) {
+    if (badge) { badge.textContent = count > 9 ? '9+' : count; badge.classList.remove('hidden'); badge.style.display = 'flex'; }
+    if (badgeMenu) { badgeMenu.textContent = count; badgeMenu.classList.remove('hidden'); }
+    if (homeWrap) homeWrap.classList.remove('hidden');
+  } else {
+    if (badge) { badge.classList.add('hidden'); }
+    if (badgeMenu) { badgeMenu.classList.add('hidden'); }
+    if (homeWrap) homeWrap.classList.add('hidden');
+  }
+}
+
+function jiraStatusColor(statusCategory) {
+  if (statusCategory === 'done') return 'var(--accent)';
+  if (statusCategory === 'indeterminate') return 'var(--warning)';
+  return 'var(--text3)';
+}
+
+function renderJiraTicketCard(t, compact = false) {
+  const fecha = t.created ? new Date(t.created).toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit'}) : '';
+  const color = jiraStatusColor(t.statusCategory);
+  return `<div class="scan-item" style="cursor:pointer" onclick="window.open('${JIRA_BASE_URL}/browse/${escHtml(t.key)}','_blank')">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+      <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent)">${escHtml(t.key)}</span>
+      <span style="font-size:10px;font-weight:600;color:${color};background:${color}22;padding:2px 8px;border-radius:10px;white-space:nowrap">${escHtml(t.status)}</span>
+    </div>
+    <div style="font-size:13px;color:var(--text);margin-bottom:4px;line-height:1.3">${escHtml(t.summary)}</div>
+    ${!compact ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${t.tipoTarea ? `<span style="font-size:10px;color:var(--text3)">📋 ${escHtml(t.tipoTarea)}</span>` : ''}
+      <span style="font-size:10px;color:var(--text3)">🏷 ${escHtml(t.issuetype)}</span>
+      ${fecha ? `<span style="font-size:10px;color:var(--text3)">📅 ${fecha}</span>` : ''}
+    </div>` : ''}
+  </div>`;
+}
+
+function renderJiraTickets(tickets) {
+  const homeList = document.getElementById('jira-tickets-home-list');
+  const pageList = document.getElementById('jira-tickets-page-list');
+
+  if (tickets === null) {
+    // Error al cargar
+    const errHtml = `<div class="empty-state"><p style="color:var(--danger)">No se pudieron cargar los tickets. Verificá tu conexión.</p></div>`;
+    if (homeList) homeList.innerHTML = errHtml;
+    if (pageList) pageList.innerHTML = errHtml;
+    return;
+  }
+
+  if (tickets.length === 0) {
+    const emptyHtml = `<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2"/></svg><p>Sin tickets pendientes asignados</p></div>`;
+    if (homeList) homeList.innerHTML = emptyHtml;
+    if (pageList) pageList.innerHTML = emptyHtml;
+    return;
+  }
+
+  // Home: mostrar máximo 3 en modo compacto
+  if (homeList) {
+    homeList.innerHTML = tickets.slice(0, 3).map(t => renderJiraTicketCard(t, true)).join('');
+  }
+  // Página completa: todos con detalle
+  if (pageList) {
+    pageList.innerHTML = tickets.map(t => renderJiraTicketCard(t, false)).join('');
+  }
+}
+
 
 
 
