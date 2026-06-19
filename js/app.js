@@ -395,12 +395,134 @@ function setSyncStatus(state) {
   dot.title = state === 'ok' ? 'Sincronizado' : state === 'syncing' ? 'Sincronizando...' : state === 'offline' ? 'Sin conexión' : 'Error de sincronización';
 }
 
+// ======== PASOS FRONTERIZOS — BASE DE DATOS GPS ========
+// Coordenadas de cada paso/aeropuerto para autocompletar el campo "Nombre del paso"
+// cuando el técnico está dentro de un radio de 1000m del punto.
+const PASOS_COORDS = [
+  // ── NEUQUÉN / RÍO NEGRO ──
+  { nombre: 'AERO CHAPELCO',                           lat: -40.0750, lon: -71.1361 },
+  { nombre: 'AERO NEUQUEN',                            lat: -38.9489, lon: -68.1556 },
+  { nombre: 'Cardenal Antonio Samoré',                 lat: -40.7000, lon: -71.9333 },
+  { nombre: 'Pérez Rosales',                           lat: -41.0167, lon: -71.8167 },
+  { nombre: 'Pino Hachado',                            lat: -38.6500, lon: -70.8833 },
+  // ── BUENOS AIRES ──
+  { nombre: 'AERO MAR DEL PLATA',                      lat: -37.9342, lon: -57.5733 },
+  // ── BUENOS AIRES METROPOLITANA / PUERTO ──
+  { nombre: 'GUARDIA DE PUERTO',                       lat: -34.6100, lon: -58.3700 },
+  { nombre: 'PUERTO TIGRE',                            lat: -34.4333, lon: -58.5833 },
+  { nombre: 'TERMINAL DE CRUCEROS',                    lat: -34.6150, lon: -58.3650 },
+  // ── INTERNOS / OFICINAS ──
+  { nombre: 'ANTARTIDA ARGENTINA - CAPACITACIONES',    lat: -34.6000, lon: -58.4500 },
+  { nombre: 'ANTARTIDA ARGENTINA - CONTROL MIGRATORIO',lat: -34.6000, lon: -58.4500 },
+  { nombre: 'ANTARTIDA ARGENTINA - INFORMATICA',       lat: -34.6000, lon: -58.4500 },
+  { nombre: 'RENAPER - CONTROL DE CALIDAD - INFORMATICA', lat: -34.6050, lon: -58.4550 },
+  // ── ENTRE RÍOS (Uruguay) ──
+  { nombre: 'Colón - Paysandú',                        lat: -32.2646, lon: -58.1015 },
+  { nombre: 'Concordia - Salto',                       lat: -31.2751, lon: -57.9383 },
+  { nombre: 'Gualeguaychú - Fray Bentos',              lat: -33.1006, lon: -58.2487 },
+  // ── AYSÉN (Chile) ──
+  { nombre: 'Coyhaique',                               lat: -45.4670, lon: -71.5500 },
+  { nombre: 'Huemules',                                lat: -45.5833, lon: -71.6500 },
+  { nombre: 'Jeinemeni',                               lat: -46.5639, lon: -71.6714 },
+  { nombre: 'Triana',                                  lat: -45.7000, lon: -71.9000 },
+  // ── CÓRDOBA / SANTA FE / SAN LUIS ──
+  { nombre: 'AERO CORDOBA',                            lat: -31.3236, lon: -64.2083 },
+  { nombre: 'AERO MERLO - CONLARA',                    lat: -32.3800, lon: -65.1797 },
+  { nombre: 'AERO ROSARIO',                            lat: -32.9036, lon: -60.7850 },
+  { nombre: 'AERO SAUCE VIEJO',                        lat: -31.7117, lon: -60.8117 },
+  // ── FORMOSA / CHACO ──
+  { nombre: 'AERO FORMOSA',                            lat: -26.2127, lon: -58.2281 },
+  { nombre: 'AERO RESISTENCIA',                        lat: -27.4500, lon: -59.0561 },
+  { nombre: 'Clorinda - Puerto José A. Falcón (ENTRADA)', lat: -25.3013, lon: -57.7200 },
+  { nombre: 'Clorinda - Puerto José A. Falcón (SALIDA)',  lat: -25.3013, lon: -57.7200 },
+  { nombre: 'Colonia General Belgrano - General Bruguez', lat: -25.1833, lon: -58.0833 },
+  { nombre: 'Pasarela La Fraternidad',                  lat: -24.8833, lon: -57.9333 },
+  { nombre: 'Puerto Formosa - Puerto Alberdi',          lat: -26.1833, lon: -58.1833 },
+  { nombre: 'Puerto Pilcomayo - Puerto Itá Enramada',   lat: -25.3667, lon: -57.6500 },
+  // ── MISIONES (Brasil/Paraguay) ──
+  { nombre: 'AERO IGUAZU',                             lat: -25.7373, lon: -54.4734 },
+  { nombre: 'Andresito - Capanema',                    lat: -26.0500, lon: -53.9000 },
+  { nombre: 'Bernardo de Irigoyen - Dionisio Cerqueira', lat: -26.2553, lon: -53.6469 },
+  { nombre: 'Iguazú - Foz do Iguaçú',                  lat: -25.5950, lon: -54.5800 },
+  { nombre: 'Pepirí Guazú - Sao Miguel',               lat: -27.1167, lon: -53.7833 },
+  { nombre: 'Puerto Eldorado - Puerto Mayor Julio Otaño', lat: -26.3833, lon: -54.6167 },
+  { nombre: 'Puerto Iguazú - Puerto Tres Fronteras',   lat: -25.5833, lon: -54.5833 },
+  { nombre: 'San Antonio - Santo Antonio',              lat: -26.0833, lon: -53.7000 },
+  { nombre: 'Alba Posse - Porto Maua',                  lat: -27.5667, lon: -54.6667 },
+  { nombre: 'El Soberbio - Porto Soberbo',              lat: -27.2833, lon: -54.1833 },
+  { nombre: 'Panambí - Vera Cruz',                     lat: -27.3500, lon: -54.0333 },
+  { nombre: 'Paso de La Barca - Porto Xavier',          lat: -28.0000, lon: -55.1500 },
+  { nombre: 'Posadas - Encarnación',                   lat: -27.3667, lon: -55.8667 },
+  { nombre: 'Posadas - Encarnación (FFCC)',             lat: -27.3833, lon: -55.8833 },
+  { nombre: 'Puerto Candelaria - Campichuelo',          lat: -27.4167, lon: -55.7500 },
+  { nombre: 'Puerto Maní - Puerto Bella Vista - Sur',   lat: -28.5000, lon: -56.0000 },
+  { nombre: 'Puerto Rico - Puerto Triunfo (Puerto Gral San Martin)', lat: -26.8000, lon: -55.0500 },
+  // ── CORRIENTES (Brasil) ──
+  { nombre: 'Paso de los Libres - Uruguayana',         lat: -29.7431, lon: -57.0931 },
+  { nombre: 'Santo Tomé - Sao Borja',                  lat: -28.5500, lon: -56.0333 },
+  { nombre: 'Yaciretá - Yaciretá',                     lat: -27.4667, lon: -56.6167 },
+  // ── JUJUY / SALTA (Bolivia/Chile/Paraguay) ──
+  { nombre: 'AERO JUJUY',                              lat: -24.3833, lon: -65.0833 },
+  { nombre: 'Aguas Blancas- Bermejo',                  lat: -22.7333, lon: -64.3333 },
+  { nombre: 'El Condado - La Mámora',                  lat: -21.8667, lon: -63.7167 },
+  { nombre: 'Jama',                                    lat: -23.2333, lon: -67.0333 },
+  { nombre: 'La Quiaca - Villazón',                    lat: -22.1000, lon: -65.5983 },
+  { nombre: 'Misión La Paz - Pozo Hondo',              lat: -22.5000, lon: -62.5667 },
+  { nombre: 'Puerto "Las Chalanas"',                   lat: -22.7833, lon: -64.3167 },
+  { nombre: 'Salvador Mazza-Yacuiba',                  lat: -22.0667, lon: -63.7167 },
+  { nombre: 'Sico',                                    lat: -24.0167, lon: -67.7667 },
+  // ── MENDOZA (Chile) ──
+  { nombre: 'Pehuenche',                               lat: -35.6000, lon: -70.3833 },
+  { nombre: 'Portillo de Piuquenes',                   lat: -33.5000, lon: -69.8500 },
+  { nombre: 'Sistema Cristo Redentor (HORCONES)',      lat: -32.8167, lon: -69.8000 },
+  { nombre: 'Sistema Cristo Redentor (LIBERTADORES)',  lat: -32.8333, lon: -70.0667 },
+  { nombre: 'Sistema Cristo Redentor (USPALLATA)',     lat: -32.5833, lon: -69.3500 },
+  { nombre: 'Vergara',                                 lat: -35.2005, lon: -70.5191 },
+  // ── SANTIAGO DEL ESTERO ──
+  { nombre: 'AERO TERMAS DE RIO HONDO',                lat: -27.4950, lon: -64.9350 },
+  { nombre: 'San Francisco',                           lat: -31.4167, lon: -62.0833 },
+  // ── SANTA CRUZ / TDF ──
+  { nombre: 'AERO RIO GALLEGOS',                       lat: -51.6089, lon: -69.3127 },
+  { nombre: 'AERO USHUAIA',                            lat: -54.8433, lon: -68.2958 },
+  { nombre: 'Laurita - Casas Viejas',                  lat: -52.1333, lon: -69.5000 },
+  { nombre: 'Río Bella Vista (ex Radman)',              lat: -54.0167, lon: -68.5000 },
+  { nombre: 'Río Don Guillermo',                       lat: -51.5833, lon: -72.3333 },
+  { nombre: 'San Sebastián',                           lat: -53.1667, lon: -68.5500 },
+];
+
+// Calcula distancia en metros entre dos puntos GPS (fórmula de Haversine)
+function gpsDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Intenta autocompletar el campo "Nombre del paso" si el técnico está dentro de 1000m de algún paso conocido.
+// Solo autocompleta si el campo está vacío (no sobreescribe lo que el técnico ya ingresó).
+function autoFillPasoFromGPS(lat, lon) {
+  const campo = document.getElementById('inp-paso');
+  if (!campo || campo.value.trim()) return; // no sobreescribir si ya tiene algo
+  const RADIO_METROS = 1000;
+  let masNear = null, minDist = Infinity;
+  for (const p of PASOS_COORDS) {
+    const d = gpsDistanceMeters(lat, lon, p.lat, p.lon);
+    if (d < minDist) { minDist = d; masNear = p; }
+  }
+  if (masNear && minDist <= RADIO_METROS) {
+    campo.value = masNear.nombre;
+    showToast(`📍 Paso detectado: ${masNear.nombre}`, 'success');
+  }
+}
+
 // ======== LOCATION TRACKING ========
 function requestLocation() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(pos => {
     currentLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) };
     reverseGeocode(currentLocation.lat, currentLocation.lon);
+    autoFillPasoFromGPS(currentLocation.lat, currentLocation.lon);
   }, () => {}, { enableHighAccuracy: true, timeout: 10000 });
 }
 
