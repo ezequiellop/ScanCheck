@@ -32,6 +32,11 @@ try {
     $ip         = if ($net) { $net.IPAddress[0] } else { 'N/A' }
     $mac        = if ($net) { $net.MACAddress }   else { 'N/A' }
 
+    # --- Uptime ---
+    $uptimeSpan    = (Get-Date) - $os.LastBootUpTime
+    $uptimeStr     = "$($uptimeSpan.Days)d $($uptimeSpan.Hours)h $($uptimeSpan.Minutes)m"
+    $ultimoReinicio = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm')
+
     # --- AssureID ---
     $assureIDVer     = 'No instalado'
     $docLibVer       = 'No instalado'
@@ -56,38 +61,100 @@ try {
         $logPath = "C:\Users\Public\Documents\My AssureID Data\logs\AssureTec.AssureID.LicenseActivator.log"
         if (Test-Path $logPath) {
             $logContent = Get-Content $logPath -Raw
-
             $m = [regex]::Matches($logContent, 'Product edition name = ([^<]+)')
             if ($m.Count -gt 0) { $licEdicion = $m[$m.Count-1].Groups[1].Value.Trim() }
-
             $m = [regex]::Matches($logContent, 'Key = ([^<]+)')
             if ($m.Count -gt 0) { $licKey = $m[$m.Count-1].Groups[1].Value.Trim() }
-
             $m = [regex]::Matches($logContent, 'Type = ([^<]+)')
             if ($m.Count -gt 0) { $licTipo = $m[$m.Count-1].Groups[1].Value.Trim() }
-
             $m = [regex]::Matches($logContent, 'Activation date = ([^<]+)')
             if ($m.Count -gt 0) { $licActivacion = $m[$m.Count-1].Groups[1].Value.Trim() }
-
             $m = [regex]::Matches($logContent, 'Maintenance Expiration Date = ([^<]+)')
             if ($m.Count -gt 0) { $licVencimiento = $m[$m.Count-1].Groups[1].Value.Trim() }
-
             $m = [regex]::Matches($logContent, 'Activation ID = ([^<]+)')
             if ($m.Count -gt 0) { $licActivationID = $m[$m.Count-1].Groups[1].Value.Trim() }
         }
     }
-# --- DESKO PentaScanner ---
-$deskoScanner = 'No detectado'
-$deskoSerial  = 'N/A'
-$deskoStatus  = 'N/A'
 
-$desko = Get-PnpDevice | Where-Object { $_.InstanceId -like "*VID_1AC2&PID_0205*" }
-if ($desko) {
-    $deskoScanner = $desko.FriendlyName
-    $deskoStatus  = $desko.Status
-    $m = [regex]::Match($desko.InstanceId, '\\(\d+_\d+)$')
-    if ($m.Success) { $deskoSerial = $m.Groups[1].Value -replace '_', ' ' }
-}
+    # --- DESKO PentaScanner ---
+    $deskoScanner = 'No detectado'
+    $deskoSerial  = 'N/A'
+    $deskoStatus  = 'N/A'
+    $desko = Get-PnpDevice | Where-Object { $_.InstanceId -like "*VID_1AC2&PID_0205*" }
+    if ($desko) {
+        $deskoScanner = $desko.FriendlyName
+        $deskoStatus  = $desko.Status
+        $m = [regex]::Match($desko.InstanceId, '\\(\d+_\d+)$')
+        if ($m.Success) { $deskoSerial = $m.Groups[1].Value -replace '_', ' ' }
+    }
+
+    # --- Disco rigido (SMART + espacio) ---
+    $discoEstado   = 'N/A'
+    $discoModelo   = 'N/A'
+    $discoSerial   = 'N/A'
+    $discoTipo     = 'N/A'
+    $discoTotalGB  = 'N/A'
+    $discoLibreGB  = 'N/A'
+    $discoUsoPct   = 'N/A'
+    $discoTempC    = 'N/A'
+
+    try {
+        $disco = Get-PhysicalDisk | Select-Object -First 1
+        if ($disco) {
+            $discoModelo  = $disco.FriendlyName
+            $discoSerial  = $disco.SerialNumber.Trim()
+            $discoTipo    = $disco.MediaType  # HDD / SSD / Unspecified
+            $discoEstado  = $disco.HealthStatus  # Healthy / Warning / Unhealthy
+        }
+        # Espacio en disco C:
+        $driveC = Get-PSDrive -Name C -ErrorAction SilentlyContinue
+        if ($driveC) {
+            $usedC      = [math]::Round($driveC.Used / 1GB, 1)
+            $freeC      = [math]::Round($driveC.Free / 1GB, 1)
+            $totalC     = [math]::Round(($driveC.Used + $driveC.Free) / 1GB, 1)
+            $discoTotalGB = $totalC
+            $discoLibreGB = $freeC
+            $discoUsoPct  = [math]::Round(($usedC / $totalC) * 100, 1)
+        }
+        # Temperatura del disco via MSFT_StorageReliabilityCounter (Win8+)
+        try {
+            $tempObj = Get-StorageReliabilityCounter -PhysicalDisk $disco -ErrorAction Stop
+            if ($tempObj.Temperature -gt 0) { $discoTempC = $tempObj.Temperature }
+        } catch { $discoTempC = 'N/D' }
+    } catch { $discoEstado = 'Error al leer disco' }
+
+    # --- Puertos USB (estado general + scanner DESKO) ---
+    $usbControladores = 'N/A'
+    $usbErrores       = 'Ninguno'
+    $usbDesconocidos  = 0
+
+    try {
+        $usbCtrl = Get-PnpDevice | Where-Object { $_.Class -eq 'USB' -and $_.Status -ne 'OK' }
+        $usbDesconocidos = ($usbCtrl | Measure-Object).Count
+        if ($usbDesconocidos -gt 0) {
+            $usbErrores = ($usbCtrl | Select-Object -ExpandProperty FriendlyName) -join '; '
+        }
+        $usbControladores = (Get-PnpDevice | Where-Object { $_.Class -eq 'USB' } | Measure-Object).Count
+    } catch { $usbControladores = 'Error al leer USB' }
+
+    # --- Windows Update: reinicios pendientes ---
+    $reinicioPendiente = 'No'
+    try {
+        $wuReg1 = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+        $wuReg2 = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+        $wuReg3 = Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations'
+        if ($wuReg1 -or $wuReg2 -or $wuReg3) { $reinicioPendiente = 'SI - Reinicio requerido' }
+    } catch {}
+
+    # --- Actualizaciones pendientes (conteo rapido sin descargar) ---
+    $updatesPendientes = 'N/D'
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $result = $searcher.Search("IsInstalled=0 and Type='Software'")
+        $updatesPendientes = $result.Updates.Count
+    } catch { $updatesPendientes = 'N/D' }
+
     $data = [PSCustomObject]@{
         Fecha                    = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         NombrePC                 = $env:COMPUTERNAME
@@ -103,6 +170,21 @@ if ($desko) {
         MemoriaLibre_GB          = $freeMemGB
         MemoriaUsada_GB          = $usedMemGB
         UsoMemoria_Porcentaje    = $memUsePct
+        Uptime                   = $uptimeStr
+        UltimoReinicio           = $ultimoReinicio
+        ReinicioPendiente        = $reinicioPendiente
+        UpdatesPendientes        = $updatesPendientes
+        Disco_Modelo             = $discoModelo
+        Disco_Serial             = $discoSerial
+        Disco_Tipo               = $discoTipo
+        Disco_Estado_SMART       = $discoEstado
+        Disco_Total_GB           = $discoTotalGB
+        Disco_Libre_GB           = $discoLibreGB
+        Disco_Uso_Porcentaje     = $discoUsoPct
+        Disco_Temperatura_C      = $discoTempC
+        USB_Dispositivos_Total   = $usbControladores
+        USB_Dispositivos_Error   = $usbDesconocidos
+        USB_Errores_Detalle      = $usbErrores
         AssureID_Engine_Version  = $assureIDVer
         AssureID_DocLib_Version  = $docLibVer
         AssureID_Edicion         = $licEdicion
@@ -111,9 +193,9 @@ if ($desko) {
         AssureID_Activacion      = $licActivacion
         AssureID_Vencimiento     = $licVencimiento
         AssureID_ActivationID    = $licActivationID
-        DESKO_Scanner_Modelo = $deskoScanner
-        DESKO_Scanner_Serial = $deskoSerial
-        DESKO_Scanner_Status = $deskoStatus
+        DESKO_Scanner_Modelo     = $deskoScanner
+        DESKO_Scanner_Serial     = $deskoSerial
+        DESKO_Scanner_Status     = $deskoStatus
     }
 
     # --- CSV ---
@@ -152,7 +234,7 @@ try {
 $linea = "-" * 50
 $contenido = "$linea`n  INVENTARIO PC - $env:COMPUTERNAME`n$linea`n"
 $data.PSObject.Properties | ForEach-Object {
-    $contenido += "  {0,-25}: {1}`n" -f $_.Name, $_.Value
+    $contenido += "  {0,-30}: {1}`n" -f $_.Name, $_.Value
 }
 $contenido += "$linea`n"
 [System.IO.File]::WriteAllText($TXT, $contenido, [System.Text.Encoding]::UTF8)
@@ -164,7 +246,6 @@ Write-Host "  TXT generado: $TXT" -ForegroundColor Green
 Write-Host ""
 Write-Host "Generando QR para ScanCheck..." -ForegroundColor Yellow
 
-# QR con claves cortas (2-3 letras) para mantener QR legible
 $jsonObj = [ordered]@{
     PC   = $data.NombrePC
     USR  = $data.Usuario
@@ -178,6 +259,20 @@ $jsonObj = [ordered]@{
     RAMT = [string]$data.MemoriaTotal_GB
     RAMU = [string]$data.MemoriaUsada_GB
     RAMP = [string]$data.UsoMemoria_Porcentaje
+    UPT  = $data.Uptime
+    LBT  = $data.UltimoReinicio
+    RPD  = $data.ReinicioPendiente
+    UPD  = [string]$data.UpdatesPendientes
+    DSM  = $data.Disco_Modelo
+    DSS  = $data.Disco_Serial
+    DST  = $data.Disco_Tipo
+    DSH  = $data.Disco_Estado_SMART
+    DSTG = [string]$data.Disco_Total_GB
+    DSLG = [string]$data.Disco_Libre_GB
+    DSUP = [string]$data.Disco_Uso_Porcentaje
+    DSTC = [string]$data.Disco_Temperatura_C
+    USBT = [string]$data.USB_Dispositivos_Total
+    USBE = [string]$data.USB_Dispositivos_Error
     AEV  = $data.AssureID_Engine_Version
     ADL  = $data.AssureID_DocLib_Version
     AED  = $data.AssureID_Edicion
@@ -194,21 +289,13 @@ $jsonObj = [ordered]@{
 
 $jsonStr = $jsonObj | ConvertTo-Json -Compress
 $qrData  = [System.Uri]::EscapeDataString($jsonStr)
-$qrUrl   = "https://api.qrserver.com/v1/create-qr-code/?size=380x380&ecc=M&data=$qrData"
+$qrUrl   = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&data=$qrData"
 
-# Filas de la tabla HTML (sin emojis)
-$tablaFilas = ""
-$jsonObj.GetEnumerator() | ForEach-Object {
-    $color = "#e8f4f8"
-    if ($_.Key -like "AssureID*") { $color = "#a8d8ff" }
-    if ($_.Key -eq "NombrePC" -or $_.Key -eq "Serial") { $color = "#00d4aa" }
-    $tablaFilas += "<tr><td style='color:#4a6a7d;padding:5px 10px;font-size:12px'>" + $_.Key + "</td><td style='color:" + $color + ";padding:5px 10px;font-size:12px;font-family:monospace'>" + $_.Value + "</td></tr>`n"
-}
-
-# Estado AssureID sin emojis
-$assureStatus = if ($data.AssureID_Engine_Version -ne 'No instalado') { "Instalado v" + $data.AssureID_Engine_Version } else { "No instalado" }
-$licStatus    = if ($data.AssureID_LicenseKey -ne 'N/A') { "Activa - " + $data.AssureID_Tipo } else { "Sin licencia detectada" }
-$licVenc      = if ($data.AssureID_Vencimiento -ne 'N/A') { $data.AssureID_Vencimiento } else { "N/A" }
+# Helper para color segun estado
+$discoColor = if ($data.Disco_Estado_SMART -eq 'Healthy') { '#00d4aa' } elseif ($data.Disco_Estado_SMART -like '*Warning*') { '#ffa040' } else { '#ff5555' }
+$usbColor   = if ($data.USB_Dispositivos_Error -eq 0) { '#00d4aa' } else { '#ff5555' }
+$reinicioColor = if ($data.ReinicioPendiente -eq 'No') { '#00d4aa' } else { '#ffa040' }
+$updColor   = if ($data.UpdatesPendientes -eq 0) { '#00d4aa' } elseif ($data.UpdatesPendientes -eq 'N/D') { '#8bafc4' } else { '#ffa040' }
 
 $pc    = $data.NombrePC
 $fecha = $data.Fecha
@@ -222,6 +309,9 @@ $memU  = $data.MemoriaUsada_GB
 $memT  = $data.MemoriaTotal_GB
 $memP  = $data.UsoMemoria_Porcentaje
 $cpuP  = $data.UsoCPU_Porcentaje
+$assureStatus = if ($data.AssureID_Engine_Version -ne 'No instalado') { "Instalado v" + $data.AssureID_Engine_Version } else { "No instalado" }
+$licStatus    = if ($data.AssureID_LicenseKey -ne 'N/A') { "Activa - " + $data.AssureID_Tipo } else { "Sin licencia detectada" }
+$licVenc      = if ($data.AssureID_Vencimiento -ne 'N/A') { $data.AssureID_Vencimiento } else { "N/A" }
 
 $htmlContent = @"
 <!DOCTYPE html>
@@ -229,14 +319,12 @@ $htmlContent = @"
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ScanCheck QR - $pc</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Segoe UI',Arial,sans-serif; background:#0f2027; color:#e8f4f8; padding:20px; }
-  .container { max-width:560px; margin:0 auto; }
+  .container { max-width:580px; margin:0 auto; }
   .header { background:#162436; border:1px solid rgba(0,212,170,.3); border-radius:16px; padding:20px; margin-bottom:16px; }
   .header h1 { font-size:18px; color:#00d4aa; margin-bottom:6px; }
   .header .pc { font-size:20px; color:#e8f4f8; font-weight:700; }
@@ -246,28 +334,21 @@ $htmlContent = @"
   .steps ol { padding-left:18px; font-size:12px; color:#8bafc4; line-height:2.2; }
   .steps li b { color:#e8f4f8; }
   .qr-box { background:white; border-radius:16px; padding:16px; text-align:center; margin-bottom:16px; }
-  .qr-box img { width:320px; height:320px; display:block; margin:0 auto; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
-  .card { background:#162436; border:1px solid rgba(0,212,170,.15); border-radius:10px; padding:12px; }
-  .card .lbl { font-size:10px; color:#4a6a7d; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+  .qr-box img { width:340px; height:340px; display:block; margin:0 auto; }
+  .section { background:#162436; border:1px solid rgba(0,212,170,.15); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .section h3 { font-size:12px; color:#4a6a7d; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .card { background:#0f2027; border-radius:8px; padding:10px 12px; }
+  .card .lbl { font-size:10px; color:#4a6a7d; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
   .card .val { font-size:13px; color:#e8f4f8; font-weight:600; }
-  .assure { background:#162436; border:1px solid rgba(0,174,255,.2); border-radius:12px; padding:14px; margin-bottom:16px; }
-  .assure h3 { font-size:13px; color:#00aeff; margin-bottom:10px; }
   .arow { display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.05); }
   .arow:last-child { border-bottom:none; }
   .arow .k { color:#4a6a7d; }
-  .arow .v { color:#e8f4f8; font-family:monospace; text-align:right; max-width:220px; word-break:break-all; }
-  table { width:100%; border-collapse:collapse; background:#162436; border-radius:12px; overflow:hidden; margin-bottom:16px; }
-  th { background:#1e3347; color:#4a6a7d; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:8px 10px; text-align:left; }
-  tr:nth-child(even) { background:rgba(255,255,255,.02); }
+  .arow .v { color:#e8f4f8; font-family:monospace; text-align:right; max-width:260px; word-break:break-all; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .footer { font-size:10px; color:#4a6a7d; text-align:center; padding-top:8px; }
 </style>
-<script>
-// Forzar recarga si la pagina viene del cache del navegador (bfcache)
-window.addEventListener('pageshow', function(e) {
-  if (e.persisted) location.reload();
-});
-</script>
+<script>window.addEventListener('pageshow',function(e){if(e.persisted)location.reload();});</script>
 </head>
 <body>
 <div class="container">
@@ -287,18 +368,50 @@ window.addEventListener('pageshow', function(e) {
     </ol>
   </div>
   <div class="qr-box">
-    <img src="$qrUrl" alt="QR ScanCheck" onerror="this.outerHTML='<p style=color:#ff5555;padding:20px>Sin internet para generar QR. Conectate y recarga.</p>'">
+    <img src="$qrUrl" alt="QR ScanCheck" onerror="this.outerHTML='<p style=color:#ff5555;padding:20px>Sin internet. Conectate y recarga.</p>'">
   </div>
-  <div class="grid">
-    <div class="card"><div class="lbl">Equipo</div><div class="val">$fab $mod</div></div>
-    <div class="card"><div class="lbl">N Serie</div><div class="val" style="color:#00d4aa">$ser</div></div>
-    <div class="card"><div class="lbl">IP</div><div class="val">$ipv</div></div>
-    <div class="card"><div class="lbl">RAM Usada</div><div class="val">${memU}/${memT} GB ($memP%)</div></div>
-    <div class="card"><div class="lbl">CPU Uso</div><div class="val">$cpuP%</div></div>
-    <div class="card"><div class="lbl">MAC</div><div class="val" style="font-size:11px">$macv</div></div>
+
+  <div class="section">
+    <h3>Sistema</h3>
+    <div class="grid2">
+      <div class="card"><div class="lbl">Equipo</div><div class="val">$fab $mod</div></div>
+      <div class="card"><div class="lbl">N Serie</div><div class="val" style="color:#00d4aa">$ser</div></div>
+      <div class="card"><div class="lbl">IP</div><div class="val">$ipv</div></div>
+      <div class="card"><div class="lbl">MAC</div><div class="val" style="font-size:10px">$macv</div></div>
+      <div class="card"><div class="lbl">CPU Uso</div><div class="val">$cpuP%</div></div>
+      <div class="card"><div class="lbl">RAM</div><div class="val">${memU}/${memT} GB ($memP%)</div></div>
+    </div>
   </div>
-  <div class="assure">
-    <h3>AssureID</h3>
+
+  <div class="section">
+    <h3>Estado del sistema</h3>
+    <div class="arow"><span class="k">Uptime</span><span class="v">$($data.Uptime)</span></div>
+    <div class="arow"><span class="k">Ultimo reinicio</span><span class="v">$($data.UltimoReinicio)</span></div>
+    <div class="arow"><span class="k">Reinicio pendiente</span><span class="v"><span class="badge" style="background:${reinicioColor}22;color:${reinicioColor}">$($data.ReinicioPendiente)</span></span></div>
+    <div class="arow"><span class="k">Actualizaciones pendientes</span><span class="v"><span class="badge" style="background:${updColor}22;color:${updColor}">$($data.UpdatesPendientes)</span></span></div>
+  </div>
+
+  <div class="section">
+    <h3>Disco rigido</h3>
+    <div class="arow"><span class="k">Modelo</span><span class="v">$($data.Disco_Modelo)</span></div>
+    <div class="arow"><span class="k">Tipo</span><span class="v">$($data.Disco_Tipo)</span></div>
+    <div class="arow"><span class="k">Estado SMART</span><span class="v"><span class="badge" style="background:${discoColor}22;color:${discoColor}">$($data.Disco_Estado_SMART)</span></span></div>
+    <div class="arow"><span class="k">Espacio total / libre</span><span class="v">$($data.Disco_Total_GB) GB / $($data.Disco_Libre_GB) GB ($($data.Disco_Uso_Porcentaje)% usado)</span></div>
+    <div class="arow"><span class="k">Temperatura</span><span class="v">$($data.Disco_Temperatura_C) C</span></div>
+    <div class="arow"><span class="k">Serial</span><span class="v">$($data.Disco_Serial)</span></div>
+  </div>
+
+  <div class="section">
+    <h3>USB</h3>
+    <div class="arow"><span class="k">Dispositivos USB detectados</span><span class="v">$($data.USB_Dispositivos_Total)</span></div>
+    <div class="arow"><span class="k">Dispositivos con error</span><span class="v"><span class="badge" style="background:${usbColor}22;color:${usbColor}">$($data.USB_Dispositivos_Error)</span></span></div>
+    <div class="arow"><span class="k">Detalle errores</span><span class="v">$($data.USB_Errores_Detalle)</span></div>
+    <div class="arow"><span class="k">Scanner DESKO</span><span class="v">$($data.DESKO_Scanner_Modelo) ($($data.DESKO_Scanner_Status))</span></div>
+    <div class="arow"><span class="k">Serie DESKO</span><span class="v" style="color:#00d4aa">$($data.DESKO_Scanner_Serial)</span></div>
+  </div>
+
+  <div class="section" style="border-color:rgba(0,174,255,.2)">
+    <h3 style="color:#00aeff">AssureID</h3>
     <div class="arow"><span class="k">Engine</span><span class="v">$assureStatus</span></div>
     <div class="arow"><span class="k">Doc Library</span><span class="v">$($data.AssureID_DocLib_Version)</span></div>
     <div class="arow"><span class="k">Edicion</span><span class="v">$($data.AssureID_Edicion)</span></div>
@@ -308,10 +421,7 @@ window.addEventListener('pageshow', function(e) {
     <div class="arow"><span class="k">Vencimiento</span><span class="v" style="color:#ffa040">$licVenc</span></div>
     <div class="arow"><span class="k">Activation ID</span><span class="v">$($data.AssureID_ActivationID)</span></div>
   </div>
-  <table>
-    <tr><th>Campo</th><th>Valor</th></tr>
-    $tablaFilas
-  </table>
+
   <div class="footer">Generado por ScanCheck -- Danaide Enterprise | $fecha</div>
 </div>
 </body>

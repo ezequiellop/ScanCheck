@@ -85,6 +85,7 @@ let sigCanvas, sigCtx, sigDrawing = false, sigHasDraw = false;
 let overlayTimer = null;
 let qrScanning = false;
 let qrAssureEngine = null, qrAssureDocLib = null, qrAssureLicKey = null;
+let qrDatosSistema = {}; // campos nuevos del ps1 v2: disco, USB, uptime, actualizaciones
 let localScans = [];
 let localReports = [];
 let unsubLocations = null;
@@ -724,7 +725,7 @@ function resetNewScanForm() {
   ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
   capturedPhotos = []; currentOpType = 'mantenimiento';
   currentIncidenciaSubtipo = 'cambio_equipo'; currentInstalacionSubtipo = 'instalacion_nueva';
-  qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
+  qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null; qrDatosSistema = {};
   document.querySelectorAll('.op-btn[data-op]').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
   document.getElementById('incidencia-fields').classList.add('hidden');
@@ -917,12 +918,43 @@ function processQRData(raw) {
     const assureDocLib = g('ADL','AssureID_DocLib_Version','');
     const assureLicKey = g('ALK','AssureID_LicenseKey','');
 
+    // ── Campos nuevos v2 ──
+    const qrUptime      = g('UPT','Uptime','');
+    const qrUltimoRein  = g('LBT','UltimoReinicio','');
+    const qrReinPend    = g('RPD','ReinicioPendiente','');
+    const qrUpdPend     = g('UPD','UpdatesPendientes','');
+    const qrDiscoModelo = g('DSM','Disco_Modelo','');
+    const qrDiscoSerial = g('DSS','Disco_Serial','');
+    const qrDiscoTipo   = g('DST','Disco_Tipo','');
+    const qrDiscoSMART  = g('DSH','Disco_Estado_SMART','');
+    const qrDiscoTotalGB= g('DSTG','Disco_Total_GB','');
+    const qrDiscoLibreGB= g('DSLG','Disco_Libre_GB','');
+    const qrDiscoUsoPct = g('DSUP','Disco_Uso_Porcentaje','');
+    const qrDiscoTempC  = g('DSTC','Disco_Temperatura_C','');
+    const qrUsbTotal    = g('USBT','USB_Dispositivos_Total','');
+    const qrUsbErrores  = g('USBE','USB_Dispositivos_Error','');
+
+    // Guardar en estado de módulo para saveScan
+    if (qrUptime)      qrDatosSistema.uptime      = qrUptime;
+    if (qrUltimoRein)  qrDatosSistema.ultimoRein  = qrUltimoRein;
+    if (qrReinPend)    qrDatosSistema.reinPend     = qrReinPend;
+    if (qrUpdPend)     qrDatosSistema.updPend      = qrUpdPend;
+    if (qrDiscoModelo) qrDatosSistema.discoModelo  = qrDiscoModelo;
+    if (qrDiscoSerial) qrDatosSistema.discoSerial  = qrDiscoSerial;
+    if (qrDiscoTipo)   qrDatosSistema.discoTipo    = qrDiscoTipo;
+    if (qrDiscoSMART)  qrDatosSistema.discoSMART   = qrDiscoSMART;
+    if (qrDiscoTotalGB)qrDatosSistema.discoTotalGB = qrDiscoTotalGB;
+    if (qrDiscoLibreGB)qrDatosSistema.discoLibreGB = qrDiscoLibreGB;
+    if (qrDiscoUsoPct) qrDatosSistema.discoUsoPct  = qrDiscoUsoPct;
+    if (qrDiscoTempC)  qrDatosSistema.discoTempC   = qrDiscoTempC;
+    if (qrUsbTotal)    qrDatosSistema.usbTotal      = qrUsbTotal;
+    if (qrUsbErrores)  qrDatosSistema.usbErrores    = qrUsbErrores;
+
     if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
     if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el&&!el.value) el.value=dskSerie; }
     if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el&&!el.value) el.value=dskModelo; }
     if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el&&!el.value) el.value=dskEstado; }
-    // Store AssureID versions in module-level state for saveScan
     if (assureEngine) qrAssureEngine = assureEngine;
     if (assureDocLib) qrAssureDocLib = assureDocLib;
     if (assureLicKey) qrAssureLicKey = assureLicKey;
@@ -955,6 +987,14 @@ function processQRData(raw) {
       if (ip)        lines.push('IP: '+ip+'  MAC: '+mac);
       if (cpu)       lines.push('CPU: '+cpu+' ('+cpup+'%)');
       if (ramt)      lines.push('RAM: '+ramu+'/'+ramt+' GB ('+ramp+'% uso)');
+      // Campos nuevos en notas
+      if (qrUptime)       lines.push('Uptime: '+qrUptime+' | Ultimo reinicio: '+qrUltimoRein);
+      if (qrReinPend && qrReinPend!=='No') lines.push('⚠ Reinicio pendiente: '+qrReinPend);
+      if (qrUpdPend && qrUpdPend!=='0' && qrUpdPend!=='N/D') lines.push('⚠ Actualizaciones pendientes: '+qrUpdPend);
+      if (qrDiscoModelo)  lines.push('Disco: '+qrDiscoModelo+' ('+qrDiscoTipo+') — SMART: '+qrDiscoSMART);
+      if (qrDiscoTotalGB) lines.push('Espacio disco: '+qrDiscoLibreGB+' GB libres / '+qrDiscoTotalGB+' GB total ('+qrDiscoUsoPct+'% uso)');
+      if (qrDiscoTempC && qrDiscoTempC!=='N/D') lines.push('Temp disco: '+qrDiscoTempC+'°C');
+      if (qrUsbTotal)     lines.push('USB: '+qrUsbTotal+' disp. detectados, '+qrUsbErrores+' con error');
       if (aev && aev!=='No instalado') {
         lines.push('--- AssureID ---');
         lines.push('Engine: v'+aev);
@@ -1077,6 +1117,7 @@ async function saveScan() {
     paso, puesto, serie, serieRetira, serieNuevo, notas,
     pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo, fallaReparable, instalacionReemplazoData,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
+    datosSistema: Object.keys(qrDatosSistema).length ? {...qrDatosSistema} : null,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
     pcData,
@@ -1127,25 +1168,47 @@ function viewScan(id) {
   const photos = (scan.photos||[]).map(p=>`<img src="${p}" class="modal-photo" style="margin-bottom:6px" alt="foto">`).join('');
   document.getElementById('modal-scan-content').innerHTML = `
     ${photos||'<div style="height:70px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:12px;background:var(--bg3);border-radius:10px;margin-bottom:14px">Sin fotos</div>'}
+
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">General</div>
     <div class="modal-fields">
       ${fTag('Paso',scan.paso)} ${fTag('Puesto',scan.puesto)}
-      ${fTag('Serie PC',scan.serie)} ${fTag('Tipo',opLabel(scan.opType))}
-      ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''}
-      ${scan.scannerSerie?fTag('Serie Scanner',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo Scanner',scan.scannerModelo):''}
-      ${scan.scannerEstado?fTag('Estado Scanner',scan.scannerEstado):''} ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''}
-      ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
+      ${fTag('Tipo',opLabel(scan.opType))}
       ${scan.jiraTicket?fTagHtml('Jira',jiraTicketLink(scan.jiraTicket)):''}
-      ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
-      ${scan.instalacionReemplazoData?fTag('Equipo retirado (contrato anterior)',`${scan.instalacionReemplazoData.marcaVieja} — ${scan.instalacionReemplazoData.serieVieja}`):''}
+      <div style="font-size:11px;color:var(--text3);font-family:var(--mono);grid-column:1/-1">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
+      ${scan.address?`<div style="font-size:11px;color:var(--text3);grid-column:1/-1">📍 ${escHtml(scan.address)}</div>`:''}
     </div>
+
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">🖨 Scanner DESKO</div>
+    <div class="modal-fields">
+      ${scan.scannerSerie?fTag('Serie',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo',scan.scannerModelo):''}
+      ${scan.scannerEstado?fTag('Estado',scan.scannerEstado):''}
+      ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''} ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
+      ${scan.serieRetira?fTag('Serie retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Serie nueva',scan.serieNuevo):''}
+      ${scan.instalacionReemplazoData?fTag('Equipo retirado',`${scan.instalacionReemplazoData.marcaVieja} — ${scan.instalacionReemplazoData.serieVieja}`):''}
+    </div>
+
+    ${(scan.assureEngine && scan.assureEngine!=='No instalado')?`
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">🔑 AssureID</div>
+    <div class="modal-fields">
+      ${fTag('Engine',scan.assureEngine)} ${fTag('DocLib',scan.assureDocLib)}
+      ${scan.assureLicKey&&scan.assureLicKey!=='N/A'?fTag('License Key',scan.assureLicKey):''}
+    </div>`:''}
+
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">💻 PC</div>
+    <div class="modal-fields">
+      ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''} ${fTag('Serie PC',scan.serie)}
+    </div>
+    ${datosSistemaHtml(scan.datosSistema)}
+
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">✅ Checklists</div>
     ${checklistHtml(scan.checklist)}
     ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
     ${scan.opType==='falla_reparable'?fallaReparableHtml(scan.fallaReparable):''}
-    ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
-    ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
-    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
-    ${scan.address?`<div style="font-size:11px;color:var(--text3)">📍 ${escHtml(scan.address)}</div>`:''}
-    ${scan.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:10px;width:100%" onclick="downloadActaReemplazo('${id}')">📄 Descargar Acta de Reemplazo</button>`:''}
+    ${scan.opType==='cambio_equipo'?fallaChecklistHtml(scan.actaReemplazo):''}
+
+    ${scan.notas?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📝 Notas</div><div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
+
+    ${scan.opType==='reemplazo'||scan.opType==='cambio_equipo'?`<button class="btn-secondary" style="margin-top:10px;width:100%" onclick="downloadActaReemplazo('${id}')">📄 Descargar Acta de Reemplazo</button>`:''}
   `;
   document.getElementById('modal-scan').classList.remove('hidden');
 }
@@ -1225,6 +1288,30 @@ function fallaReparableLines(fallaReparable) {
   if (fallaReparable.otro) lines.push(`OK — Otro: ${fallaReparable.otroTexto||''}`);
   return lines;
 }
+
+// Muestra los datos del sistema (disco, USB, uptime) capturados del QR del ps1 v2
+function datosSistemaHtml(ds) {
+  if (!ds || !Object.keys(ds).length) return '';
+  const smartColor = ds.discoSMART === 'Healthy' ? 'var(--accent)' : ds.discoSMART ? 'var(--warning)' : 'var(--text3)';
+  const usbColor = ds.usbErrores === '0' || ds.usbErrores === 0 ? 'var(--accent)' : 'var(--danger)';
+  const reinColor = ds.reinPend === 'No' ? 'var(--accent)' : 'var(--warning)';
+  let rows = '';
+  if (ds.uptime)      rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Uptime</span><span>${escHtml(ds.uptime)}</span></div>`;
+  if (ds.ultimoRein)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Último reinicio</span><span>${escHtml(ds.ultimoRein)}</span></div>`;
+  if (ds.reinPend)    rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Reinicio pendiente</span><span style="color:${reinColor};font-weight:700">${escHtml(ds.reinPend)}</span></div>`;
+  if (ds.updPend)     rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Updates pendientes</span><span style="color:${ds.updPend==='0'?'var(--accent)':'var(--warning)'};font-weight:700">${escHtml(ds.updPend)}</span></div>`;
+  if (ds.discoModelo) rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Disco</span><span>${escHtml(ds.discoModelo)} (${escHtml(ds.discoTipo||'')})</span></div>`;
+  if (ds.discoSMART)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Estado SMART</span><span style="color:${smartColor};font-weight:700">${escHtml(ds.discoSMART)}</span></div>`;
+  if (ds.discoTotalGB)rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Espacio disco C:</span><span>${escHtml(ds.discoLibreGB)} GB libres / ${escHtml(ds.discoTotalGB)} GB (${escHtml(ds.discoUsoPct)}% uso)</span></div>`;
+  if (ds.discoTempC && ds.discoTempC!=='N/D') rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Temp. disco</span><span>${escHtml(ds.discoTempC)}°C</span></div>`;
+  if (ds.usbTotal)    rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">USB detectados</span><span>${escHtml(ds.usbTotal)} disp. — <span style="color:${usbColor};font-weight:700">${escHtml(ds.usbErrores)} con error</span></span></div>`;
+  if (!rows) return '';
+  return `<div style="margin:8px 0">
+    <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">💻 ESTADO DEL SISTEMA (PC)</div>
+    <div style="background:var(--bg3);border-radius:10px;padding:10px 12px">${rows}</div>
+  </div>`;
+}
+
 // Versión para el PDF (texto plano, sin HTML) — array de líneas "OK/— — etiqueta"
 function checklistLines(checklist) {
   if (!checklist) return [];
@@ -1338,22 +1425,36 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
         <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span>
       </div>
       ${strip}
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">🖨 Scanner DESKO</div>
       <div class="report-item-fields">
-        ${fTag('Puesto',s.puesto)} ${fTag('Serie PC',s.serie)}
-        ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''}
-        ${s.scannerSerie?fTag('Serie Scanner',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo Scanner',s.scannerModelo):''}
-        ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''} ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''}
-        ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
-        ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
-        ${s.instalacionReemplazoData?fTag('Equipo retirado (contrato anterior)',`${s.instalacionReemplazoData.marcaVieja} — ${s.instalacionReemplazoData.serieVieja}`):''}
+        ${s.scannerSerie?fTag('Serie',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo',s.scannerModelo):''}
+        ${s.scannerEstado?fTag('Estado',s.scannerEstado):''}
+        ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''} ${s.invDnm?fTag('N° Inv. DNM',s.invDnm):''}
+        ${s.serieRetira?fTag('Serie retira',s.serieRetira):''} ${s.serieNuevo?fTag('Serie nueva',s.serieNuevo):''}
+        ${s.instalacionReemplazoData?fTag('Equipo retirado',`${s.instalacionReemplazoData.marcaVieja} — ${s.instalacionReemplazoData.serieVieja}`):''}
+      </div>
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">💻 PC</div>
+      <div class="report-item-fields">
+        ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''} ${fTag('Serie PC',s.serie)}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
+        ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
         ${s.address?fTag('Dirección',s.address):''}
       </div>
-      ${checklistHtml(s.checklist)}
-      ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
-      ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
-      ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
+      <div style="padding:0 14px">
+        ${datosSistemaHtml(s.datosSistema)}
+        ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${escHtml(s.notas)}</div>`:''}
+      </div>
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">✅ Checklists</div>
+      <div style="padding:0 14px">
+        ${checklistHtml(s.checklist)}
+        ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
+        ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
+      </div>
+      ${s.opType==='reemplazo'?`<div style="padding:8px 14px"><button class="btn-secondary" style="width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button></div>`:''}
     </div>`;
   }).join('');
   sigHasDraw=false;
@@ -1415,6 +1516,7 @@ async function saveReport() {
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
     pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
+    datosSistema: s.datosSistema || null,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
     timestamp: s.timestamp, userId: s.userId, userName: s.userName,
@@ -1548,21 +1650,34 @@ async function viewReport(id) {
   const scanRows=scans.map((s,i)=>{
     const photos=(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('');
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
-      <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:4px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
+      <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${photos}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;font-family:var(--mono)">
-        <div style="color:var(--text2)">Puesto: <span style="color:var(--text)">${escHtml(s.puesto||'—')}</span></div>
-        <div style="color:var(--text2)">Serie: <span style="color:var(--text)">${escHtml(s.serie||'—')}</span></div>
-        ${s.serieRetira?`<div style="color:var(--text2)">Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
-        ${s.serieNuevo?`<div style="color:var(--text2)">Nuevo: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">🖨 Scanner DESKO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">
+        ${s.scannerSerie?`<div style="color:var(--text2)">Serie: <span style="color:var(--text)">${escHtml(s.scannerSerie)}</span></div>`:''}
+        ${s.scannerModelo?`<div style="color:var(--text2)">Modelo: <span style="color:var(--text)">${escHtml(s.scannerModelo)}</span></div>`:''}
+        ${s.scannerEstado?`<div style="color:var(--text2)">Estado: <span style="color:var(--text)">${escHtml(s.scannerEstado)}</span></div>`:''}
         ${s.invDnd?`<div style="color:var(--text2)">N° Inv. DND: <span style="color:var(--text)">${escHtml(s.invDnd)}</span></div>`:''}
         ${s.invDnm?`<div style="color:var(--text2)">N° Inv. DNM: <span style="color:var(--text)">${escHtml(s.invDnm)}</span></div>`:''}
+        ${s.serieRetira?`<div style="color:var(--text2)">Serie retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
+        ${s.serieNuevo?`<div style="color:var(--text2)">Serie nueva: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
+        ${s.instalacionReemplazoData?`<div style="color:var(--text2);grid-column:1/-1">Equipo retirado: <span style="color:var(--text)">${escHtml(s.instalacionReemplazoData.marcaVieja)} — ${escHtml(s.instalacionReemplazoData.serieVieja)}</span></div>`:''}
+      </div>
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">💻 PC</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">
+        ${s.pcNombre?`<div style="color:var(--text2)">Nombre PC: <span style="color:var(--text)">${escHtml(s.pcNombre)}</span></div>`:''}
+        <div style="color:var(--text2)">Puesto: <span style="color:var(--text)">${escHtml(s.puesto||'—')}</span></div>
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
+      ${datosSistemaHtml(s.datosSistema)}
+      ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${escHtml(s.notas)}</div>`:''}
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
       ${checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
-      ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`;
   }).join('');
@@ -1778,6 +1893,34 @@ async function buildReportPDFDoc(rep) {
           doc.text(line, M+4, y+5.5+li*5.5);
         });
         y += fallaLines.length*5.5+4 + 3;
+      }
+
+      // Datos del sistema PC (disco, USB, uptime) — si vienen del QR del ps1 v2
+      const ds = s.datosSistema;
+      if (ds && Object.keys(ds).length) {
+        const dsLines = [];
+        if (ds.uptime)       dsLines.push(`Uptime: ${ds.uptime}  |  Último reinicio: ${ds.ultimoRein||''}`);
+        if (ds.reinPend)     dsLines.push(`Reinicio pendiente: ${ds.reinPend}`);
+        if (ds.updPend)      dsLines.push(`Actualizaciones pendientes: ${ds.updPend}`);
+        if (ds.discoModelo)  dsLines.push(`Disco: ${ds.discoModelo} (${ds.discoTipo||''}) — SMART: ${ds.discoSMART||''}`);
+        if (ds.discoTotalGB) dsLines.push(`Espacio C: ${ds.discoLibreGB} GB libres / ${ds.discoTotalGB} GB (${ds.discoUsoPct}% uso)`);
+        if (ds.discoTempC && ds.discoTempC!=='N/D') dsLines.push(`Temperatura disco: ${ds.discoTempC}°C`);
+        if (ds.usbTotal)     dsLines.push(`USB: ${ds.usbTotal} dispositivos detectados — ${ds.usbErrores} con error`);
+        if (dsLines.length) {
+          if (y + dsLines.length*5.5+12 > 270) { doc.addPage(); y = M; }
+          doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(150,180,200);
+          doc.text('ESTADO DEL SISTEMA (PC)', M+4, y+3.5);
+          y += 5.5;
+          doc.setFillColor(18,30,44);
+          doc.roundedRect(M, y, W-M*2, dsLines.length*5.5+4, 2, 2, 'F');
+          dsLines.forEach((line, li) => {
+            const isAlert = line.includes('SI -') || (line.includes('Error') && !line.includes('0 con error'));
+            doc.setFontSize(7.5); doc.setFont('helvetica', isAlert ? 'bold' : 'normal');
+            doc.setTextColor(...(isAlert ? [255,160,64] : [160,190,210]));
+            doc.text(line, M+4, y+5.5+li*5.5);
+          });
+          y += dsLines.length*5.5+4 + 3;
+        }
       }
 
       // Photos — TODAS en grilla de 2 columnas
@@ -2546,11 +2689,29 @@ async function viewReportSupervisor(id) {
     </div>
     ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
-      <div style="font-size:13px;font-weight:600;color:var(--accent)">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
+      <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
-      <div style="font-size:12px;color:var(--text2);margin-top:6px">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.invDnd?' · N° Inv. DND: '+escHtml(s.invDnd):''}${s.invDnm?' · N° Inv. DNM: '+escHtml(s.invDnm):''}</div>
-      ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">🖨 Scanner DESKO</div>
+      <div style="font-size:12px;color:var(--text2)">
+        ${s.scannerSerie?`Serie: <strong style="color:var(--text)">${escHtml(s.scannerSerie)}</strong> · `:''}
+        ${s.scannerModelo?`Modelo: <strong style="color:var(--text)">${escHtml(s.scannerModelo)}</strong> · `:''}
+        Puesto: <strong style="color:var(--text)">${escHtml(s.puesto||'—')}</strong>
+        ${s.invDnd?` · N° Inv. DND: <strong>${escHtml(s.invDnd)}</strong>`:''}
+        ${s.invDnm?` · N° Inv. DNM: <strong>${escHtml(s.invDnm)}</strong>`:''}
+        ${s.serieRetira?`<br>Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span> → Nuevo: <span style="color:var(--accent)">${escHtml(s.serieNuevo||'—')}</span>`:''}
+        ${s.instalacionReemplazoData?`<br>Equipo retirado: <span style="color:var(--text)">${escHtml(s.instalacionReemplazoData.marcaVieja)} — ${escHtml(s.instalacionReemplazoData.serieVieja)}</span>`:''}
+      </div>
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">💻 PC</div>
+      <div style="font-size:12px;color:var(--text2)">
+        ${s.pcNombre?`Nombre: <strong>${escHtml(s.pcNombre)}</strong> · `:''}Serie PC: <strong>${escHtml(s.serie||'—')}</strong>
+      </div>
+      ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
+      ${datosSistemaHtml(s.datosSistema)}
+
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
       ${checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
