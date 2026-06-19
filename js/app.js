@@ -574,13 +574,6 @@ function setInstalacionSubtipo(subtipo) {
 }
 window.setInstalacionSubtipo = setInstalacionSubtipo;
 
-function setMarcaVieja(marca) {
-  document.getElementById('inp-marca-vieja').value = marca;
-  document.getElementById('marca-btn-thales').classList.toggle('active', marca === 'Thales');
-  document.getElementById('marca-btn-3m').classList.toggle('active', marca === '3M');
-}
-window.setMarcaVieja = setMarcaVieja;
-
 function setIncidenciaSubtipo(subtipo) {
   currentIncidenciaSubtipo = subtipo;
   const esCambio = subtipo === 'cambio_equipo';
@@ -595,7 +588,7 @@ window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 // ======== RESET FORM ========
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
-  const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = 'Thales';
+  const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
   ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza',
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
@@ -617,8 +610,6 @@ function resetNewScanForm() {
   const instBtnRemp = document.getElementById('inst-btn-reemplazo'); if(instBtnRemp) instBtnRemp.classList.remove('active');
   const incBtnCambio = document.getElementById('inc-btn-cambio'); if(incBtnCambio) incBtnCambio.classList.add('active');
   const incBtnFalla = document.getElementById('inc-btn-falla'); if(incBtnFalla) incBtnFalla.classList.remove('active');
-  const marcaBtnThales = document.getElementById('marca-btn-thales'); if(marcaBtnThales) marcaBtnThales.classList.add('active');
-  const marcaBtn3m = document.getElementById('marca-btn-3m'); if(marcaBtn3m) marcaBtn3m.classList.remove('active');
   renderPhotosGrid(); stopCamera(); stopQRScan();
 }
 

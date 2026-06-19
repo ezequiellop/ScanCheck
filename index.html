@@ -199,11 +199,7 @@
             <div class="reemplazo-box">
               <div class="form-group">
                 <label>Marca del equipo que SE RETIRA</label>
-                <div class="op-row" style="margin-top:6px">
-                  <button class="op-btn active" id="marca-btn-thales" onclick="setMarcaVieja('Thales')" style="font-size:13px">Thales</button>
-                  <button class="op-btn" id="marca-btn-3m" onclick="setMarcaVieja('3M')" style="font-size:13px">3M</button>
-                </div>
-                <input type="hidden" id="inp-marca-vieja" value="Thales">
+                <input type="text" id="inp-marca-vieja" placeholder="Ej: Thales, 3M, u otra marca" maxlength="40">
               </div>
               <div class="form-group"><label>Serie — Equipo que SE RETIRA</label><input type="text" id="inp-inst-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
             </div>
