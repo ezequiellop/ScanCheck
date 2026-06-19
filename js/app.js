@@ -1364,6 +1364,7 @@ async function deleteScanFromModal() {
   if (scan?.fbId) { try { await fbDeleteScan(scan.fbId); } catch(e) {} }
 }
 window.deleteScanFromModal = deleteScanFromModal;
+window.fbDeleteScan = fbDeleteScan;
 
 // ======== CLOSE DAY / REPORT ========
 let pendingReportQueue = []; // cola de grupos {paso, scans} pendientes de generar informe, uno por Paso
