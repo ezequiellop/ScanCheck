@@ -1322,7 +1322,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
     showToast(`Se generarán ${totalEnCola} informes — uno por cada Paso visitado hoy`, 'success');
   }
   document.getElementById('inp-inspector-name').value = '';
-  const jiraTicketInput = document.getElementById('inp-jira-ticket-padre');
+  const jiraTicketInput = document.getElementById('inp-jira-ticket-numero');
   if (jiraTicketInput) jiraTicketInput.value = '';
   document.getElementById('report-scan-list').innerHTML = scans.map((s,i)=>{
     const photos=(s.photos||[]);
@@ -1379,7 +1379,32 @@ async function saveReport() {
   if (!sigHasDraw) { showToast('Por favor firmá el informe','error'); return; }
   const inspectorName=document.getElementById('inp-inspector-name').value.trim();
   if (!inspectorName) { showToast('Ingresá el nombre del inspector','error'); return; }
-  const jiraTicketPadreExistente = (document.getElementById('inp-jira-ticket-padre')?.value||'').trim().toUpperCase() || null;
+
+  // Construir el N° de ticket completo desde el campo numérico (DND- + número)
+  const ticketNumero = (document.getElementById('inp-jira-ticket-numero')?.value||'').trim();
+  const jiraTicketPadreExistente = ticketNumero ? `DND-${ticketNumero}` : null;
+
+  // Si no se ingresó número de ticket, pedir confirmación antes de continuar
+  if (!jiraTicketPadreExistente) {
+    const confirmar = await new Promise(resolve => {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+      modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:320px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+        <div style="font-size:20px;margin-bottom:12px;text-align:center">🎫</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;text-align:center">N° de ticket no completado</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:20px;text-align:center;line-height:1.4">No ingresaste un número de ticket de Jira existente.<br>¿Querés crear un ticket nuevo automáticamente?</div>
+        <div style="display:flex;gap:10px">
+          <button id="modal-ticket-cancelar" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Cancelar</button>
+          <button id="modal-ticket-confirmar" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer">Crear nuevo</button>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('modal-ticket-cancelar').onclick = () => { document.body.removeChild(modal); resolve(false); };
+      document.getElementById('modal-ticket-confirmar').onclick = () => { document.body.removeChild(modal); resolve(true); };
+    });
+    if (!confirmar) return; // el técnico canceló — vuelve a la pantalla para ingresar el número
+  }
+
   if (!currentReport) return;
 
   // Embed full scan data in report (photos stored separately)

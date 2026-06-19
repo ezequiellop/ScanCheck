@@ -345,8 +345,12 @@
       <div class="section-label" style="margin-top:24px">Ticket de Jira (opcional)</div>
       <div class="form-group" style="margin-bottom:16px">
         <label>N° Ticket existente en Jira</label>
-        <input type="text" id="inp-jira-ticket-padre" placeholder="Ej: DND-123 (dejar vacío para crear uno nuevo)" maxlength="30" style="text-transform:uppercase">
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Si hay un ticket ya creado en Jira para esta visita, ingresá el número aquí. Si se deja vacío, se creará un ticket nuevo automáticamente.</div>
+        <div style="display:flex;align-items:center;gap:0;background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <span style="padding:12px 10px 12px 14px;font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent);white-space:nowrap;border-right:1px solid var(--border)">DND-</span>
+          <input type="number" id="inp-jira-ticket-numero" placeholder="123" min="1" style="border:none;background:transparent;flex:1;padding:12px 14px;font-family:var(--mono);font-size:14px;color:var(--text);outline:none;-moz-appearance:textfield">
+          <input type="hidden" id="inp-jira-ticket-padre">
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Solo el número. Si se deja vacío, se mostrará una confirmación antes de crear un ticket nuevo.</div>
       </div>
       <div class="section-label">Inspector DNM responsable</div>
       <div class="form-group" style="margin-bottom:16px"><label>Nombre completo del Inspector DNM que firma</label><input type="text" id="inp-inspector-name" placeholder="Ej: Ing. Carlos Rodríguez"></div>
