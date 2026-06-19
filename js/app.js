@@ -517,6 +517,7 @@ function autoFillPasoFromGPS(lat, lon) {
 }
 
 // ======== LOCATION TRACKING ========
+window.autoFillPasoFromGPS = autoFillPasoFromGPS;
 function requestLocation() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(pos => {
