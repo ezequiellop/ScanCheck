@@ -421,7 +421,7 @@ const PASOS_COORDS = [
   { nombre: 'Concordia - Salto',                       lat: -31.2751, lon: -57.9383 },
   { nombre: 'Gualeguaychú - Fray Bentos',              lat: -33.1006, lon: -58.2487 },
   // ── AYSÉN (Chile) ──
-  { nombre: 'Coyhaique',                               lat: -45.4670, lon: -71.5500 },
+  { nombre: 'Coyhaique',                               lat: -45.5285, lon: -73.0165 },
   { nombre: 'Huemules',                                lat: -45.5833, lon: -71.6500 },
   { nombre: 'Jeinemeni',                               lat: -46.5639, lon: -71.6714 },
   { nombre: 'Triana',                                  lat: -45.7000, lon: -71.9000 },
