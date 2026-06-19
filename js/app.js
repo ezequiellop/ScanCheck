@@ -532,14 +532,18 @@ function renderTodayList() {
 }
 
 function opLabel(op) {
+  if (op === 'instalacion_nueva') return 'Instalación - Puesto nuevo';
+  if (op === 'instalacion_reemplazo') return 'Instalación - Reemplazo';
   if (op === 'instalacion') return 'Instalación';
-  if (op === 'reemplazo') return 'Reemplazo';
+  if (op === 'cambio_equipo') return 'Cambio de equipo';
+  if (op === 'reemplazo') return 'Cambio de equipo'; // compatibilidad registros viejos
   if (op === 'falla_reparable') return 'Falla reparable en sitio';
   if (op === 'incidencia') return 'Incidencia';
   return 'Mantenimiento Preventivo';
 }
 
-let currentIncidenciaSubtipo = 'reemplazo'; // 'reemplazo' o 'falla_reparable'
+let currentIncidenciaSubtipo = 'cambio_equipo'; // 'cambio_equipo' o 'falla_reparable'
+let currentInstalacionSubtipo = 'instalacion_nueva'; // 'instalacion_nueva' o 'instalacion_reemplazo'
 
 // ======== OP TYPE ========
 function setOpType(type, btn) {
@@ -548,46 +552,73 @@ function setOpType(type, btn) {
   btn.classList.add('active');
 
   const esIncidencia = type === 'incidencia';
-  const esReemplazo = type === 'reemplazo'; // compatibilidad legacy (no se usa en nuevas UI)
+  const esInstalacion = type === 'instalacion';
 
   document.getElementById('incidencia-fields').classList.toggle('hidden', !esIncidencia);
+  document.getElementById('instalacion-fields').classList.toggle('hidden', !esInstalacion);
   document.getElementById('checklist-inspeccion-fields').classList.toggle('hidden', esIncidencia);
-  document.getElementById('serie-normal-group').style.display = (esIncidencia && currentIncidenciaSubtipo === 'reemplazo') ? 'none' : '';
+  document.getElementById('serie-normal-group').style.display =
+    (esIncidencia && currentIncidenciaSubtipo === 'cambio_equipo') ? 'none' : '';
 
-  if (esIncidencia) {
-    setIncidenciaSubtipo(currentIncidenciaSubtipo);
-  }
+  if (esIncidencia) setIncidenciaSubtipo(currentIncidenciaSubtipo);
+  if (esInstalacion) setInstalacionSubtipo(currentInstalacionSubtipo);
 }
 window.setOpType = setOpType;
 
+function setInstalacionSubtipo(subtipo) {
+  currentInstalacionSubtipo = subtipo;
+  const esReemplazo = subtipo === 'instalacion_reemplazo';
+  document.getElementById('instalacion-reemplazo-fields').classList.toggle('hidden', !esReemplazo);
+  document.getElementById('inst-btn-nueva').classList.toggle('active', !esReemplazo);
+  document.getElementById('inst-btn-reemplazo').classList.toggle('active', esReemplazo);
+}
+window.setInstalacionSubtipo = setInstalacionSubtipo;
+
+function setMarcaVieja(marca) {
+  document.getElementById('inp-marca-vieja').value = marca;
+  document.getElementById('marca-btn-thales').classList.toggle('active', marca === 'Thales');
+  document.getElementById('marca-btn-3m').classList.toggle('active', marca === '3M');
+}
+window.setMarcaVieja = setMarcaVieja;
+
 function setIncidenciaSubtipo(subtipo) {
   currentIncidenciaSubtipo = subtipo;
-  const esReemplazo = subtipo === 'reemplazo';
-  document.getElementById('incidencia-reemplazo-fields').classList.toggle('hidden', !esReemplazo);
-  document.getElementById('incidencia-falla-fields').classList.toggle('hidden', esReemplazo);
-  document.getElementById('serie-normal-group').style.display = esReemplazo ? 'none' : '';
-  document.getElementById('inc-btn-reemplazo').classList.toggle('active', esReemplazo);
-  document.getElementById('inc-btn-falla').classList.toggle('active', !esReemplazo);
+  const esCambio = subtipo === 'cambio_equipo';
+  document.getElementById('incidencia-reemplazo-fields').classList.toggle('hidden', !esCambio);
+  document.getElementById('incidencia-falla-fields').classList.toggle('hidden', esCambio);
+  document.getElementById('serie-normal-group').style.display = esCambio ? 'none' : '';
+  document.getElementById('inc-btn-cambio').classList.toggle('active', esCambio);
+  document.getElementById('inc-btn-falla').classList.toggle('active', !esCambio);
 }
 window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = 'Thales';
   ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza',
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
   ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
-  capturedPhotos = []; currentOpType = 'mantenimiento'; currentIncidenciaSubtipo = 'reemplazo';
+  capturedPhotos = []; currentOpType = 'mantenimiento';
+  currentIncidenciaSubtipo = 'cambio_equipo'; currentInstalacionSubtipo = 'instalacion_nueva';
   qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
   document.querySelectorAll('.op-btn[data-op]').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
   document.getElementById('incidencia-fields').classList.add('hidden');
+  document.getElementById('instalacion-fields').classList.add('hidden');
   document.getElementById('incidencia-reemplazo-fields').classList.remove('hidden');
   document.getElementById('incidencia-falla-fields').classList.add('hidden');
+  document.getElementById('instalacion-reemplazo-fields').classList.add('hidden');
   document.getElementById('checklist-inspeccion-fields').classList.remove('hidden');
   document.getElementById('serie-normal-group').style.display = '';
   document.getElementById('qr-data-preview').classList.add('hidden');
+  const instBtnNueva = document.getElementById('inst-btn-nueva'); if(instBtnNueva) instBtnNueva.classList.add('active');
+  const instBtnRemp = document.getElementById('inst-btn-reemplazo'); if(instBtnRemp) instBtnRemp.classList.remove('active');
+  const incBtnCambio = document.getElementById('inc-btn-cambio'); if(incBtnCambio) incBtnCambio.classList.add('active');
+  const incBtnFalla = document.getElementById('inc-btn-falla'); if(incBtnFalla) incBtnFalla.classList.remove('active');
+  const marcaBtnThales = document.getElementById('marca-btn-thales'); if(marcaBtnThales) marcaBtnThales.classList.add('active');
+  const marcaBtn3m = document.getElementById('marca-btn-3m'); if(marcaBtn3m) marcaBtn3m.classList.remove('active');
   renderPhotosGrid(); stopCamera(); stopQRScan();
 }
 
@@ -836,14 +867,15 @@ async function saveScan() {
   if (!puesto) { showToast('Ingresá el número de puesto','error'); return; }
 
   let serie='', serieRetira='', serieNuevo='';
-  // Para incidencia con reemplazo, el opType real que se guarda es 'reemplazo'
-  // Para incidencia con falla reparable, se guarda como 'falla_reparable'
+  // Determinar opType real según el modo principal y sub-tipo seleccionado
   let opTypeReal = currentOpType;
   if (currentOpType === 'incidencia') {
-    opTypeReal = currentIncidenciaSubtipo; // 'reemplazo' o 'falla_reparable'
+    opTypeReal = currentIncidenciaSubtipo; // 'cambio_equipo' o 'falla_reparable'
+  } else if (currentOpType === 'instalacion') {
+    opTypeReal = currentInstalacionSubtipo; // 'instalacion_nueva' o 'instalacion_reemplazo'
   }
 
-  if (opTypeReal === 'reemplazo') {
+  if (opTypeReal === 'cambio_equipo') {
     serieRetira=document.getElementById('inp-serie-retira').value.trim();
     serieNuevo =document.getElementById('inp-serie-nuevo').value.trim();
     if (!serieRetira||!serieNuevo) { showToast('Ingresá ambos números de serie','error'); return; }
@@ -870,9 +902,9 @@ async function saveScan() {
     limpieza: document.getElementById('chk-limpieza').checked
   };
 
-  // Datos del Acta de Reemplazo — solo cuando es reemplazo real
+  // Datos del Acta de Reemplazo — solo cuando es cambio_equipo (Incidencia)
   let actaReemplazo = null;
-  if (opTypeReal === 'reemplazo') {
+  if (opTypeReal === 'cambio_equipo') {
     const fallaChecklist = {
       alimentacion:   document.getElementById('falla-alimentacion').checked,
       cristal:        document.getElementById('falla-cristal').checked,
@@ -891,6 +923,15 @@ async function saveScan() {
     actaReemplazo = {
       fallaChecklist,
       nuevoMarcaModelo: document.getElementById('inp-nuevo-marca-modelo').value.trim()
+    };
+  }
+
+  // Datos de instalación reemplazo de contrato anterior (equipo viejo Thales/3M)
+  let instalacionReemplazoData = null;
+  if (opTypeReal === 'instalacion_reemplazo') {
+    instalacionReemplazoData = {
+      marcaVieja: document.getElementById('inp-marca-vieja')?.value || 'Thales',
+      serieVieja: document.getElementById('inp-inst-serie-retira')?.value.trim() || ''
     };
   }
 
@@ -914,7 +955,7 @@ async function saveScan() {
     userName: currentUser.name,
     opType: opTypeReal,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo, fallaReparable,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo, fallaReparable, instalacionReemplazoData,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
@@ -975,6 +1016,7 @@ function viewScan(id) {
       ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
       ${scan.jiraTicket?fTagHtml('Jira',jiraTicketLink(scan.jiraTicket)):''}
       ${scan.serieRetira?fTag('Retira',scan.serieRetira):''} ${scan.serieNuevo?fTag('Nuevo',scan.serieNuevo):''}
+      ${scan.instalacionReemplazoData?fTag('Equipo retirado (contrato anterior)',`${scan.instalacionReemplazoData.marcaVieja} — ${scan.instalacionReemplazoData.serieVieja}`):''}
     </div>
     ${checklistHtml(scan.checklist)}
     ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
@@ -1183,6 +1225,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
         ${s.scannerEstado?fTag('Estado Scanner',s.scannerEstado):''} ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''}
         ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
         ${s.serieRetira?fTag('Retira',s.serieRetira):''} ${s.serieNuevo?fTag('Nuevo',s.serieNuevo):''}
+        ${s.instalacionReemplazoData?fTag('Equipo retirado (contrato anterior)',`${s.instalacionReemplazoData.marcaVieja} — ${s.instalacionReemplazoData.serieVieja}`):''}
         ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
         ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
         ${s.address?fTag('Dirección',s.address):''}
@@ -1225,7 +1268,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
@@ -2002,17 +2045,16 @@ async function sendToJira() {
   // Determinar el tipo de ticket padre según las operaciones del informe:
   // - Si hay algún reemplazo → Incidente
   // - Mantenimiento / Instalación → Solicitud de servicio
-  const tieneReemplazo = scans.some(s => s.opType === 'reemplazo');
-  const tieneInstalacion = scans.some(s => s.opType === 'instalacion');
+  const tieneReemplazo = scans.some(s => s.opType === 'cambio_equipo' || s.opType === 'reemplazo');
+  const tieneInstalacion = scans.some(s => s.opType === 'instalacion_nueva' || s.opType === 'instalacion_reemplazo' || s.opType === 'instalacion');
   const tieneFallaReparable = scans.some(s => s.opType === 'falla_reparable');
-  // Reemplazo y Falla reparable son ambos Incidencia → tipo Incidente en Jira
   const esIncidencia = tieneReemplazo || tieneFallaReparable;
   const issueTypePadre = esIncidencia ? 'Incidente' : 'Solicitud de servicio';
 
-  // Modo para el título: prioridad reemplazo > falla reparable > instalacion > mantenimiento
-  const modoLabel = tieneReemplazo ? 'Incidencia - Reemplazo'
+  const modoLabel = tieneReemplazo ? 'Incidencia - Cambio de equipo'
     : tieneFallaReparable ? 'Incidencia - Falla reparable en sitio'
-    : tieneInstalacion ? 'Instalación'
+    : scans.some(s => s.opType === 'instalacion_reemplazo') ? 'Instalación - Reemplazo'
+    : tieneInstalacion ? 'Instalación - Puesto nuevo'
     : 'Mantenimiento Preventivo';
 
   // Extraer provincia de la dirección GPS (Nominatim: "..., Provincia, CódigoPostal, Argentina")
@@ -2134,9 +2176,9 @@ async function sendToJira() {
         const si = localScans.findIndex(ls=>ls.id===s.id||ls.fbId===s.fbId);
         if (si>=0) localScans[si].jiraTicket = st.key;
 
-        // Si es un reemplazo, generar y adjuntar el Acta de Constatación Técnica y Reemplazo
+        // Si es un cambio de equipo (incidencia), generar y adjuntar el Acta
         // → a la subtarea (uso interno) Y al ticket padre (visible para el cliente en el portal)
-        if (s.opType === 'reemplazo') {
+        if (s.opType === 'cambio_equipo') {
           try {
             const { doc: actaDoc, filename: actaFilename } = await buildActaReemplazoPDFDoc(rep, s);
             const actaDataUri = actaDoc.output('datauristring');
@@ -2469,7 +2511,8 @@ function deduplicateScans(allScans) {
   const reemplazos = [];
   const normales = [];
   allScans.forEach(s => {
-    if (s.opType === 'reemplazo' || s.serieRetira) reemplazos.push(s);
+    // cambio_equipo (nuevo nombre) y reemplazo (legacy) son siempre eventos únicos no deduplicables
+    if (s.opType === 'cambio_equipo' || s.opType === 'reemplazo' || s.serieRetira) reemplazos.push(s);
     else normales.push(s);
   });
 
@@ -2504,6 +2547,7 @@ function buildExportRows(allScans) {
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
     'Latitud', 'Longitud', 'Dirección',
     'Serie Retira', 'Serie Nueva', 'Falla Detectada (Acta)',
+    'Equipo Retirado (Contrato Anterior) Marca', 'Equipo Retirado (Contrato Anterior) Serie',
     'Ticket Jira',
     'Check Vidrio', 'Check Cable USB', 'Check Fuente', 'Check Limpieza'
   ];
@@ -2537,6 +2581,8 @@ function buildExportRows(allScans) {
       s.serieRetira || '',
       s.serieNuevo || '',
       fallaResumen,
+      s.instalacionReemplazoData?.marcaVieja || '',
+      s.instalacionReemplazoData?.serieVieja || '',
       s.jiraTicket || '',
       ck.vidrio ? 'OK' : '',
       ck.cableUsb ? 'OK' : '',

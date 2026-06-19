@@ -185,17 +185,42 @@
           <div class="form-group"><label>N° Inv. DNM</label><input type="text" id="inp-inv-dnm" placeholder="Opcional" maxlength="30"></div>
         </div>
 
+        <!-- Campos que aparecen solo cuando se selecciona Instalación -->
+        <div id="instalacion-fields" class="hidden">
+          <div class="form-group">
+            <label>Tipo de instalación</label>
+            <div class="op-row" style="margin-top:6px">
+              <button class="op-btn active" id="inst-btn-nueva" onclick="setInstalacionSubtipo('instalacion_nueva')" style="font-size:13px">🆕 Puesto nuevo</button>
+              <button class="op-btn" id="inst-btn-reemplazo" onclick="setInstalacionSubtipo('instalacion_reemplazo')" style="font-size:13px">🔄 Reemplazo</button>
+            </div>
+          </div>
+          <!-- Sub-tipo: Reemplazo de contrato anterior -->
+          <div id="instalacion-reemplazo-fields" class="hidden">
+            <div class="reemplazo-box">
+              <div class="form-group">
+                <label>Marca del equipo que SE RETIRA</label>
+                <div class="op-row" style="margin-top:6px">
+                  <button class="op-btn active" id="marca-btn-thales" onclick="setMarcaVieja('Thales')" style="font-size:13px">Thales</button>
+                  <button class="op-btn" id="marca-btn-3m" onclick="setMarcaVieja('3M')" style="font-size:13px">3M</button>
+                </div>
+                <input type="hidden" id="inp-marca-vieja" value="Thales">
+              </div>
+              <div class="form-group"><label>Serie — Equipo que SE RETIRA</label><input type="text" id="inp-inst-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Campos que aparecen solo cuando se selecciona Incidencia -->
         <div id="incidencia-fields" class="hidden">
           <div class="form-group">
             <label>Tipo de incidencia</label>
             <div class="op-row" style="margin-top:6px">
-              <button class="op-btn active" id="inc-btn-reemplazo" onclick="setIncidenciaSubtipo('reemplazo')" style="font-size:13px">🔄 Reemplazo de equipo</button>
+              <button class="op-btn active" id="inc-btn-cambio" onclick="setIncidenciaSubtipo('cambio_equipo')" style="font-size:13px">🔄 Cambio de equipo</button>
               <button class="op-btn" id="inc-btn-falla" onclick="setIncidenciaSubtipo('falla_reparable')" style="font-size:13px">🔧 Falla reparable en sitio</button>
             </div>
           </div>
 
-          <!-- Sub-tipo: Reemplazo -->
+          <!-- Sub-tipo: Cambio de equipo -->
           <div id="incidencia-reemplazo-fields">
             <div class="reemplazo-box">
               <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
