@@ -2892,7 +2892,7 @@ const JIRA_PROXY_URL = 'https://scancheck-jira-proxy.elopapa.workers.dev';
 const JIRA_BASE_URL = 'https://danaide-enterprise.atlassian.net';
 const GOOGLE_CLIENT_ID = '1033851892465-fdfkguq9uba6pfie61id75rhnnn4fj1h.apps.googleusercontent.com';
 const GOOGLE_SHEET_ID  = '17lJBVQaLyxrYC_KoTjalnoZ7UhOkX2pT9xm0LhoIA54';
-const SHEET_RANGE      = 'A:Z';
+const SHEET_RANGE      = 'ScanCheck-App!A:Z';
 
 let gsiTokenClient = null;
 let gsiAccessToken = null;
@@ -3068,7 +3068,7 @@ async function exportToGoogleSheets() {
       headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' }
     });
 
-    const writeRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/A1?valueInputOption=RAW`, {
+    const writeRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/ScanCheck-App!A1?valueInputOption=RAW`, {
       method: 'PUT',
       headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: rows })
