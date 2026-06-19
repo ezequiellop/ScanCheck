@@ -2445,7 +2445,7 @@ async function sendToJira() {
       let sr;
       try {
         sr = await jiraCall('/rest/api/3/issue', {
-          fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] Puesto ${s.puesto} — Serie ${s.serie} (Ref: ${parentKey})`,
+          fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
             description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}`),
             issuetype:{name:'Subtarea'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
