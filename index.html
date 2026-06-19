@@ -162,9 +162,9 @@
     <div id="page-new-scan" class="page">
       <div class="section-label">Tipo de operación</div>
       <div class="op-type-row">
-        <button class="op-btn active" data-op="mantenimiento" onclick="setOpType('mantenimiento',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Mantenimiento</button>
+        <button class="op-btn active" data-op="mantenimiento" onclick="setOpType('mantenimiento',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Mantenimiento Preventivo</button>
         <button class="op-btn" data-op="instalacion" onclick="setOpType('instalacion',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Instalación</button>
-        <button class="op-btn" data-op="reemplazo" onclick="setOpType('reemplazo',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>Reemplazo</button>
+        <button class="op-btn" data-op="incidencia" onclick="setOpType('incidencia',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Incidencia</button>
       </div>
       <div class="form-section" style="margin-top:16px">
         <div class="form-group"><label>Nombre del paso</label><input type="text" id="inp-paso" placeholder="" maxlength="80"></div>
@@ -184,42 +184,78 @@
           <div class="form-group"><label>N° Inv. DND</label><input type="text" id="inp-inv-dnd" placeholder="Ej: DND-00123" maxlength="30"></div>
           <div class="form-group"><label>N° Inv. DNM</label><input type="text" id="inp-inv-dnm" placeholder="Opcional" maxlength="30"></div>
         </div>
-        <div id="reemplazo-fields" class="hidden">
-          <div class="reemplazo-box">
-            <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
-            <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+
+        <!-- Campos que aparecen solo cuando se selecciona Incidencia -->
+        <div id="incidencia-fields" class="hidden">
+          <div class="form-group">
+            <label>Tipo de incidencia</label>
+            <div class="op-row" style="margin-top:6px">
+              <button class="op-btn active" id="inc-btn-reemplazo" onclick="setIncidenciaSubtipo('reemplazo')" style="font-size:13px">🔄 Reemplazo de equipo</button>
+              <button class="op-btn" id="inc-btn-falla" onclick="setIncidenciaSubtipo('falla_reparable')" style="font-size:13px">🔧 Falla reparable en sitio</button>
+            </div>
+          </div>
+
+          <!-- Sub-tipo: Reemplazo -->
+          <div id="incidencia-reemplazo-fields">
+            <div class="reemplazo-box">
+              <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
+              <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+              <div class="form-group">
+                <label>Tipo de falla detectada (Acta de Reemplazo)</label>
+                <div class="checklist-box">
+                  <label class="checklist-item"><input type="checkbox" id="falla-alimentacion"><span>Falla de alimentación eléctrica</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-cristal"><span>Cristal roto u opaco / desgastado</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-usb"><span>Falla de conexión USB / Cables / comunicación con la estación de trabajo</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-mrz"><span>Falla de lectura MRZ</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-chip"><span>Falla de lectura de chip / documento electrónico</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-sensor"><span>Falla de sensor óptico</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-irrojo"><span>Falla de lectura infrarroja / ultravioleta</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-mecanica"><span>Falla mecánica</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-intermitente"><span>Falla intermitente recurrente</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-dano-fisico"><span>Daño físico visible</span></label>
+                  <label class="checklist-item"><input type="checkbox" id="falla-obsolescencia"><span>Obsolescencia / desgaste</span></label>
+                </div>
+                <div class="form-group" style="margin-top:8px">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="falla-otro-check" style="width:20px;height:20px;accent-color:var(--accent)"><span>Otro</span></label>
+                  <input type="text" id="falla-otro-texto" placeholder="Especificar otra falla..." maxlength="200">
+                </div>
+              </div>
+              <div class="form-group"><label>Marca y Modelo del equipo NUEVO instalado</label><input type="text" id="inp-nuevo-marca-modelo" placeholder="Ej: DESKO Penta 4X" maxlength="80"></div>
+            </div>
+          </div>
+
+          <!-- Sub-tipo: Falla reparable en sitio -->
+          <div id="incidencia-falla-fields" class="hidden">
             <div class="form-group">
-              <label>Tipo de falla detectada (Acta de Reemplazo)</label>
+              <label>Tipo de falla reparada</label>
               <div class="checklist-box">
-                <label class="checklist-item"><input type="checkbox" id="falla-alimentacion"><span>Falla de alimentación eléctrica</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-cristal"><span>Cristal roto u opaco / desgastado</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-usb"><span>Falla de conexión USB / Cables / comunicación con la estación de trabajo</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-mrz"><span>Falla de lectura MRZ</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-chip"><span>Falla de lectura de chip / documento electrónico</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-sensor"><span>Falla de sensor óptico</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-irrojo"><span>Falla de lectura infrarroja / ultravioleta</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-mecanica"><span>Falla mecánica</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-intermitente"><span>Falla intermitente recurrente</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-dano-fisico"><span>Daño físico visible</span></label>
-                <label class="checklist-item"><input type="checkbox" id="falla-obsolescencia"><span>Obsolescencia / desgaste</span></label>
+                <label class="checklist-item"><input type="checkbox" id="rep-fuente"><span>Falla Fuente de Alimentación</span></label>
+                <label class="checklist-item"><input type="checkbox" id="rep-cristal"><span>Protector de cristal roto/rayado</span></label>
+                <label class="checklist-item"><input type="checkbox" id="rep-usb"><span>Falla de conexión USB / Cables / comunicación con estación de trabajo</span></label>
+                <label class="checklist-item"><input type="checkbox" id="rep-software"><span>Problemas de configuración / Actualización de Software</span></label>
+                <label class="checklist-item"><input type="checkbox" id="rep-esponja"><span>Reemplazo de esponja</span></label>
               </div>
               <div class="form-group" style="margin-top:8px">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="falla-otro-check" style="width:20px;height:20px;accent-color:var(--accent)"><span>Otro</span></label>
-                <input type="text" id="falla-otro-texto" placeholder="Especificar otra falla..." maxlength="200">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="rep-otro-check" style="width:20px;height:20px;accent-color:var(--accent)"><span>Otro</span></label>
+                <input type="text" id="rep-otro-texto" placeholder="Especificar otra falla reparada..." maxlength="200">
               </div>
             </div>
-            <div class="form-group"><label>Marca y Modelo del equipo NUEVO instalado</label><input type="text" id="inp-nuevo-marca-modelo" placeholder="Ej: DESKO Penta 4X" maxlength="80"></div>
           </div>
         </div>
-        <div class="form-group">
-          <label>Checklist de inspección</label>
-          <div class="checklist-box">
-            <label class="checklist-item"><input type="checkbox" id="chk-vidrio"><span>Estado de Vidrio/Vidrio protector</span></label>
-            <label class="checklist-item"><input type="checkbox" id="chk-cable-usb"><span>Estado Cable USB</span></label>
-            <label class="checklist-item"><input type="checkbox" id="chk-fuente"><span>Estado de Fuente de alimentación (15Vdc)</span></label>
-            <label class="checklist-item"><input type="checkbox" id="chk-limpieza"><span>Inspección visual y limpieza del scanner</span></label>
+
+        <!-- Checklist de inspección general (Mantenimiento Preventivo e Instalación) -->
+        <div id="checklist-inspeccion-fields">
+          <div class="form-group">
+            <label>Checklist de inspección</label>
+            <div class="checklist-box">
+              <label class="checklist-item"><input type="checkbox" id="chk-vidrio"><span>Estado de Vidrio/Vidrio protector</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-cable-usb"><span>Estado Cable USB</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-fuente"><span>Estado de Fuente de alimentación (15Vdc)</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-limpieza"><span>Inspección visual y limpieza del scanner</span></label>
+            </div>
           </div>
         </div>
+
         <div class="form-group"><label>Notas adicionales</label><textarea id="inp-notas" placeholder="Observaciones del estado del scanner..." rows="3"></textarea></div>
       </div>
 

@@ -531,26 +531,61 @@ function renderTodayList() {
   }).join('');
 }
 
-function opLabel(op) { return op==='instalacion'?'Instalación':op==='reemplazo'?'Reemplazo':'Mantenimiento'; }
+function opLabel(op) {
+  if (op === 'instalacion') return 'Instalación';
+  if (op === 'reemplazo') return 'Reemplazo';
+  if (op === 'falla_reparable') return 'Falla reparable en sitio';
+  if (op === 'incidencia') return 'Incidencia';
+  return 'Mantenimiento Preventivo';
+}
+
+let currentIncidenciaSubtipo = 'reemplazo'; // 'reemplazo' o 'falla_reparable'
 
 // ======== OP TYPE ========
 function setOpType(type, btn) {
   currentOpType = type;
-  document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.op-btn[data-op]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('reemplazo-fields').classList.toggle('hidden', type!=='reemplazo');
-  document.getElementById('serie-normal-group').style.display = type==='reemplazo' ? 'none' : '';
+
+  const esIncidencia = type === 'incidencia';
+  const esReemplazo = type === 'reemplazo'; // compatibilidad legacy (no se usa en nuevas UI)
+
+  document.getElementById('incidencia-fields').classList.toggle('hidden', !esIncidencia);
+  document.getElementById('checklist-inspeccion-fields').classList.toggle('hidden', esIncidencia);
+  document.getElementById('serie-normal-group').style.display = (esIncidencia && currentIncidenciaSubtipo === 'reemplazo') ? 'none' : '';
+
+  if (esIncidencia) {
+    setIncidenciaSubtipo(currentIncidenciaSubtipo);
+  }
 }
 window.setOpType = setOpType;
 
+function setIncidenciaSubtipo(subtipo) {
+  currentIncidenciaSubtipo = subtipo;
+  const esReemplazo = subtipo === 'reemplazo';
+  document.getElementById('incidencia-reemplazo-fields').classList.toggle('hidden', !esReemplazo);
+  document.getElementById('incidencia-falla-fields').classList.toggle('hidden', esReemplazo);
+  document.getElementById('serie-normal-group').style.display = esReemplazo ? 'none' : '';
+  document.getElementById('inc-btn-reemplazo').classList.toggle('active', esReemplazo);
+  document.getElementById('inc-btn-falla').classList.toggle('active', !esReemplazo);
+}
+window.setIncidenciaSubtipo = setIncidenciaSubtipo;
+
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
-  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check'].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
-  capturedPhotos = []; currentOpType = 'mantenimiento'; qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
-  document.querySelectorAll('.op-btn').forEach(b=>b.classList.remove('active'));
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza',
+   'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
+   'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
+  ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
+  capturedPhotos = []; currentOpType = 'mantenimiento'; currentIncidenciaSubtipo = 'reemplazo';
+  qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null;
+  document.querySelectorAll('.op-btn[data-op]').forEach(b=>b.classList.remove('active'));
   document.querySelector('.op-btn[data-op="mantenimiento"]').classList.add('active');
-  document.getElementById('reemplazo-fields').classList.add('hidden');
+  document.getElementById('incidencia-fields').classList.add('hidden');
+  document.getElementById('incidencia-reemplazo-fields').classList.remove('hidden');
+  document.getElementById('incidencia-falla-fields').classList.add('hidden');
+  document.getElementById('checklist-inspeccion-fields').classList.remove('hidden');
   document.getElementById('serie-normal-group').style.display = '';
   document.getElementById('qr-data-preview').classList.add('hidden');
   renderPhotosGrid(); stopCamera(); stopQRScan();
@@ -801,7 +836,14 @@ async function saveScan() {
   if (!puesto) { showToast('Ingresá el número de puesto','error'); return; }
 
   let serie='', serieRetira='', serieNuevo='';
-  if (currentOpType==='reemplazo') {
+  // Para incidencia con reemplazo, el opType real que se guarda es 'reemplazo'
+  // Para incidencia con falla reparable, se guarda como 'falla_reparable'
+  let opTypeReal = currentOpType;
+  if (currentOpType === 'incidencia') {
+    opTypeReal = currentIncidenciaSubtipo; // 'reemplazo' o 'falla_reparable'
+  }
+
+  if (opTypeReal === 'reemplazo') {
     serieRetira=document.getElementById('inp-serie-retira').value.trim();
     serieNuevo =document.getElementById('inp-serie-nuevo').value.trim();
     if (!serieRetira||!serieNuevo) { showToast('Ingresá ambos números de serie','error'); return; }
@@ -828,9 +870,9 @@ async function saveScan() {
     limpieza: document.getElementById('chk-limpieza').checked
   };
 
-  // Datos del Acta de Reemplazo — solo se completan/relevan cuando opType === 'reemplazo'
+  // Datos del Acta de Reemplazo — solo cuando es reemplazo real
   let actaReemplazo = null;
-  if (currentOpType === 'reemplazo') {
+  if (opTypeReal === 'reemplazo') {
     const fallaChecklist = {
       alimentacion:   document.getElementById('falla-alimentacion').checked,
       cristal:        document.getElementById('falla-cristal').checked,
@@ -852,13 +894,27 @@ async function saveScan() {
     };
   }
 
+  // Checklist de falla reparable en sitio — solo cuando es falla_reparable
+  let fallaReparable = null;
+  if (opTypeReal === 'falla_reparable') {
+    fallaReparable = {
+      fuente:    document.getElementById('rep-fuente').checked,
+      cristal:   document.getElementById('rep-cristal').checked,
+      usb:       document.getElementById('rep-usb').checked,
+      software:  document.getElementById('rep-software').checked,
+      esponja:   document.getElementById('rep-esponja').checked,
+      otro:      document.getElementById('rep-otro-check').checked,
+      otroTexto: document.getElementById('rep-otro-texto').value.trim()
+    };
+  }
+
   const scan = {
     id: 'sc_'+Date.now(),
     userId: currentUser.id,
     userName: currentUser.name,
-    opType: currentOpType,
+    opType: opTypeReal,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo, fallaReparable,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     jiraTicket: null,
     photos: capturedPhotos.map(p=>p.dataUrl),
@@ -922,6 +978,7 @@ function viewScan(id) {
     </div>
     ${checklistHtml(scan.checklist)}
     ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
+    ${scan.opType==='falla_reparable'?fallaReparableHtml(scan.fallaReparable):''}
     ${scan.notas?`<div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
     ${scan.pcData?`<div class="modal-notas" style="font-family:var(--mono);font-size:11px;color:var(--accent2)">${escHtml(scan.pcData)}</div>`:''}
     <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">${new Date(scan.timestamp).toLocaleString('es-AR')}</div>
@@ -973,6 +1030,38 @@ function fallaChecklistHtml(actaReemplazo) {
     <div style="font-size:11px;font-weight:700;color:var(--warning);margin-bottom:4px">TIPO DE FALLA DETECTADA (Acta de Reemplazo)</div>
     <div style="background:var(--bg3);border-radius:10px;padding:10px 12px">${items}${otroItem}</div>
   </div>`;
+}
+
+const FALLA_REPARABLE_LABELS = {
+  fuente:   'Falla Fuente de Alimentación',
+  cristal:  'Protector de cristal roto/rayado',
+  usb:      'Falla de conexión USB / Cables / comunicación con estación de trabajo',
+  software: 'Problemas de configuración / Actualización de Software',
+  esponja:  'Reemplazo de esponja'
+};
+function fallaReparableHtml(fallaReparable) {
+  if (!fallaReparable) return '';
+  const items = Object.keys(FALLA_REPARABLE_LABELS).map(key => {
+    const ok = !!fallaReparable[key];
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:${ok?'var(--accent)':'var(--text3)'};min-width:28px">${ok?'OK':'—'}</span>
+      <span style="font-size:12px;color:${ok?'var(--text)':'var(--text3)'}">${escHtml(FALLA_REPARABLE_LABELS[key])}</span>
+    </div>`;
+  }).join('');
+  const otroItem = fallaReparable.otro ? `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:var(--accent);min-width:28px">OK</span>
+      <span style="font-size:12px;color:var(--text)">Otro: ${escHtml(fallaReparable.otroTexto||'')}</span>
+    </div>` : '';
+  return `<div style="margin:8px 0">
+    <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px">FALLA REPARADA EN SITIO</div>
+    <div style="background:var(--bg3);border-radius:10px;padding:10px 12px">${items}${otroItem}</div>
+  </div>`;
+}
+function fallaReparableLines(fallaReparable) {
+  if (!fallaReparable) return [];
+  const lines = Object.keys(FALLA_REPARABLE_LABELS).map(key => `${fallaReparable[key]?'OK':'—'} — ${FALLA_REPARABLE_LABELS[key]}`);
+  if (fallaReparable.otro) lines.push(`OK — Otro: ${fallaReparable.otroTexto||''}`);
+  return lines;
 }
 // Versión para el PDF (texto plano, sin HTML) — array de líneas "OK/— — etiqueta"
 function checklistLines(checklist) {
@@ -1100,6 +1189,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
       </div>
       ${checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
+      ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.notas?`<div style="padding:0 14px 12px;font-size:12px;color:var(--text2)">${escHtml(s.notas)}</div>`:''}
     </div>`;
   }).join('');
@@ -1135,7 +1225,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     opType: s.opType, notas: s.notas,
     lat: s.lat, lon: s.lon, address: s.address,
@@ -1283,6 +1373,7 @@ async function viewReport(id) {
       </div>
       ${checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
+      ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">${escHtml(s.notas)}</div>`:''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`;
@@ -1479,11 +1570,16 @@ async function buildReportPDFDoc(rep) {
       }
 
       // Checklist de Tipo de Falla detectada (solo para reemplazos, viene del Acta)
-      const fallaLines = s.opType === 'reemplazo' ? fallaChecklistLines(s.actaReemplazo) : [];
+      const fallaLines = s.opType === 'reemplazo' ? fallaChecklistLines(s.actaReemplazo)
+                       : s.opType === 'falla_reparable' ? fallaReparableLines(s.fallaReparable)
+                       : [];
+      const fallaTitulo = s.opType === 'reemplazo' ? 'TIPO DE FALLA DETECTADA (Acta de Reemplazo)'
+                        : s.opType === 'falla_reparable' ? 'FALLA REPARADA EN SITIO'
+                        : '';
       if (fallaLines.length > 0) {
         if (y + fallaLines.length*5.5+10 > 270) { doc.addPage(); y = M; }
         doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,160,64);
-        doc.text('TIPO DE FALLA DETECTADA (Acta de Reemplazo)', M+4, y+3.5);
+        doc.text(fallaTitulo, M+4, y+3.5);
         y += 5.5;
         doc.setFillColor(18,30,44);
         doc.roundedRect(M, y, W-M*2, fallaLines.length*5.5+4, 2, 2, 'F');
@@ -1908,10 +2004,16 @@ async function sendToJira() {
   // - Mantenimiento / Instalación → Solicitud de servicio
   const tieneReemplazo = scans.some(s => s.opType === 'reemplazo');
   const tieneInstalacion = scans.some(s => s.opType === 'instalacion');
-  const issueTypePadre = tieneReemplazo ? 'Incidente' : 'Solicitud de servicio';
+  const tieneFallaReparable = scans.some(s => s.opType === 'falla_reparable');
+  // Reemplazo y Falla reparable son ambos Incidencia → tipo Incidente en Jira
+  const esIncidencia = tieneReemplazo || tieneFallaReparable;
+  const issueTypePadre = esIncidencia ? 'Incidente' : 'Solicitud de servicio';
 
-  // Modo del informe para el título (prioridad: reemplazo > instalacion > mantenimiento)
-  const modoLabel = tieneReemplazo ? 'Reemplazo' : tieneInstalacion ? 'Instalación' : 'Mantenimiento';
+  // Modo para el título: prioridad reemplazo > falla reparable > instalacion > mantenimiento
+  const modoLabel = tieneReemplazo ? 'Incidencia - Reemplazo'
+    : tieneFallaReparable ? 'Incidencia - Falla reparable en sitio'
+    : tieneInstalacion ? 'Instalación'
+    : 'Mantenimiento Preventivo';
 
   // Extraer provincia de la dirección GPS (Nominatim: "..., Provincia, CódigoPostal, Argentina")
   const primerScan = scans.find(s => s.address) || scans[0];
@@ -2264,6 +2366,7 @@ async function viewReportSupervisor(id) {
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
       ${checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
+      ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
     </div>`).join('')}
     <div class="vr-sig-label">Firma del Inspector DNM — ${escHtml(rep.inspectorName||'')}</div>
