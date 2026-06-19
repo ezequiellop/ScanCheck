@@ -2561,8 +2561,13 @@ async function loadJiraTickets(forceRefresh = false) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        path: `/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=20&fields=summary,status,priority,created,issuetype,customfield_10051`,
-        method: 'GET'
+        path: '/rest/api/3/search/jql',
+        method: 'POST',
+        jiraBody: {
+          jql,
+          maxResults: 20,
+          fields: ['summary', 'status', 'priority', 'created', 'issuetype', 'customfield_10051']
+        }
       })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
