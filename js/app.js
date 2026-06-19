@@ -411,6 +411,7 @@ const PASOS_COORDS = [
   { nombre: 'GUARDIA DE PUERTO',                       lat: -34.6100, lon: -58.3700 },
   { nombre: 'PUERTO TIGRE',                            lat: -34.4333, lon: -58.5833 },
   { nombre: 'TERMINAL DE CRUCEROS',                    lat: -34.6150, lon: -58.3650 },
+  { nombre: 'Terminal Cruceros Pto.Madryn',             lat: -42.762279, lon: -65.025183 },
   // ── INTERNOS / OFICINAS ──
   { nombre: 'ANTARTIDA ARGENTINA - CAPACITACIONES',    lat: -34.6000, lon: -58.4500 },
   { nombre: 'ANTARTIDA ARGENTINA - CONTROL MIGRATORIO',lat: -34.6000, lon: -58.4500 },
@@ -421,10 +422,10 @@ const PASOS_COORDS = [
   { nombre: 'Concordia - Salto',                       lat: -31.2751, lon: -57.9383 },
   { nombre: 'Gualeguaychú - Fray Bentos',              lat: -33.1006, lon: -58.2487 },
   // ── AYSÉN (Chile) ──
-  { nombre: 'Coyhaique',                               lat: -45.5285, lon: -73.0165 },
-  { nombre: 'Huemules',                                lat: -45.5833, lon: -71.6500 },
-  { nombre: 'Jeinemeni',                               lat: -46.5639, lon: -71.6714 },
-  { nombre: 'Triana',                                  lat: -45.7000, lon: -71.9000 },
+  { nombre: 'Coyhaique',                               lat: -45.528841, lon: -71.565858 },
+  { nombre: 'Huemules',                                lat: -45.910672, lon: -71.686750 },
+  { nombre: 'Jeinemeni',                               lat: -46.559708, lon: -71.654742 },
+  { nombre: 'Triana',                                  lat: -45.572500, lon: -71.698341 },
   // ── CÓRDOBA / SANTA FE / SAN LUIS ──
   { nombre: 'AERO CORDOBA',                            lat: -31.3236, lon: -64.2083 },
   { nombre: 'AERO MERLO - CONLARA',                    lat: -32.3800, lon: -65.1797 },
@@ -463,14 +464,14 @@ const PASOS_COORDS = [
   { nombre: 'Yaciretá - Yaciretá',                     lat: -27.4667, lon: -56.6167 },
   // ── JUJUY / SALTA (Bolivia/Chile/Paraguay) ──
   { nombre: 'AERO JUJUY',                              lat: -24.3833, lon: -65.0833 },
-  { nombre: 'Aguas Blancas- Bermejo',                  lat: -22.7333, lon: -64.3333 },
+  { nombre: 'Aguas Blancas- Bermejo',                  lat: -22.730179, lon: -64.359882 },
   { nombre: 'El Condado - La Mámora',                  lat: -21.8667, lon: -63.7167 },
-  { nombre: 'Jama',                                    lat: -23.2333, lon: -67.0333 },
-  { nombre: 'La Quiaca - Villazón',                    lat: -22.1000, lon: -65.5983 },
-  { nombre: 'Misión La Paz - Pozo Hondo',              lat: -22.5000, lon: -62.5667 },
-  { nombre: 'Puerto "Las Chalanas"',                   lat: -22.7833, lon: -64.3167 },
-  { nombre: 'Salvador Mazza-Yacuiba',                  lat: -22.0667, lon: -63.7167 },
-  { nombre: 'Sico',                                    lat: -24.0167, lon: -67.7667 },
+  { nombre: 'Jama',                                    lat: -23.237279, lon: -67.022829 },
+  { nombre: 'La Quiaca - Villazón',                    lat: -22.097996, lon: -65.595876 },
+  { nombre: 'Misión La Paz - Pozo Hondo',              lat: -22.379117, lon: -62.522833 },
+  { nombre: 'Puerto "Las Chalanas"',                   lat: -22.733238, lon: -64.352446 },
+  { nombre: 'Salvador Mazza-Yacuiba',                  lat: -22.053606, lon: -63.684486 },
+  { nombre: 'Sico',                                    lat: -23.873750, lon: -67.156933 },
   // ── MENDOZA (Chile) ──
   { nombre: 'Pehuenche',                               lat: -35.6000, lon: -70.3833 },
   { nombre: 'Portillo de Piuquenes',                   lat: -33.5000, lon: -69.8500 },
@@ -480,14 +481,16 @@ const PASOS_COORDS = [
   { nombre: 'Vergara',                                 lat: -35.2005, lon: -70.5191 },
   // ── SANTIAGO DEL ESTERO ──
   { nombre: 'AERO TERMAS DE RIO HONDO',                lat: -27.4950, lon: -64.9350 },
-  { nombre: 'San Francisco',                           lat: -31.4167, lon: -62.0833 },
+  { nombre: 'San Francisco',                           lat: -26.913700, lon: -68.129025 },
   // ── SANTA CRUZ / TDF ──
   { nombre: 'AERO RIO GALLEGOS',                       lat: -51.6089, lon: -69.3127 },
   { nombre: 'AERO USHUAIA',                            lat: -54.8433, lon: -68.2958 },
-  { nombre: 'Laurita - Casas Viejas',                  lat: -52.1333, lon: -69.5000 },
+  { nombre: 'Laurita - Casas Viejas',                  lat: -51.690333, lon: -72.297350 },
   { nombre: 'Río Bella Vista (ex Radman)',              lat: -54.0167, lon: -68.5000 },
-  { nombre: 'Río Don Guillermo',                       lat: -51.5833, lon: -72.3333 },
-  { nombre: 'San Sebastián',                           lat: -53.1667, lon: -68.5500 },
+  { nombre: 'Río Don Guillermo',                       lat: -51.255800, lon: -72.236200 },
+  { nombre: 'San Sebastián',                           lat: -53.299560, lon: -68.459107 },
+  { nombre: 'Paso San Sebastián Entrada',               lat: -53.299847, lon: -68.457673 },
+  { nombre: 'Paso San Sebastián Salida',                lat: -53.299355, lon: -68.460136 },
 ];
 
 // Calcula distancia en metros entre dos puntos GPS (fórmula de Haversine)
@@ -504,7 +507,7 @@ function gpsDistanceMeters(lat1, lon1, lat2, lon2) {
 function autoFillPasoFromGPS(lat, lon) {
   const campo = document.getElementById('inp-paso');
   if (!campo || campo.value.trim()) return; // no sobreescribir si ya tiene algo
-  const RADIO_METROS = 1000;
+  const RADIO_METROS = 200;
   let masNear = null, minDist = Infinity;
   for (const p of PASOS_COORDS) {
     const d = gpsDistanceMeters(lat, lon, p.lat, p.lon);
