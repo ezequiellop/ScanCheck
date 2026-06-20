@@ -1379,15 +1379,25 @@ function closeDayReport() {
   const scans = localScans.filter(s => localDateKey(s.timestamp) === today && !reportedScanIds.has(s.id||s.fbId));
   if (!scans.length) { showToast('No hay registros pendientes hoy','error'); return; }
 
-  // Agrupar por Paso — un informe independiente por cada Paso distinto visitado hoy
+  // Agrupar por Paso + categoría de ticket (Incidencia vs Solicitud) — un informe
+  // independiente por cada combinación distinta, para que el tipo de ticket en Jira
+  // sea siempre homogéneo (no se mezclan Mantenimiento/Instalación con Incidencias).
+  const categoriaDe = (opType) => (opType === 'cambio_equipo' || opType === 'falla_reparable' || opType === 'reemplazo')
+    ? 'Incidencia' : 'Solicitud';
+
   const groups = new Map();
   scans.forEach(s => {
-    const key = (s.paso||'').trim() || '(Sin paso especificado)';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
+    const paso = (s.paso||'').trim() || '(Sin paso especificado)';
+    const categoria = categoriaDe(s.opType);
+    const key = `${paso}|||${categoria}`;
+    if (!groups.has(key)) groups.set(key, { paso, categoria, scans: [] });
+    groups.get(key).scans.push(s);
   });
 
-  pendingReportQueue = Array.from(groups.entries()).map(([paso, groupScans]) => ({ paso, scans: groupScans }));
+  pendingReportQueue = Array.from(groups.values()).map(({paso, categoria, scans}) => ({
+    paso: categoria === 'Incidencia' ? `${paso} (Incidencia)` : paso,
+    scans
+  }));
   pendingReportTotal = pendingReportQueue.length;
   showNextPendingReport(today);
 }
