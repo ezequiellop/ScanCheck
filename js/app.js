@@ -920,6 +920,9 @@ function processQRData(raw) {
     const assureEngine = g('AEV','AssureID_Engine_Version','');
     const assureDocLib = g('ADL','AssureID_DocLib_Version','');
     const assureLicKey = g('ALK','AssureID_LicenseKey','');
+    const assureDocLibFecha = g('ADLF','AssureID_DocLib_Fecha','');
+    const assureDocLibRuta  = g('ADLR','AssureID_DocLib_Ruta','');
+    const assureServicio    = g('ASVC','AssureID_Servicio_Estado','');
 
     // ── Campos nuevos v2 ──
     const qrUptime      = g('UPT','Uptime','');
@@ -952,6 +955,9 @@ function processQRData(raw) {
     if (qrDiscoTempC)  qrDatosSistema.discoTempC   = qrDiscoTempC;
     if (qrUsbTotal)    qrDatosSistema.usbTotal      = qrUsbTotal;
     if (qrUsbErrores)  qrDatosSistema.usbErrores    = qrUsbErrores;
+    if (assureDocLibFecha) qrDatosSistema.docLibFecha = assureDocLibFecha;
+    if (assureDocLibRuta)  qrDatosSistema.docLibRuta  = assureDocLibRuta;
+    if (assureServicio)    qrDatosSistema.servicioEstado = assureServicio;
 
     if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
@@ -1002,6 +1008,12 @@ function processQRData(raw) {
         lines.push('--- AssureID ---');
         lines.push('Engine: v'+aev);
         if (adl && adl!=='No instalado') lines.push('DocLib: v'+adl);
+        if (assureDocLibFecha && assureDocLibFecha!=='N/A') lines.push('DocLib actualizado: '+assureDocLibFecha);
+        if (assureDocLibRuta) lines.push('DocLib ruta: '+assureDocLibRuta);
+        if (assureServicio) {
+          const servicioOk = assureServicio.toLowerCase().includes('corriendo') || assureServicio.toLowerCase()==='running';
+          lines.push((servicioOk?'':'⚠ ')+'Servicio AssureID: '+assureServicio);
+        }
         if (aed && aed!=='N/A')          lines.push('Edicion: '+aed);
         if (ati && ati!=='N/A')          lines.push('Tipo lic: '+ati);
         if (alk && alk!=='N/A')          lines.push('LicKey: '+alk);
@@ -1359,6 +1371,12 @@ function datosSistemaHtml(ds) {
   if (ds.discoTotalGB)rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Espacio disco C:</span><span>${escHtml(ds.discoLibreGB)} GB libres / ${escHtml(ds.discoTotalGB)} GB (${escHtml(ds.discoUsoPct)}% uso)</span></div>`;
   if (ds.discoTempC && ds.discoTempC!=='N/D') rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Temp. disco</span><span>${escHtml(ds.discoTempC)}°C</span></div>`;
   if (ds.usbTotal)    rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">USB detectados</span><span>${escHtml(ds.usbTotal)} disp. — <span style="color:${usbColor};font-weight:700">${escHtml(ds.usbErrores)} con error</span></span></div>`;
+  if (ds.servicioEstado) {
+    const servicioColor = ds.servicioEstado.toLowerCase().includes('corriendo') ? 'var(--accent)' : 'var(--warning)';
+    rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Servicio AssureID</span><span style="color:${servicioColor};font-weight:700">${escHtml(ds.servicioEstado)}</span></div>`;
+  }
+  if (ds.docLibFecha) rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">DocLib actualizado</span><span>${escHtml(ds.docLibFecha)}</span></div>`;
+  if (ds.docLibRuta)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;gap:8px"><span style="color:var(--text3);white-space:nowrap">DocLib ruta</span><span style="text-align:right;word-break:break-all">${escHtml(ds.docLibRuta)}</span></div>`;
   if (!rows) return '';
   return `<div style="margin:8px 0">
     <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">💻 ESTADO DEL SISTEMA (PC)</div>
@@ -1975,6 +1993,8 @@ async function buildReportPDFDoc(rep) {
         if (ds.discoTotalGB) dsLines.push(`Espacio C: ${ds.discoLibreGB} GB libres / ${ds.discoTotalGB} GB (${ds.discoUsoPct}% uso)`);
         if (ds.discoTempC && ds.discoTempC!=='N/D') dsLines.push(`Temperatura disco: ${ds.discoTempC}°C`);
         if (ds.usbTotal)     dsLines.push(`USB: ${ds.usbTotal} dispositivos detectados — ${ds.usbErrores} con error`);
+        if (ds.servicioEstado) dsLines.push(`Servicio AssureID: ${ds.servicioEstado}`);
+        if (ds.docLibFecha)  dsLines.push(`Librería AssureID actualizada: ${ds.docLibFecha}`);
         if (dsLines.length) {
           if (y + dsLines.length*5.5+12 > 270) { doc.addPage(); y = M; }
           doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(150,180,200);
@@ -1983,7 +2003,7 @@ async function buildReportPDFDoc(rep) {
           doc.setFillColor(18,30,44);
           doc.roundedRect(M, y, W-M*2, dsLines.length*5.5+4, 2, 2, 'F');
           dsLines.forEach((line, li) => {
-            const isAlert = line.includes('SI -') || (line.includes('Error') && !line.includes('0 con error'));
+            const isAlert = line.includes('SI -') || (line.includes('Error') && !line.includes('0 con error')) || (line.includes('Servicio AssureID:') && !line.toLowerCase().includes('corriendo'));
             doc.setFontSize(7.5); doc.setFont('helvetica', isAlert ? 'bold' : 'normal');
             doc.setTextColor(...(isAlert ? [255,160,64] : [160,190,210]));
             doc.text(line, M+4, y+5.5+li*5.5);
@@ -2535,7 +2555,7 @@ async function sendToJira() {
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
             issuetype:{id:'10003'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
