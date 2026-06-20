@@ -686,7 +686,8 @@ function setOpType(type, btn) {
 
   document.getElementById('incidencia-fields').classList.toggle('hidden', !esIncidencia);
   document.getElementById('instalacion-fields').classList.toggle('hidden', !esInstalacion);
-  document.getElementById('checklist-inspeccion-fields').classList.toggle('hidden', esIncidencia);
+  document.getElementById('checklist-mantenimiento-fields').classList.toggle('hidden', esIncidencia || esInstalacion);
+  document.getElementById('checklist-instalacion-fields').classList.toggle('hidden', !esInstalacion);
   document.getElementById('serie-normal-group').style.display =
     (esIncidencia && currentIncidenciaSubtipo === 'cambio_equipo') ? 'none' : '';
 
@@ -719,7 +720,8 @@ window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
   const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
-  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza',
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias',
+   'chki-fuente-conectada','chki-usb3','chki-drivers-desko','chki-librerias-desko','chki-aplicativos-desko','chki-assureid-librerias','chki-autoinicio-doc-auth','chki-autoinicio-sentinel','chki-settings-sensitivity','chki-prueba-revealid','chki-prueba-sicam',
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
   ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
@@ -733,7 +735,8 @@ function resetNewScanForm() {
   document.getElementById('incidencia-reemplazo-fields').classList.remove('hidden');
   document.getElementById('incidencia-falla-fields').classList.add('hidden');
   document.getElementById('instalacion-reemplazo-fields').classList.add('hidden');
-  document.getElementById('checklist-inspeccion-fields').classList.remove('hidden');
+  document.getElementById('checklist-mantenimiento-fields').classList.remove('hidden');
+  document.getElementById('checklist-instalacion-fields').classList.add('hidden');
   document.getElementById('serie-normal-group').style.display = '';
   document.getElementById('qr-data-preview').classList.add('hidden');
   const instBtnNueva = document.getElementById('inst-btn-nueva'); if(instBtnNueva) instBtnNueva.classList.add('active');
@@ -1059,7 +1062,24 @@ async function saveScan() {
     vidrio:   document.getElementById('chk-vidrio').checked,
     cableUsb: document.getElementById('chk-cable-usb').checked,
     fuente:   document.getElementById('chk-fuente').checked,
-    limpieza: document.getElementById('chk-limpieza').checked
+    limpieza: document.getElementById('chk-limpieza').checked,
+    updateAssureId:  document.getElementById('chk-update-assureid').checked,
+    updateLibrerias: document.getElementById('chk-update-librerias').checked
+  };
+
+  // Checklist de instalación (equipo nuevo) — solo relevante cuando opTypeReal es instalacion_*
+  const checklistInstalacion = {
+    fuenteConectada:    document.getElementById('chki-fuente-conectada').checked,
+    usb3:               document.getElementById('chki-usb3').checked,
+    driversDesko:       document.getElementById('chki-drivers-desko').checked,
+    libreriasDesko:     document.getElementById('chki-librerias-desko').checked,
+    aplicativosDesko:   document.getElementById('chki-aplicativos-desko').checked,
+    assureIdLibrerias:  document.getElementById('chki-assureid-librerias').checked,
+    autoInicioDocAuth:  document.getElementById('chki-autoinicio-doc-auth').checked,
+    autoInicioSentinel: document.getElementById('chki-autoinicio-sentinel').checked,
+    settingsSensitivity:document.getElementById('chki-settings-sensitivity').checked,
+    pruebaRevealId:     document.getElementById('chki-prueba-revealid').checked,
+    pruebaSicam:        document.getElementById('chki-prueba-sicam').checked
   };
 
   // Datos del Acta de Reemplazo — solo cuando es cambio_equipo (Incidencia)
@@ -1115,7 +1135,7 @@ async function saveScan() {
     userName: currentUser.name,
     opType: opTypeReal,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, actaReemplazo, fallaReparable, instalacionReemplazoData,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, checklistInstalacion, actaReemplazo, fallaReparable, instalacionReemplazoData,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     datosSistema: Object.keys(qrDatosSistema).length ? {...qrDatosSistema} : null,
     jiraTicket: null,
@@ -1201,7 +1221,7 @@ function viewScan(id) {
     ${datosSistemaHtml(scan.datosSistema)}
 
     <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">✅ Checklists</div>
-    ${checklistHtml(scan.checklist)}
+    ${scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?checklistInstalacionHtml(scan.checklistInstalacion):checklistHtml(scan.checklist)}
     ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
     ${scan.opType==='falla_reparable'?fallaReparableHtml(scan.fallaReparable):''}
     ${scan.opType==='cambio_equipo'?fallaChecklistHtml(scan.actaReemplazo):''}
@@ -1222,8 +1242,42 @@ const CHECKLIST_LABELS = {
   vidrio:   'Estado de Vidrio/Vidrio protector',
   cableUsb: 'Estado Cable USB',
   fuente:   'Estado de Fuente de alimentación (15Vdc)',
-  limpieza: 'Inspección visual y limpieza del scanner'
+  limpieza: 'Inspección visual y limpieza del scanner',
+  updateAssureId:  'Actualización de AssureID',
+  updateLibrerias: 'Actualización de Librerías'
 };
+
+const CHECKLIST_INSTALACION_LABELS = {
+  fuenteConectada:     'Fuente Conectada',
+  usb3:                'USB 3.0',
+  driversDesko:        'Drivers DESKO',
+  libreriasDesko:      'Librerías DESKO',
+  aplicativosDesko:    'Aplicativos DESKO',
+  assureIdLibrerias:   'AssureID Librerías',
+  autoInicioDocAuth:   'Inicio Auto AssureID Document Authentication',
+  autoInicioSentinel:  'Inicio Auto AssureID Sentinel Rest API',
+  settingsSensitivity: 'AssureID Settings/Authentication/Sensitivity Very Low',
+  pruebaRevealId:      'Prueba Reveal ID',
+  pruebaSicam:         'Prueba Sicam'
+};
+
+// Renderiza el checklist de instalación como lista de items con OK/— (mismo estilo que checklistHtml)
+function checklistInstalacionHtml(checklist) {
+  if (!checklist) return '';
+  const items = Object.keys(CHECKLIST_INSTALACION_LABELS).map(key => {
+    const ok = !!checklist[key];
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+      <span style="font-size:12px;font-weight:700;color:${ok?'var(--accent)':'var(--text3)'};min-width:28px">${ok?'OK':'—'}</span>
+      <span style="font-size:12px;color:${ok?'var(--text)':'var(--text3)'}">${escHtml(CHECKLIST_INSTALACION_LABELS[key])}</span>
+    </div>`;
+  }).join('');
+  return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin:8px 0">${items}</div>`;
+}
+function checklistInstalacionLines(checklist) {
+  if (!checklist) return [];
+  return Object.keys(CHECKLIST_INSTALACION_LABELS).map(key => `${checklist[key]?'OK':'—'} — ${CHECKLIST_INSTALACION_LABELS[key]}`);
+}
+
 // Renderiza el checklist como lista de items con OK/— según corresponda (para modal, vista de informe, etc.)
 function checklistHtml(checklist) {
   if (!checklist) return '';
@@ -1464,7 +1518,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">✅ Checklists</div>
       <div style="padding:0 14px">
-        ${checklistHtml(s.checklist)}
+        ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
         ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
         ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       </div>
@@ -1528,7 +1582,7 @@ async function saveReport() {
     id: s.id, fbId: s.fbId,
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, checklistInstalacion: s.checklistInstalacion, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     datosSistema: s.datosSistema || null,
     opType: s.opType, notas: s.notas,
@@ -1689,7 +1743,7 @@ async function viewReport(id) {
       ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${escHtml(s.notas)}</div>`:''}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
-      ${checklistHtml(s.checklist)}
+      ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
@@ -1871,8 +1925,9 @@ async function buildReportPDFDoc(rep) {
       }
       y += rows*rowH + addrH + 3;
 
-      // Checklist de inspección
-      const cklLines = checklistLines(s.checklist);
+      // Checklist de inspección — Instalación usa su propio checklist, el resto usa el de mantenimiento
+      const esInstalacionPdf = s.opType === 'instalacion_nueva' || s.opType === 'instalacion_reemplazo';
+      const cklLines = esInstalacionPdf ? checklistInstalacionLines(s.checklistInstalacion) : checklistLines(s.checklist);
       if (cklLines.length > 0) {
         if (y > 250) { doc.addPage(); y = M; }
         doc.setFillColor(18,30,44);
@@ -2746,7 +2801,7 @@ async function viewReportSupervisor(id) {
       ${datosSistemaHtml(s.datosSistema)}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
-      ${checklistHtml(s.checklist)}
+      ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}

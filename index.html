@@ -289,8 +289,8 @@
           </div>
         </div>
 
-        <!-- Checklist de inspección general (Mantenimiento Preventivo e Instalación) -->
-        <div id="checklist-inspeccion-fields">
+        <!-- Checklist de inspección — Mantenimiento Preventivo -->
+        <div id="checklist-mantenimiento-fields">
           <div class="form-group">
             <label>Checklist de inspección</label>
             <div class="checklist-box">
@@ -298,6 +298,28 @@
               <label class="checklist-item"><input type="checkbox" id="chk-cable-usb"><span>Estado Cable USB</span></label>
               <label class="checklist-item"><input type="checkbox" id="chk-fuente"><span>Estado de Fuente de alimentación (15Vdc)</span></label>
               <label class="checklist-item"><input type="checkbox" id="chk-limpieza"><span>Inspección visual y limpieza del scanner</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-update-assureid"><span>Actualización de AssureID</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-update-librerias"><span>Actualización de Librerías</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Checklist de inspección — Instalación (equipo nuevo) -->
+        <div id="checklist-instalacion-fields" class="hidden">
+          <div class="form-group">
+            <label>Checklist de instalación</label>
+            <div class="checklist-box">
+              <label class="checklist-item"><input type="checkbox" id="chki-fuente-conectada"><span>Fuente Conectada</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-usb3"><span>USB 3.0</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-drivers-desko"><span>Drivers DESKO</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-librerias-desko"><span>Librerías DESKO</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-aplicativos-desko"><span>Aplicativos DESKO</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-assureid-librerias"><span>AssureID Librerías</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-autoinicio-doc-auth"><span>Inicio Auto AssureID Document Authentication</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-autoinicio-sentinel"><span>Inicio Auto AssureID Sentinel Rest API</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-settings-sensitivity"><span>AssureID Settings/Authentication/Sensitivity Very Low</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-prueba-revealid"><span>Prueba Reveal ID</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chki-prueba-sicam"><span>Prueba Sicam</span></label>
             </div>
           </div>
         </div>
