@@ -720,7 +720,7 @@ window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
   const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
-  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias',
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias','chk-autoinicio-doc-auth','chk-autoinicio-sentinel',
    'chki-fuente-conectada','chki-usb3','chki-drivers-desko','chki-librerias-desko','chki-aplicativos-desko','chki-assureid-librerias','chki-autoinicio-doc-auth','chki-autoinicio-sentinel','chki-settings-sensitivity','chki-prueba-revealid','chki-prueba-sicam',
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
@@ -1076,7 +1076,9 @@ async function saveScan() {
     fuente:   document.getElementById('chk-fuente').checked,
     limpieza: document.getElementById('chk-limpieza').checked,
     updateAssureId:  document.getElementById('chk-update-assureid').checked,
-    updateLibrerias: document.getElementById('chk-update-librerias').checked
+    updateLibrerias: document.getElementById('chk-update-librerias').checked,
+    autoInicioDocAuth:  document.getElementById('chk-autoinicio-doc-auth').checked,
+    autoInicioSentinel: document.getElementById('chk-autoinicio-sentinel').checked
   };
 
   // Checklist de instalación (equipo nuevo) — solo relevante cuando opTypeReal es instalacion_*
@@ -1256,7 +1258,9 @@ const CHECKLIST_LABELS = {
   fuente:   'Estado de Fuente de alimentación (15Vdc)',
   limpieza: 'Inspección visual y limpieza del scanner',
   updateAssureId:  'Actualización de AssureID',
-  updateLibrerias: 'Actualización de Librerías'
+  updateLibrerias: 'Actualización de Librerías',
+  autoInicioDocAuth:  'Inicio Auto AssureID Document Authentication',
+  autoInicioSentinel: 'Inicio Auto AssureID Sentinel Rest API'
 };
 
 const CHECKLIST_INSTALACION_LABELS = {
@@ -1455,6 +1459,9 @@ function closeDayReport() {
   // Agrupar por Paso + categoría de ticket (Incidencia vs Solicitud) — un informe
   // independiente por cada combinación distinta, para que el tipo de ticket en Jira
   // sea siempre homogéneo (no se mezclan Mantenimiento/Instalación con Incidencias).
+  // Las Incidencias además NO se agrupan entre sí ni siquiera dentro del mismo Paso:
+  // cada equipo con falla suele corresponder a un ticket de cliente distinto en Jira,
+  // así que cada registro de Incidencia genera su propio informe individual.
   const categoriaDe = (opType) => (opType === 'cambio_equipo' || opType === 'falla_reparable' || opType === 'reemplazo')
     ? 'Incidencia' : 'Solicitud';
 
@@ -1462,7 +1469,9 @@ function closeDayReport() {
   scans.forEach(s => {
     const paso = (s.paso||'').trim() || '(Sin paso especificado)';
     const categoria = categoriaDe(s.opType);
-    const key = `${paso}|||${categoria}`;
+    // Incidencia: clave única por scan (id) → nunca se agrupa con otro registro.
+    // Solicitud: clave por paso+categoria → se agrupan como antes.
+    const key = categoria === 'Incidencia' ? `incidencia|||${s.id||s.fbId}` : `${paso}|||${categoria}`;
     if (!groups.has(key)) groups.set(key, { paso, categoria, scans: [] });
     groups.get(key).scans.push(s);
   });
