@@ -2429,6 +2429,26 @@ async function sendToJira() {
       console.error('Error generando/adjuntando PDF:', e);
     }
 
+    // Algunos workflows de Jira exigen que el ticket padre esté "En proceso" antes de
+    // permitir crear/transicionar subtareas. Intentamos esa transición automáticamente.
+    try {
+      const transRes = await jiraCall(`/rest/api/3/issue/${parentKey}/transitions`, null, 'GET');
+      if (transRes.ok) {
+        const transData = await transRes.json();
+        const enProceso = (transData.transitions||[]).find(t => t.name === 'En proceso' || t.to?.name === 'En proceso');
+        if (enProceso) {
+          const doTransRes = await jiraCall(`/rest/api/3/issue/${parentKey}/transitions`, { transition: { id: enProceso.id } }, 'POST');
+          if (doTransRes.ok) {
+            console.log('sendToJira: ticket padre transicionado a En proceso');
+          } else {
+            console.warn('sendToJira: no se pudo transicionar el padre a En proceso:', await doTransRes.text());
+          }
+        }
+      }
+    } catch(transErr) {
+      console.warn('sendToJira: error al intentar transicionar el padre:', transErr);
+    }
+
     const subtaskKeys=[];
     console.log('sendToJira: empezando loop de', scans.length, 'subtareas');
     for(const s of scans){
