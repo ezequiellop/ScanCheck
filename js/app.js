@@ -1365,6 +1365,7 @@ async function deleteScanFromModal() {
 }
 window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
+window.fbGetAllReports = fbGetAllReports;
 window.getLocalScans = () => localScans;
 
 // ======== CLOSE DAY / REPORT ========
