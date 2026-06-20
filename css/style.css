@@ -144,6 +144,9 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 .form-group textarea{resize:none;line-height:1.5}
 .form-group select option{background:var(--bg2)}
 input::placeholder,textarea::placeholder{color:var(--text3)}
+select:has(option[value=""]:checked){color:var(--text3)}
+select.select-placeholder{color:var(--text3)}
+select option[value=""]{color:var(--text3)}
 
 /* SCAN LIST */
 .scan-list{display:flex;flex-direction:column;gap:8px}

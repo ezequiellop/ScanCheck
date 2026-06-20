@@ -719,6 +719,7 @@ window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 // ======== RESET FORM ========
 function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  { const el=document.getElementById('inp-scanner-estado'); if(el) el.classList.add('select-placeholder'); }
   const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
   ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias','chk-autoinicio-doc-auth','chk-autoinicio-sentinel',
    'chki-fuente-conectada','chki-usb3','chki-drivers-desko','chki-librerias-desko','chki-aplicativos-desko','chki-assureid-librerias','chki-autoinicio-doc-auth','chki-autoinicio-sentinel','chki-settings-sensitivity','chki-prueba-revealid','chki-prueba-sicam',
@@ -963,7 +964,7 @@ function processQRData(raw) {
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
     if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el&&!el.value) el.value=dskSerie; }
     if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el&&!el.value) el.value=dskModelo; }
-    if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el&&!el.value) el.value=dskEstado; }
+    if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el&&!el.value) { el.value=dskEstado; el.classList.toggle('select-placeholder', !el.value); } }
     if (assureEngine) qrAssureEngine = assureEngine;
     if (assureDocLib) qrAssureDocLib = assureDocLib;
     if (assureLicKey) qrAssureLicKey = assureLicKey;
