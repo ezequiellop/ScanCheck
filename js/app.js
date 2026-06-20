@@ -3063,12 +3063,18 @@ async function exportToGoogleSheets() {
     const duplicatesRemoved = allScans.length - exportedCount;
 
     // Clear existing content first, then write
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${SHEET_RANGE}:clear`, {
+    const sheetRangeEncoded = encodeURIComponent(SHEET_RANGE);
+    const clearRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${sheetRangeEncoded}:clear`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' }
     });
+    if (!clearRes.ok) {
+      const err = await clearRes.json().catch(()=>({}));
+      throw new Error(`Error al limpiar la hoja: ${err.error?.message || `HTTP ${clearRes.status}`}`);
+    }
 
-    const writeRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/ScanCheck-App!A1?valueInputOption=RAW`, {
+    const writeRange = encodeURIComponent('ScanCheck-App!A1');
+    const writeRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${writeRange}?valueInputOption=RAW`, {
       method: 'PUT',
       headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: rows })
