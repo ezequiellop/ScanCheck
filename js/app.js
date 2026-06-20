@@ -3086,6 +3086,21 @@ function deduplicateScans(allScans) {
   return [...Array.from(map.values()), ...reemplazos];
 }
 
+// Traduce el valor técnico de scannerEstado (el mismo que devuelve Get-PnpDevice en
+// Windows: OK/Unknown/Error/Degraded, más "Dañado" que es de selección manual) a la
+// misma etiqueta en español que ve el técnico en el desplegable de la app.
+const SCANNER_ESTADO_LABELS = {
+  'OK': 'OK',
+  'Unknown': 'Desconectado',
+  'Error': 'Error',
+  'Degraded': 'Falla',
+  'Dañado': 'Dañado'
+};
+function scannerEstadoLabel(estado) {
+  if (!estado) return '';
+  return SCANNER_ESTADO_LABELS[estado] || estado;
+}
+
 function buildExportRows(allScans) {
   const deduplicated = deduplicateScans(allScans);
   const headers = [
@@ -3117,7 +3132,7 @@ function buildExportRows(allScans) {
       s.serie || '',
       s.scannerSerie || '',
       s.scannerModelo || '',
-      s.scannerEstado || '',
+      scannerEstadoLabel(s.scannerEstado),
       s.invDnd || '',
       s.invDnm || '',
       s.assureEngine || legacy.engine || '',
