@@ -2560,11 +2560,32 @@ async function sendToJira() {
       }
       parentKey = ticketExistente;
 
-      // Actualizar la descripción del ticket existente con los datos del informe
+      // Si el trabajo lleva varios días con el mismo ticket (ej: un preventivo
+      // grande en un Paso), no queremos PISAR la descripción cada vez — sumamos
+      // un bloque nuevo por cada día/informe, conservando el historial completo
+      // de fechas, inspectores que firmaron, y dispositivos atendidos por día.
+      const ticketData = await checkRes.json();
+      const descActual = ticketData.fields?.description;
+      // Extrae el texto plano ya guardado (mkDoc genera un único nodo de texto
+      // por párrafo); si la descripción tiene otro formato (vacía, editada a
+      // mano con formato ADF más complejo), simplemente no se reutiliza y
+      // arrancamos un bloque nuevo limpio.
+      let textoPrevio = '';
+      try {
+        const parrafos = descActual?.content || [];
+        textoPrevio = parrafos
+          .map(p => (p.content || []).map(c => c.text || '').join(''))
+          .join('\n')
+          .trim();
+      } catch(e) {}
+
+      const bloqueNuevo = `Fecha: ${dateLabel}\nDispositivos atendidos: ${scans.length}\nInspector DNM: ${rep.inspectorName}`;
+      const descripcionFinal = textoPrevio
+        ? `${textoPrevio}\n\n— — —\n\n${bloqueNuevo}`
+        : `[ScanCheck] Informe cargado automáticamente\nTécnico: ${rep.technicianName}\n\n${bloqueNuevo}`;
+
       const updateRes = await jiraCall(`/rest/api/3/issue/${parentKey}`, {
-        fields: {
-          description: mkDoc(`[ScanCheck] Informe cargado automáticamente\nFecha: ${dateLabel}\nTécnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos atendidos: ${scans.length}`)
-        }
+        fields: { description: mkDoc(descripcionFinal) }
       }, 'PUT');
       if (!updateRes.ok) {
         console.warn('No se pudo actualizar la descripción del ticket existente:', await updateRes.text());
