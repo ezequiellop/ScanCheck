@@ -3269,6 +3269,7 @@ function buildExportRows(allScans) {
     'Puesto', 'Nombre PC', 'Serie PC',
     'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND', 'N° Inv. DNM',
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
+    'Sentinel Actualizado', 'Library Actualizado',
     'Latitud', 'Longitud', 'Dirección',
     'Serie Retira', 'Serie Nueva', 'Falla Detectada (Acta)',
     'Equipo Retirado (Contrato Anterior) Marca', 'Equipo Retirado (Contrato Anterior) Serie',
@@ -3282,6 +3283,10 @@ function buildExportRows(allScans) {
     const ck = s.checklist || {};
     const fk = s.actaReemplazo?.fallaChecklist;
     const fallaResumen = fk ? Object.keys(FALLA_LABELS).filter(k=>fk[k]).map(k=>FALLA_LABELS[k]).concat(fk.otro?[`Otro: ${fk.otroTexto||''}`]:[]).join(' | ') : '';
+    // Cumplimiento de versión: "Sí"/"No" si hay dato para comparar, vacío si no aplica
+    // (sin versión objetivo configurada, o el scan no tiene esa versión registrada).
+    const { sentinelOk, libraryOk } = evaluarCumplimientoVersion(s);
+    const cumplimientoLabel = (ok) => ok === null ? '' : (ok ? 'Sí' : 'No');
     return [
       s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
       s.userName || s.technicianName || '',
@@ -3299,6 +3304,8 @@ function buildExportRows(allScans) {
       s.assureEngine || legacy.engine || '',
       s.assureDocLib || legacy.docLib || '',
       s.assureLicKey || legacy.licKey || '',
+      cumplimientoLabel(sentinelOk),
+      cumplimientoLabel(libraryOk),
       s.lat != null ? s.lat : '',
       s.lon != null ? s.lon : '',
       s.address || '',
@@ -3326,6 +3333,13 @@ async function exportToGoogleSheets() {
   try {
     await getGoogleAccessToken();
     statusEl.textContent = 'Recopilando datos de todos los técnicos...';
+
+    // Asegurar que tengamos la versión objetivo cargada para las columnas de
+    // cumplimiento, sin depender de que el supervisor haya abierto antes la
+    // pestaña "Versiones" (que es la que normalmente la carga).
+    if (!versionesObjetivo) {
+      try { versionesObjetivo = await fbGetVersionesObjetivo(); } catch(e) {}
+    }
 
     // Collect all scans: from all reports' scansSnapshot (supervisor sees all reports)
     let allReports = [];
