@@ -195,6 +195,7 @@
         <button class="op-btn" data-op="instalacion" onclick="setOpType('instalacion',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Instalación</button>
         <button class="op-btn" data-op="incidencia" onclick="setOpType('incidencia',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Incidencia</button>
       </div>
+      <button class="btn-qr" onclick="startQRScan()" style="margin-top:12px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="17" y1="19" x2="20" y2="19"/></svg>Escanear QR del Script PS</button>
       <div class="form-section" style="margin-top:16px">
         <div class="form-group"><label>Nombre del paso</label><input type="text" id="inp-paso" placeholder="" maxlength="80"></div>
         <div class="form-row">
@@ -259,6 +260,7 @@
             <div class="reemplazo-box">
               <div class="form-group"><label>Serie — Dispositivo que SE RETIRA</label><input type="text" id="inp-serie-retira" placeholder="Serie del equipo retirado" maxlength="30"></div>
               <div class="form-group"><label>Serie — Dispositivo NUEVO</label><input type="text" id="inp-serie-nuevo" placeholder="Serie del equipo nuevo" maxlength="30"></div>
+              <div class="form-group"><label>Marca y Modelo del equipo NUEVO instalado</label><input type="text" id="inp-nuevo-marca-modelo" placeholder="Ej: DESKO Penta 4X" maxlength="80"></div>
               <div class="form-group">
                 <label>Tipo de falla detectada (Acta de Reemplazo)</label>
                 <div class="checklist-box">
@@ -279,7 +281,6 @@
                   <input type="text" id="falla-otro-texto" placeholder="Especificar otra falla..." maxlength="200">
                 </div>
               </div>
-              <div class="form-group"><label>Marca y Modelo del equipo NUEVO instalado</label><input type="text" id="inp-nuevo-marca-modelo" placeholder="Ej: DESKO Penta 4X" maxlength="80"></div>
             </div>
           </div>
 
@@ -351,7 +352,6 @@
       </div>
 
       <div class="section-label" style="margin-top:20px">Datos desde PC <span class="badge-new">QR</span></div>
-      <button class="btn-qr" onclick="startQRScan()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="17" y1="19" x2="20" y2="19"/></svg>Escanear QR del Script PS</button>
       <div id="qr-data-preview" class="qr-data-preview hidden"></div>
       <div id="qr-controls" style="display:none"></div>
 
