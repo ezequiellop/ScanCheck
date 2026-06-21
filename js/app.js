@@ -1492,6 +1492,7 @@ async function deleteScanFromModal() {
 window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
+window.fbGetMyScans = fbGetMyScans;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
 window.getLocalScans = () => localScans;
