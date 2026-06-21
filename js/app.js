@@ -1187,7 +1187,19 @@ async function saveScan() {
   if (navigator.onLine) {
     setSyncStatus('syncing');
     try {
-      await fbSaveScan(scan);
+      const fbId = await fbSaveScan(scan);
+      // Importante: guardar el fbId devuelto tanto en el objeto en memoria como
+      // en localStorage. Sin esto, si el técnico borra el registro en la MISMA
+      // sesión (sin recargar la página), deleteScanFromModal() no encuentra
+      // fbId y el borrado lógico nunca llega a tocar Firestore — el registro
+      // "eliminado" reaparecería intacto al recargar.
+      scan.fbId = fbId;
+      const idx = localScans.findIndex(s => s.id === scan.id);
+      if (idx !== -1) localScans[idx].fbId = fbId;
+      try {
+        const scansForStorage = localScans.map(({photos,...s}) => ({...s, photoCount:(photos||[]).length}));
+        localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+      } catch(e) {}
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('error');
@@ -1444,9 +1456,30 @@ async function deleteScanFromModal() {
   localScans = localScans.filter(s=>(s.id!==modalScanId&&s.fbId!==modalScanId));
   closeModal('modal-scan'); updateStats(); renderTodayList();
   showToast('Registro eliminado');
+
   // Borrado lógico — el documento sigue en Firestore (eliminado:true) para no
   // perder datos de métricas; solo deja de aparecer en la lista del técnico.
-  if (scan?.fbId) { try { await fbSoftDeleteScan(scan.fbId, currentUser?.id); } catch(e) {} }
+  if (scan?.fbId) {
+    try { await fbSoftDeleteScan(scan.fbId, currentUser?.id); } catch(e) {}
+    return;
+  }
+
+  // Si el scan local no tenía fbId guardado (se guardó offline y nunca se
+  // refrescó el objeto local tras sincronizar), buscamos en Firestore un scan
+  // que coincida, para no dejar el documento sin marcar — de lo contrario,
+  // al recargar la app, ese registro "eliminado" reaparecería intacto desde
+  // la nube, porque nunca se tocó el documento remoto.
+  if (scan) {
+    try {
+      const remotos = await fbGetMyScans(currentUser.id);
+      const match = remotos.find(s =>
+        s.timestamp === scan.timestamp &&
+        s.serie === scan.serie &&
+        s.paso === scan.paso
+      );
+      if (match?.fbId) await fbSoftDeleteScan(match.fbId, currentUser?.id);
+    } catch(e) {}
+  }
 }
 window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
