@@ -1271,7 +1271,7 @@ function viewScan(id) {
     ${scan.opType==='falla_reparable'?fallaReparableHtml(scan.fallaReparable):''}
     ${scan.opType==='cambio_equipo'?fallaChecklistHtml(scan.actaReemplazo):''}
 
-    ${scan.notas?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📝 Notas</div><div class="modal-notas">${escHtml(scan.notas)}</div>`:''}
+    ${scan.notas?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📝 Notas</div><div class="modal-notas">${notasListHtml(scan.notas)}</div>`:''}
 
     ${scan.opType==='reemplazo'||scan.opType==='cambio_equipo'?`<button class="btn-secondary" style="margin-top:10px;width:100%" onclick="downloadActaReemplazo('${id}')">📄 Descargar Acta de Reemplazo</button>`:''}
   `;
