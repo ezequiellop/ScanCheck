@@ -282,6 +282,7 @@ async function startApp() {
   if (currentUser.role === 'supervisor') {
     unsubReports = fbWatchAllReports(reports => {
       localReports = reports;
+      updateStats();
       if (currentPage === 'supervisor') renderSupervisor();
     });
     unsubVersionesObjetivo = fbWatchVersionesObjetivo(v => {
