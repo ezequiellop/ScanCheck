@@ -1006,7 +1006,7 @@ function processQRData(raw) {
       // Campos nuevos en notas
       if (qrUptime)       lines.push('Uptime: '+qrUptime+' | Ultimo reinicio: '+qrUltimoRein);
       if (qrReinPend && qrReinPend!=='No') lines.push('⚠ Reinicio pendiente: '+qrReinPend);
-      if (qrUpdPend && qrUpdPend!=='0' && qrUpdPend!=='N/D') lines.push('⚠ Actualizaciones pendientes: '+qrUpdPend);
+      if (qrUpdPend && qrUpdPend!=='0' && qrUpdPend!=='N/D') lines.push('⚠ Actualizaciones de Windows pendientes: '+qrUpdPend);
       if (qrDiscoModelo)  lines.push('Disco: '+qrDiscoModelo+' ('+qrDiscoTipo+') — SMART: '+qrDiscoSMART);
       if (qrDiscoTotalGB) lines.push('Espacio disco: '+qrDiscoLibreGB+' GB libres / '+qrDiscoTotalGB+' GB total ('+qrDiscoUsoPct+'% uso)');
       if (qrDiscoTempC && qrDiscoTempC!=='N/D') lines.push('Temp disco: '+qrDiscoTempC+'°C');
@@ -1376,7 +1376,7 @@ function datosSistemaHtml(ds) {
   if (ds.uptime)      rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Uptime</span><span>${escHtml(ds.uptime)}</span></div>`;
   if (ds.ultimoRein)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Último reinicio</span><span>${escHtml(ds.ultimoRein)}</span></div>`;
   if (ds.reinPend)    rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Reinicio pendiente</span><span style="color:${reinColor};font-weight:700">${escHtml(ds.reinPend)}</span></div>`;
-  if (ds.updPend)     rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Updates pendientes</span><span style="color:${ds.updPend==='0'?'var(--accent)':'var(--warning)'};font-weight:700">${escHtml(ds.updPend)}</span></div>`;
+  if (ds.updPend)     rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Updates de Windows pendientes</span><span style="color:${ds.updPend==='0'?'var(--accent)':'var(--warning)'};font-weight:700">${escHtml(ds.updPend)}</span></div>`;
   if (ds.discoModelo) rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Disco</span><span>${escHtml(ds.discoModelo)} (${escHtml(ds.discoTipo||'')})</span></div>`;
   if (ds.discoSMART)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Estado SMART</span><span style="color:${smartColor};font-weight:700">${escHtml(ds.discoSMART)}</span></div>`;
   if (ds.discoTotalGB)rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Espacio disco C:</span><span>${escHtml(ds.discoLibreGB)} GB libres / ${escHtml(ds.discoTotalGB)} GB (${escHtml(ds.discoUsoPct)}% uso)</span></div>`;
@@ -2004,7 +2004,7 @@ async function buildReportPDFDoc(rep) {
         const dsLines = [];
         if (ds.uptime)       dsLines.push(`Uptime: ${ds.uptime}  |  Último reinicio: ${ds.ultimoRein||''}`);
         if (ds.reinPend)     dsLines.push(`Reinicio pendiente: ${ds.reinPend}`);
-        if (ds.updPend)      dsLines.push(`Actualizaciones pendientes: ${ds.updPend}`);
+        if (ds.updPend)      dsLines.push(`Actualizaciones de Windows pendientes: ${ds.updPend}`);
         if (ds.discoModelo)  dsLines.push(`Disco: ${ds.discoModelo} (${ds.discoTipo||''}) — SMART: ${ds.discoSMART||''}`);
         if (ds.discoTotalGB) dsLines.push(`Espacio C: ${ds.discoLibreGB} GB libres / ${ds.discoTotalGB} GB (${ds.discoUsoPct}% uso)`);
         if (ds.discoTempC && ds.discoTempC!=='N/D') dsLines.push(`Temperatura disco: ${ds.discoTempC}°C`);
