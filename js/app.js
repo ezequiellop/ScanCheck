@@ -2711,12 +2711,15 @@ async function renderPapelera() {
       html += `<div class="section-label" style="margin:10px 0">Informes eliminados (${reports.length})</div>`;
       html += reports.map(rep => `
         <div class="sup-card">
-          <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
             <div>
               <div style="font-weight:600">${escHtml(rep.technicianName||'—')} — ${escHtml(rep.paso||'(sin paso)')}</div>
               <div style="font-size:11px;color:var(--text3)">Eliminado el ${fmtFecha(rep.eliminadoEn)} · ${rep.scanIds?.length||0} registros</div>
             </div>
-            <button class="btn-secondary small" onclick="restaurarInforme('${rep.fbId}')">↩ Restaurar</button>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn-secondary small" onclick="restaurarInforme('${rep.fbId}')">↩ Restaurar</button>
+              <button class="btn-ghost danger small" onclick="eliminarInformeDefinitivo('${rep.fbId}')">🗑 Eliminar</button>
+            </div>
           </div>
         </div>`).join('');
     }
@@ -2724,12 +2727,15 @@ async function renderPapelera() {
       html += `<div class="section-label" style="margin:14px 0 10px">Registros sueltos eliminados (${scans.length})</div>`;
       html += scans.map(s => `
         <div class="sup-card">
-          <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
             <div>
               <div style="font-weight:600">${escHtml(s.paso||'(sin paso)')} — ${escHtml(s.puesto||'')}</div>
               <div style="font-size:11px;color:var(--text3)">Eliminado el ${fmtFecha(s.eliminadoEn)} · Serie: ${escHtml(s.serie||'—')}</div>
             </div>
-            <button class="btn-secondary small" onclick="restaurarRegistro('${s.fbId}')">↩ Restaurar</button>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn-secondary small" onclick="restaurarRegistro('${s.fbId}')">↩ Restaurar</button>
+              <button class="btn-ghost danger small" onclick="eliminarRegistroDefinitivo('${s.fbId}')">🗑 Eliminar</button>
+            </div>
           </div>
         </div>`).join('');
     }
@@ -2756,6 +2762,26 @@ async function restaurarRegistro(fbId) {
   } catch(e) { showToast('Error al restaurar'); }
 }
 window.restaurarRegistro = restaurarRegistro;
+
+async function eliminarInformeDefinitivo(fbId) {
+  if (!confirm('Esto borra el informe DEFINITIVAMENTE, sin posibilidad de recuperarlo. ¿Continuar?')) return;
+  try {
+    await fbDeleteReport(fbId);
+    showToast('Informe eliminado definitivamente');
+    await renderPapelera();
+  } catch(e) { showToast('Error al eliminar'); }
+}
+window.eliminarInformeDefinitivo = eliminarInformeDefinitivo;
+
+async function eliminarRegistroDefinitivo(fbId) {
+  if (!confirm('Esto borra el registro DEFINITIVAMENTE, sin posibilidad de recuperarlo. ¿Continuar?')) return;
+  try {
+    await fbDeleteScan(fbId);
+    showToast('Registro eliminado definitivamente');
+    await renderPapelera();
+  } catch(e) { showToast('Error al eliminar'); }
+}
+window.eliminarRegistroDefinitivo = eliminarRegistroDefinitivo;
 
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
