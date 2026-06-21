@@ -1391,6 +1391,28 @@ function fallaReparableLines(fallaReparable) {
 }
 
 // Muestra los datos del sistema (disco, USB, uptime) capturados del QR del ps1 v2
+// Convierte el texto de notas (líneas separadas por \n, generadas automáticamente
+// desde el QR o escritas a mano) en una lista visual prolija, en vez de texto
+// corrido — un <div> normal colapsa los saltos de línea simples, por eso antes
+// se veía todo seguido pese a tener \n internamente.
+function notasListHtml(notas) {
+  if (!notas || !notas.trim()) return '';
+  const lineas = notas.split('\n').map(l => l.trim()).filter(Boolean);
+  const items = lineas.map(linea => {
+    const esAlerta = linea.startsWith('⚠');
+    const texto = esAlerta ? linea.replace(/^⚠\s*/, '') : linea;
+    const esSeparador = linea.startsWith('---') && linea.endsWith('---');
+    if (esSeparador) {
+      return `<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 2px">${escHtml(linea.replace(/-/g,'').trim())}</div>`;
+    }
+    return `<div style="display:flex;gap:6px;padding:2px 0;font-size:12px;color:${esAlerta?'var(--warning)':'var(--text2)'}">
+      <span style="flex-shrink:0">${esAlerta?'⚠':'•'}</span>
+      <span style="${esAlerta?'font-weight:600':''}">${escHtml(texto)}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:4px">${items}</div>`;
+}
+
 function datosSistemaHtml(ds) {
   if (!ds || !Object.keys(ds).length) return '';
   const smartColor = ds.discoSMART === 'Healthy' ? 'var(--accent)' : ds.discoSMART ? 'var(--warning)' : 'var(--text3)';
@@ -1609,7 +1631,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
       </div>
       <div style="padding:0 14px">
         ${datosSistemaHtml(s.datosSistema)}
-        ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${escHtml(s.notas)}</div>`:''}
+        ${notasListHtml(s.notas)}
       </div>
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">✅ Checklists</div>
@@ -1835,7 +1857,7 @@ async function viewReport(id) {
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       </div>
       ${datosSistemaHtml(s.datosSistema)}
-      ${s.notas?`<div style="font-size:12px;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${escHtml(s.notas)}</div>`:''}
+      ${s.notas?`<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">${notasListHtml(s.notas)}</div>`:''}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
       ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
