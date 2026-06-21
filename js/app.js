@@ -35,7 +35,9 @@ async function processSyncQueue() {
   for (const item of items) {
     try {
       if (item.type === 'scan') {
-        await fbSaveScan(item.data);
+        const fbId = await fbSaveScan(item.data);
+        const si = localScans.findIndex(s => s.id === item.data.id);
+        if (si !== -1) localScans[si].fbId = fbId;
       } else if (item.type === 'report') {
         const repFb = {
           ...item.data,
@@ -53,6 +55,12 @@ async function processSyncQueue() {
   queueSave(remaining);
   setSyncStatus(remaining.length === 0 ? 'ok' : 'error');
   if (remaining.length < items.length) {
+    // Persistir los fbId recién asignados, para que el borrado funcione bien
+    // en la misma sesión sin necesitar otra recarga de página.
+    try {
+      const scansForStorage = localScans.map(({photos,...s}) => ({...s, photoCount:(photos||[]).length}));
+      localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+    } catch(e) {}
     if (currentPage === 'history') renderHistory();
     if (currentPage === 'supervisor') renderSupervisor();
     showToast('✓ Datos sincronizados con Firebase', 'success');
