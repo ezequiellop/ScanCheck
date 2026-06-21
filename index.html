@@ -426,7 +426,13 @@
         <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
         <button class="sup-tab" onclick="supTab('export',this)">Exportar</button>
       </div>
-      <div id="sup-informes" class="sup-panel"><div id="sup-informes-list"></div></div>
+      <div id="sup-informes" class="sup-panel">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <button id="btn-toggle-papelera" class="btn-ghost small" onclick="togglePapelera()">🗑 Papelera</button>
+        </div>
+        <div id="sup-informes-list"></div>
+        <div id="sup-papelera-list" class="hidden"></div>
+      </div>
       <div id="sup-tecnicos" class="sup-panel hidden"><div id="sup-tecnicos-list"></div></div>
       <div id="sup-versiones" class="sup-panel hidden"><div id="sup-versiones-content"></div></div>
       <div id="sup-export" class="sup-panel hidden">

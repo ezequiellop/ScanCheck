@@ -1,8 +1,8 @@
 // ======== FIREBASE IMPORTS ========
 import {
   fbRegister, fbLogin, fbLogout, fbOnAuthChange, fbSendPasswordReset, fbResendVerification,
-  fbSaveScan, fbGetMyScans, fbDeleteScan,
-  fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport,
+  fbSaveScan, fbGetMyScans, fbDeleteScan, fbSoftDeleteScan, fbRestoreScan, fbGetDeletedScans,
+  fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
   fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo
 } from './firebase.js';
@@ -1444,7 +1444,9 @@ async function deleteScanFromModal() {
   localScans = localScans.filter(s=>(s.id!==modalScanId&&s.fbId!==modalScanId));
   closeModal('modal-scan'); updateStats(); renderTodayList();
   showToast('Registro eliminado');
-  if (scan?.fbId) { try { await fbDeleteScan(scan.fbId); } catch(e) {} }
+  // Borrado lógico — el documento sigue en Firestore (eliminado:true) para no
+  // perder datos de métricas; solo deja de aparecer en la lista del técnico.
+  if (scan?.fbId) { try { await fbSoftDeleteScan(scan.fbId, currentUser?.id); } catch(e) {} }
 }
 window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
@@ -1804,30 +1806,32 @@ window.viewReport = viewReport;
 
 async function deleteReport() {
   if (!viewingReportId) return;
-  if (!confirm('¿Eliminar este informe permanentemente?')) return;
+  if (!confirm('¿Eliminar este informe de tu lista?')) return;
   const rep=localReports.find(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
   localReports=localReports.filter(r=>(r.id!==viewingReportId&&r.fbId!==viewingReportId));
   showToast('Informe eliminado'); goBack();
 
+  // Borrado lógico: el documento sigue existiendo en Firestore (marcado
+  // eliminado:true) para no perder datos de métricas/export — solo deja de
+  // aparecer en la lista del técnico. El supervisor puede verlo/restaurarlo
+  // desde la papelera.
   if (rep?.fbId) {
-    try { await fbDeleteReport(rep.fbId); } catch(e) {}
+    try { await fbSoftDeleteReport(rep.fbId, currentUser?.id); } catch(e) {}
     return;
   }
 
   // Si el informe local no tiene fbId guardado (puede pasar si se guardó offline
   // y nunca se refrescó el objeto local tras sincronizar), buscamos en Firestore
-  // un informe que coincida para no dejar basura huérfana en la nube — de lo
-  // contrario, ese registro "borrado" localmente seguiría existiendo en la base
-  // y reapareciendo en futuras exportaciones a Sheets.
+  // un informe que coincida para aplicar el mismo borrado lógico ahí.
   if (rep) {
     try {
-      const remotos = await fbGetAllReports();
+      const remotos = await fbGetAllReports(true);
       const match = remotos.find(r =>
         r.userId === rep.userId &&
         r.createdAt?.seconds && rep.createdAt?.seconds &&
         Math.abs(r.createdAt.seconds - rep.createdAt.seconds) < 5
       );
-      if (match?.fbId) await fbDeleteReport(match.fbId);
+      if (match?.fbId) await fbSoftDeleteReport(match.fbId, currentUser?.id);
     } catch(e) {}
   }
 }
@@ -2679,6 +2683,80 @@ function showJiraError(msg) {
   document.getElementById('modal-jira').classList.remove('hidden');
 }
 
+// ======== PAPELERA (informes/registros eliminados por técnicos) ========
+let papeleraVisible = false;
+
+async function togglePapelera() {
+  papeleraVisible = !papeleraVisible;
+  document.getElementById('sup-informes-list').classList.toggle('hidden', papeleraVisible);
+  document.getElementById('sup-papelera-list').classList.toggle('hidden', !papeleraVisible);
+  const btn = document.getElementById('btn-toggle-papelera');
+  if (btn) btn.textContent = papeleraVisible ? '📋 Ver informes' : '🗑 Papelera';
+  if (papeleraVisible) await renderPapelera();
+}
+window.togglePapelera = togglePapelera;
+
+async function renderPapelera() {
+  const cont = document.getElementById('sup-papelera-list');
+  cont.innerHTML = `<div class="empty-state"><p>Cargando...</p></div>`;
+  try {
+    const [reports, scans] = await Promise.all([fbGetDeletedReports(), fbGetDeletedScans()]);
+    if (!reports.length && !scans.length) {
+      cont.innerHTML = `<div class="empty-state"><p>La papelera está vacía</p></div>`;
+      return;
+    }
+    const fmtFecha = (ts) => ts?.seconds ? new Date(ts.seconds*1000).toLocaleString('es-AR') : '—';
+    let html = '';
+    if (reports.length) {
+      html += `<div class="section-label" style="margin:10px 0">Informes eliminados (${reports.length})</div>`;
+      html += reports.map(rep => `
+        <div class="sup-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600">${escHtml(rep.technicianName||'—')} — ${escHtml(rep.paso||'(sin paso)')}</div>
+              <div style="font-size:11px;color:var(--text3)">Eliminado el ${fmtFecha(rep.eliminadoEn)} · ${rep.scanIds?.length||0} registros</div>
+            </div>
+            <button class="btn-secondary small" onclick="restaurarInforme('${rep.fbId}')">↩ Restaurar</button>
+          </div>
+        </div>`).join('');
+    }
+    if (scans.length) {
+      html += `<div class="section-label" style="margin:14px 0 10px">Registros sueltos eliminados (${scans.length})</div>`;
+      html += scans.map(s => `
+        <div class="sup-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600">${escHtml(s.paso||'(sin paso)')} — ${escHtml(s.puesto||'')}</div>
+              <div style="font-size:11px;color:var(--text3)">Eliminado el ${fmtFecha(s.eliminadoEn)} · Serie: ${escHtml(s.serie||'—')}</div>
+            </div>
+            <button class="btn-secondary small" onclick="restaurarRegistro('${s.fbId}')">↩ Restaurar</button>
+          </div>
+        </div>`).join('');
+    }
+    cont.innerHTML = html;
+  } catch(e) {
+    cont.innerHTML = `<div class="empty-state"><p>Error al cargar la papelera</p></div>`;
+  }
+}
+
+async function restaurarInforme(fbId) {
+  try {
+    await fbRestoreReport(fbId);
+    showToast('Informe restaurado');
+    await renderPapelera();
+  } catch(e) { showToast('Error al restaurar'); }
+}
+window.restaurarInforme = restaurarInforme;
+
+async function restaurarRegistro(fbId) {
+  try {
+    await fbRestoreScan(fbId);
+    showToast('Registro restaurado');
+    await renderPapelera();
+  } catch(e) { showToast('Error al restaurar'); }
+}
+window.restaurarRegistro = restaurarRegistro;
+
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
@@ -2725,9 +2803,13 @@ async function renderSupervisor() {
   }
 
   // Versiones AssureID — cumplimiento contra config/versiones_objetivo
+  // Usamos TODOS los informes (incluidos los eliminados por técnicos desde su
+  // panel) para que las métricas de cumplimiento no pierdan datos históricos.
   try {
     if (!versionesObjetivo) versionesObjetivo = await fbGetVersionesObjetivo();
-    const allScansVersion = allReports.flatMap(r => r.scansSnapshot || []);
+    let allReportsParaMetricas = allReports;
+    try { allReportsParaMetricas = await fbGetAllReports(true); } catch(e) {}
+    const allScansVersion = allReportsParaMetricas.flatMap(r => r.scansSnapshot || []);
     const cump = calcularCumplimientoVersiones(allScansVersion);
     const vCont = document.getElementById('sup-versiones-content');
     if (!versionesObjetivo) {
@@ -3366,7 +3448,7 @@ async function exportToGoogleSheets() {
     // Collect all scans: from all reports' scansSnapshot (supervisor sees all reports)
     let allReports = [];
     try {
-      allReports = await fbGetAllReports();
+      allReports = await fbGetAllReports(true); // incluye eliminados: el export conserva todo el histórico
     } catch(e) {
       // Fallback to local data if offline
       allReports = localReports;

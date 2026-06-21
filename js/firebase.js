@@ -115,7 +115,27 @@ export async function fbGetMyScans(userId) {
   const snap = await getDocs(q);
   const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
-  return r;
+  return r.filter(s => !s.eliminado);
+}
+
+// Borrado lógico: el registro deja de aparecer para el técnico (filtrado por
+// !eliminado en fbGetMyScans), pero el documento sigue existiendo en Firestore
+// para que las métricas, exports a Sheets, y cálculos de cumplimiento no se
+// vean afectados. El supervisor puede verlo y restaurarlo desde la papelera.
+export async function fbSoftDeleteScan(fbId, deletedByUserId) {
+  await updateDoc(doc(db, "scans", fbId), {
+    eliminado: true,
+    eliminadoEn: serverTimestamp(),
+    eliminadoPor: deletedByUserId || null
+  });
+}
+
+export async function fbRestoreScan(fbId) {
+  await updateDoc(doc(db, "scans", fbId), {
+    eliminado: false,
+    eliminadoEn: null,
+    eliminadoPor: null
+  });
 }
 
 export async function fbDeleteScan(fbId) {
@@ -167,11 +187,15 @@ export async function fbGetSignature(reportFbId) {
   return snap.exists() ? snap.data().data : null;
 }
 
-export async function fbGetAllReports() {
+// incluirEliminados=false (default): para vistas normales de la UI (lista de
+// informes del técnico/supervisor). incluirEliminados=true: para cálculos de
+// métricas, exports a Sheets, y la papelera del supervisor — donde SÍ
+// necesitamos conservar el dato aunque el técnico lo haya "eliminado".
+export async function fbGetAllReports(incluirEliminados = false) {
   const snap = await getDocs(collection(db, "reports"));
-  const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  let r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  return r;
+  return incluirEliminados ? r : r.filter(rep => !rep.eliminado);
 }
 
 export async function fbGetMyReports(userId) {
@@ -179,7 +203,38 @@ export async function fbGetMyReports(userId) {
   const snap = await getDocs(q);
   const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   r.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  return r;
+  return r.filter(rep => !rep.eliminado);
+}
+
+// Borrado lógico de informes: mismo criterio que fbSoftDeleteScan — el informe
+// deja de aparecer para el técnico, pero sigue existiendo en Firestore para
+// métricas/export, y el supervisor puede restaurarlo desde la papelera.
+export async function fbSoftDeleteReport(fbId, deletedByUserId) {
+  await updateDoc(doc(db, "reports", fbId), {
+    eliminado: true,
+    eliminadoEn: serverTimestamp(),
+    eliminadoPor: deletedByUserId || null
+  });
+}
+
+export async function fbRestoreReport(fbId) {
+  await updateDoc(doc(db, "reports", fbId), {
+    eliminado: false,
+    eliminadoEn: null,
+    eliminadoPor: null
+  });
+}
+
+// Para la papelera del supervisor: trae únicamente los registros/informes
+// marcados como eliminados por los técnicos (borrado lógico).
+export async function fbGetDeletedScans() {
+  const snap = await getDocs(collection(db, "scans"));
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() })).filter(s => s.eliminado);
+}
+
+export async function fbGetDeletedReports() {
+  const snap = await getDocs(collection(db, "reports"));
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() })).filter(r => r.eliminado);
 }
 
 export async function fbDeleteReport(fbId) {
