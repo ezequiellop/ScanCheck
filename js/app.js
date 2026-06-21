@@ -1449,6 +1449,7 @@ async function deleteScanFromModal() {
 window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
+window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
 window.getLocalScans = () => localScans;
 
@@ -1807,7 +1808,28 @@ async function deleteReport() {
   const rep=localReports.find(r=>(r.id===viewingReportId||r.fbId===viewingReportId));
   localReports=localReports.filter(r=>(r.id!==viewingReportId&&r.fbId!==viewingReportId));
   showToast('Informe eliminado'); goBack();
-  if (rep?.fbId) { try { await fbDeleteReport(rep.fbId); } catch(e) {} }
+
+  if (rep?.fbId) {
+    try { await fbDeleteReport(rep.fbId); } catch(e) {}
+    return;
+  }
+
+  // Si el informe local no tiene fbId guardado (puede pasar si se guardó offline
+  // y nunca se refrescó el objeto local tras sincronizar), buscamos en Firestore
+  // un informe que coincida para no dejar basura huérfana en la nube — de lo
+  // contrario, ese registro "borrado" localmente seguiría existiendo en la base
+  // y reapareciendo en futuras exportaciones a Sheets.
+  if (rep) {
+    try {
+      const remotos = await fbGetAllReports();
+      const match = remotos.find(r =>
+        r.userId === rep.userId &&
+        r.createdAt?.seconds && rep.createdAt?.seconds &&
+        Math.abs(r.createdAt.seconds - rep.createdAt.seconds) < 5
+      );
+      if (match?.fbId) await fbDeleteReport(match.fbId);
+    } catch(e) {}
+  }
 }
 window.deleteReport = deleteReport;
 
