@@ -1506,18 +1506,24 @@ let pendingReportQueue = []; // cola de grupos {paso, scans} pendientes de gener
 let pendingReportTotal = 0;  // cantidad total de informes en esta tanda (para mostrar "Informe X de Y")
 
 function closeDayReport() {
-  const today = getTodayKey();
-  // Scans de hoy que todavía no forman parte de ningún informe ya guardado
+  // Buscamos TODOS los registros sin informe todavía, no solo los de hoy —
+  // si un técnico se olvida de cerrar el día, esos registros no deben quedar
+  // huérfanos para siempre. Se agrupan por Paso + categoría + FECHA real de
+  // cada registro, así un registro del lunes nunca se mezcla con uno del
+  // martes, ni con uno de otro Paso, aunque todos queden pendientes juntos.
   const reportedScanIds = new Set(localReports.flatMap(r => r.scanIds || []));
-  const scans = localScans.filter(s => localDateKey(s.timestamp) === today && !reportedScanIds.has(s.id||s.fbId));
-  if (!scans.length) { showToast('No hay registros pendientes hoy','error'); return; }
+  const scans = localScans.filter(s => !reportedScanIds.has(s.id||s.fbId));
+  if (!scans.length) { showToast('No hay registros pendientes','error'); return; }
 
-  // Agrupar por Paso + categoría de ticket (Incidencia vs Solicitud) — un informe
-  // independiente por cada combinación distinta, para que el tipo de ticket en Jira
-  // sea siempre homogéneo (no se mezclan Mantenimiento/Instalación con Incidencias).
-  // Las Incidencias además NO se agrupan entre sí ni siquiera dentro del mismo Paso:
-  // cada equipo con falla suele corresponder a un ticket de cliente distinto en Jira,
-  // así que cada registro de Incidencia genera su propio informe individual.
+  // Agrupar por Paso + categoría de ticket (Incidencia vs Solicitud) + fecha —
+  // un informe independiente por cada combinación distinta, para que el tipo
+  // de ticket en Jira sea siempre homogéneo (no se mezclan Mantenimiento/
+  // Instalación con Incidencias) y para que días distintos del mismo Paso no
+  // se mezclen entre sí si quedaron pendientes de cerrar varios días seguidos.
+  // Las Incidencias además NO se agrupan entre sí ni siquiera dentro del mismo
+  // Paso/día: cada equipo con falla suele corresponder a un ticket de cliente
+  // distinto en Jira, así que cada registro de Incidencia genera su propio
+  // informe individual.
   const categoriaDe = (opType) => (opType === 'cambio_equipo' || opType === 'falla_reparable' || opType === 'reemplazo')
     ? 'Incidencia' : 'Solicitud';
 
@@ -1525,28 +1531,35 @@ function closeDayReport() {
   scans.forEach(s => {
     const paso = (s.paso||'').trim() || '(Sin paso especificado)';
     const categoria = categoriaDe(s.opType);
+    const fecha = localDateKey(s.timestamp);
     // Incidencia: clave única por scan (id) → nunca se agrupa con otro registro.
-    // Solicitud: clave por paso+categoria → se agrupan como antes.
-    const key = categoria === 'Incidencia' ? `incidencia|||${s.id||s.fbId}` : `${paso}|||${categoria}`;
-    if (!groups.has(key)) groups.set(key, { paso, categoria, scans: [] });
+    // Solicitud: clave por paso+categoria+fecha → se agrupan solo si son del
+    // mismo Paso Y del mismo día.
+    const key = categoria === 'Incidencia' ? `incidencia|||${s.id||s.fbId}` : `${paso}|||${categoria}|||${fecha}`;
+    if (!groups.has(key)) groups.set(key, { paso, categoria, fecha, scans: [] });
     groups.get(key).scans.push(s);
   });
 
-  pendingReportQueue = Array.from(groups.values()).map(({paso, categoria, scans}) => ({
+  // Ordenar los informes pendientes por fecha (más viejo primero), para que
+  // el técnico los vaya firmando en orden cronológico.
+  const gruposOrdenados = Array.from(groups.values()).sort((a,b) => a.fecha.localeCompare(b.fecha));
+
+  pendingReportQueue = gruposOrdenados.map(({paso, categoria, fecha, scans}) => ({
     paso: categoria === 'Incidencia' ? `${paso} (Incidencia)` : paso,
-    scans
+    scans,
+    fecha
   }));
   pendingReportTotal = pendingReportQueue.length;
-  showNextPendingReport(today);
+  showNextPendingReport();
 }
 window.closeDayReport = closeDayReport;
 
-function showNextPendingReport(dateKey) {
+function showNextPendingReport() {
   if (pendingReportQueue.length === 0) { pendingReportTotal = 0; showPage('home'); return; }
-  const { paso, scans } = pendingReportQueue[0];
+  const { paso, scans, fecha } = pendingReportQueue[0];
   const posicionActual = pendingReportTotal - pendingReportQueue.length + 1;
-  currentReport = { date: dateKey, scanIds: scans.map(s=>s.id||s.fbId), paso };
-  renderReportPage(scans, dateKey, paso, posicionActual, pendingReportTotal);
+  currentReport = { date: fecha, scanIds: scans.map(s=>s.id||s.fbId), paso };
+  renderReportPage(scans, fecha, paso, posicionActual, pendingReportTotal);
   showPage('report');
 }
 
@@ -1557,7 +1570,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
   document.getElementById('report-date-label').textContent = label.charAt(0).toUpperCase()+label.slice(1) + (paso ? ` — ${paso}` : '') + progresoLabel;
   document.getElementById('report-count-label').textContent = `${scans.length} scanner${scans.length!==1?'s':''}`;
   if (totalEnCola > 1 && posicionActual === 1) {
-    showToast(`Se generarán ${totalEnCola} informes — uno por cada Paso visitado hoy`, 'success');
+    showToast(`Se generarán ${totalEnCola} informes pendientes`, 'success');
   }
   document.getElementById('inp-inspector-name').value = '';
   const jiraTicketInput = document.getElementById('inp-jira-ticket-numero');
@@ -1700,13 +1713,12 @@ async function saveReport() {
   } catch(e) {}
 
   showToast('✓ Informe guardado','success');
-  const fechaActual = currentReport.date;
   currentReport=null;
 
-  // Si quedan más Pasos pendientes en esta tanda, continuar automáticamente con el siguiente informe
+  // Si quedan más Pasos/días pendientes en esta tanda, continuar automáticamente con el siguiente informe
   pendingReportQueue.shift();
   if (pendingReportQueue.length > 0) {
-    showNextPendingReport(fechaActual);
+    showNextPendingReport();
   } else {
     pendingReportTotal = 0;
     showPage('history');
