@@ -642,7 +642,10 @@ function updateStats() {
   const todayScans = localScans.filter(s => localDateKey(s.timestamp) === today);
   document.getElementById('stat-today').textContent   = todayScans.length;
   document.getElementById('stat-total').textContent   = localScans.length;
-  document.getElementById('stat-reports').textContent = localReports.length;
+  // localReports puede incluir informes eliminados lógicamente por técnicos
+  // (necesario para que el cálculo de cumplimiento de versiones no pierda
+  // datos históricos) — para el contador visible filtramos esos.
+  document.getElementById('stat-reports').textContent = localReports.filter(r => !r.eliminado).length;
   document.getElementById('btn-close-day-wrap').classList.toggle('hidden', todayScans.length === 0);
 }
 
