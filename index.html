@@ -110,6 +110,10 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linecap="round" style="cursor:pointer;margin-top:4px"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2"/><path d="M8 7V5a2 2 0 00-4 0"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
         <span id="jira-badge" class="hidden" style="position:absolute;top:-4px;right:-6px;background:var(--accent);color:#0a1628;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1"></span>
       </div>
+      <div id="version-badge-wrap" class="hidden" style="position:relative;cursor:pointer" onclick="showPage('supervisor');toggleMenu();setTimeout(()=>document.querySelector('.sup-tab[onclick*=\'versiones\']')?.click(),50)" title="Versiones AssureID">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linecap="round" style="margin-top:4px"><path d="M21 12a9 9 0 11-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg>
+        <span id="version-badge" class="hidden" style="position:absolute;top:-4px;right:-6px;background:var(--warning);color:#0a1628;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1">!</span>
+      </div>
       <div class="header-user" id="header-user" onclick="toggleMenu()">
         <div class="user-avatar" id="user-avatar">?</div>
       </div>
@@ -418,11 +422,13 @@
       <div class="sup-tabs">
         <button class="sup-tab active" onclick="supTab('informes',this)">Informes</button>
         <button class="sup-tab" onclick="supTab('tecnicos',this)">Técnicos</button>
+        <button class="sup-tab" onclick="supTab('versiones',this)">Versiones</button>
         <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
         <button class="sup-tab" onclick="supTab('export',this)">Exportar</button>
       </div>
       <div id="sup-informes" class="sup-panel"><div id="sup-informes-list"></div></div>
       <div id="sup-tecnicos" class="sup-panel hidden"><div id="sup-tecnicos-list"></div></div>
+      <div id="sup-versiones" class="sup-panel hidden"><div id="sup-versiones-content"></div></div>
       <div id="sup-export" class="sup-panel hidden">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
           <h3 style="margin-bottom:8px">Exportar a Google Sheets</h3>

@@ -219,3 +219,15 @@ export async function fbGetAllUsers() {
   const snap = await getDocs(collection(db, "users"));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
+
+// ── CONFIG (versiones objetivo de AssureID, detectadas por el GBG Monitor) ──
+export async function fbGetVersionesObjetivo() {
+  const snap = await getDoc(doc(db, "config", "versiones_objetivo"));
+  return snap.exists() ? snap.data() : null;
+}
+
+export function fbWatchVersionesObjetivo(cb) {
+  return onSnapshot(doc(db, "config", "versiones_objetivo"), snap => {
+    cb(snap.exists() ? snap.data() : null);
+  });
+}

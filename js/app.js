@@ -4,7 +4,7 @@ import {
   fbSaveScan, fbGetMyScans, fbDeleteScan,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
-  fbGetAllUsers
+  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -265,6 +265,7 @@ async function startApp() {
   updateStats();
   renderTodayList();
   showPage('home', false);
+  updateVersionBadge();
   startLocationTracking();
   // Cargar tickets Jira asignados al técnico (con delay para no bloquear el render inicial)
   setTimeout(() => loadJiraTickets(), 2000);
@@ -273,6 +274,11 @@ async function startApp() {
   if (currentUser.role === 'supervisor') {
     unsubReports = fbWatchAllReports(reports => {
       localReports = reports;
+      if (currentPage === 'supervisor') renderSupervisor();
+    });
+    unsubVersionesObjetivo = fbWatchVersionesObjetivo(v => {
+      versionesObjetivo = v;
+      updateVersionBadge();
       if (currentPage === 'supervisor') renderSupervisor();
     });
   }
@@ -2654,7 +2660,7 @@ function showJiraError(msg) {
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','mapa','export'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','tecnicos','versiones','mapa','export'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
@@ -2695,6 +2701,64 @@ async function renderSupervisor() {
       </div>`;
     }).join('');
   }
+
+  // Versiones AssureID — cumplimiento contra config/versiones_objetivo
+  try {
+    if (!versionesObjetivo) versionesObjetivo = await fbGetVersionesObjetivo();
+    const allScansVersion = allReports.flatMap(r => r.scansSnapshot || []);
+    const cump = calcularCumplimientoVersiones(allScansVersion);
+    const vCont = document.getElementById('sup-versiones-content');
+    if (!versionesObjetivo) {
+      vCont.innerHTML = `<div class="empty-state"><p>Todavía no hay versión objetivo configurada (el monitor de GBG aún no corrió o no escribió datos).</p></div>`;
+    } else {
+      const pct = (ok, total) => total > 0 ? Math.round((ok/total)*100) : 0;
+      const sentinelPct = pct(cump.sentinelOk, cump.sentinelTotal);
+      const libraryPct = pct(cump.libraryOk, cump.libraryTotal);
+      const fechaActualizado = versionesObjetivo.actualizadoEn?.seconds
+        ? new Date(versionesObjetivo.actualizadoEn.seconds*1000).toLocaleString('es-AR')
+        : '—';
+      const pasosHtml = [...cump.porPaso.entries()].map(([paso, st]) => {
+        const sp = pct(st.sentinelOk, st.sentinelTotal), lp = pct(st.libraryOk, st.libraryTotal);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px">${escHtml(paso)}</span>
+          <span style="font-size:12px;color:var(--text3)">Sentinel <b style="color:${sp===100?'var(--accent)':'var(--warning)'}">${sp}%</b> · Library <b style="color:${lp===100?'var(--accent)':'var(--warning)'}">${lp}%</b></span>
+        </div>`;
+      }).join('') || '<div class="empty-state"><p>Sin datos de versión en los registros aún</p></div>';
+
+      vCont.innerHTML = `
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
+          <h3 style="margin-bottom:4px">Versión objetivo actual</h3>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Detectada en GBG el ${fechaActualizado}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="background:var(--bg3);border-radius:10px;padding:12px">
+              <div style="font-size:11px;color:var(--text3);text-transform:uppercase">Sentinel</div>
+              <div style="font-size:18px;font-weight:700">v${escHtml(versionesObjetivo.sentinel||'—')}</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:4px">${cump.sentinelOk}/${cump.sentinelTotal} PCs al día (${sentinelPct}%)</div>
+            </div>
+            <div style="background:var(--bg3);border-radius:10px;padding:12px">
+              <div style="font-size:11px;color:var(--text3);text-transform:uppercase">Library</div>
+              <div style="font-size:18px;font-weight:700">v${escHtml(versionesObjetivo.library||'—')}</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:4px">${cump.libraryOk}/${cump.libraryTotal} PCs al día (${libraryPct}%)</div>
+            </div>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
+          <h3 style="margin-bottom:10px">Cumplimiento por Paso</h3>
+          ${pasosHtml}
+        </div>
+        ${cump.pcsDesactualizadas.length ? `
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px">
+          <h3 style="margin-bottom:10px">PCs desactualizadas (${cump.pcsDesactualizadas.length})</h3>
+          ${cump.pcsDesactualizadas.map(pc => `
+            <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+              <div style="font-weight:600">${escHtml(pc.paso)} — ${escHtml(pc.pcNombre||pc.puesto||'—')}</div>
+              <div style="color:var(--text3)">${pc.sentinelOk===false?`Sentinel v${escHtml(pc.engine||'?')} `:''}${pc.libraryOk===false?`Library v${escHtml(pc.docLib||'?')}`:''}</div>
+            </div>
+          `).join('')}
+        </div>` : ''}
+      `;
+    }
+  } catch(e) { console.error('Error calculando cumplimiento de versiones:', e); }
 
   // Técnicos
   try {
@@ -2898,6 +2962,19 @@ async function loadJiraTickets(forceRefresh = false) {
 }
 window.loadJiraTickets = loadJiraTickets;
 
+function updateVersionBadge() {
+  const wrap = document.getElementById('version-badge-wrap');
+  const badge = document.getElementById('version-badge');
+  if (!wrap || !badge) return;
+  if (currentUser?.role !== 'supervisor') { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  if (versionesObjetivo?.cambioDetectado) {
+    badge.classList.remove('hidden'); badge.style.display = 'flex';
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
 function updateJiraBadge(count) {
   const badge = document.getElementById('jira-badge');
   const badgeMenu = document.getElementById('jira-badge-menu');
@@ -3050,6 +3127,61 @@ function parsePcDataAssure(pcData) {
 }
 
 // Build flat rows from all scans (supervisor sees all via fbGetAllReports)
+// Para cálculo de cumplimiento de versiones: nos interesa la ÚLTIMA visita de
+// cada PC en TODA la historia (no por día como deduplicateScans), para no
+// contar la misma PC más de una vez si tuvo varias visitas en momentos distintos.
+function ultimaVisitaPorPC(allScans) {
+  const map = new Map();
+  allScans.forEach(s => {
+    // Clave de PC: preferimos serie de PC, si no hay usamos paso+puesto+nombrePC como fallback
+    const key = (s.serie || '').trim() || `${(s.paso||'').trim()}__${(s.puesto||'').trim()}__${(s.pcNombre||'').trim()}`;
+    if (!key) return;
+    const existing = map.get(key);
+    const ts = s.timestamp ? new Date(s.timestamp).getTime() : 0;
+    const existingTs = existing?.timestamp ? new Date(existing.timestamp).getTime() : -1;
+    if (!existing || ts > existingTs) map.set(key, s);
+  });
+  return [...map.values()];
+}
+
+// Calcula el cumplimiento de versiones (Sentinel y Library, por separado) agrupado
+// globalmente, por Paso, y por Provincia — a partir de la última visita de cada PC.
+function calcularCumplimientoVersiones(allScans) {
+  const ultimas = ultimaVisitaPorPC(allScans).filter(s => s.assureEngine || s.assureDocLib);
+  const resultado = {
+    total: ultimas.length,
+    sentinelOk: 0, sentinelTotal: 0,
+    libraryOk: 0, libraryTotal: 0,
+    porPaso: new Map(),   // paso -> {sentinelOk, sentinelTotal, libraryOk, libraryTotal, pcs: []}
+    pcsDesactualizadas: []
+  };
+
+  ultimas.forEach(s => {
+    const { sentinelOk, libraryOk } = evaluarCumplimientoVersion(s);
+    const paso = (s.paso||'').trim() || '(Sin paso)';
+    if (!resultado.porPaso.has(paso)) resultado.porPaso.set(paso, { sentinelOk:0, sentinelTotal:0, libraryOk:0, libraryTotal:0 });
+    const pasoStats = resultado.porPaso.get(paso);
+
+    if (sentinelOk !== null) {
+      resultado.sentinelTotal++; pasoStats.sentinelTotal++;
+      if (sentinelOk) { resultado.sentinelOk++; pasoStats.sentinelOk++; }
+    }
+    if (libraryOk !== null) {
+      resultado.libraryTotal++; pasoStats.libraryTotal++;
+      if (libraryOk) { resultado.libraryOk++; pasoStats.libraryOk++; }
+    }
+    if (sentinelOk === false || libraryOk === false) {
+      resultado.pcsDesactualizadas.push({
+        paso, puesto: s.puesto, pcNombre: s.pcNombre, serie: s.serie,
+        engine: s.assureEngine, docLib: s.assureDocLib,
+        sentinelOk, libraryOk, timestamp: s.timestamp
+      });
+    }
+  });
+
+  return resultado;
+}
+
 function deduplicateScans(allScans) {
   // Regla: un registro por scanner por día, pero:
   // - Si el mismo scanner aparece en un PASO distinto ese día (cambia de PC, lo trasladan junto con
@@ -3089,6 +3221,35 @@ function deduplicateScans(allScans) {
 // Traduce el valor técnico de scannerEstado (el mismo que devuelve Get-PnpDevice en
 // Windows: OK/Unknown/Error/Degraded, más "Dañado" que es de selección manual) a la
 // misma etiqueta en español que ve el técnico en el desplegable de la app.
+// ── Versiones objetivo de AssureID (alimentadas por el GBG Monitor externo) ──
+let versionesObjetivo = null; // {library, sentinel, actualizadoEn, fuente, cambioDetectado}
+let unsubVersionesObjetivo = null;
+
+// Compara dos strings de versión tipo "6.13.30.48" numéricamente, segmento a
+// segmento. Devuelve true si `actual` es igual o más nueva que `objetivo`.
+// Tolerante a formatos con distinta cantidad de segmentos (ej: "6.13.30" vs "6.13.30.48").
+function versionEsActualOMasNueva(actual, objetivo) {
+  if (!actual || !objetivo) return null; // sin datos suficientes para comparar
+  const a = String(actual).split('.').map(n => parseInt(n, 10) || 0);
+  const o = String(objetivo).split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(a.length, o.length);
+  for (let i = 0; i < len; i++) {
+    const av = a[i] || 0, ov = o[i] || 0;
+    if (av > ov) return true;
+    if (av < ov) return false;
+  }
+  return true; // iguales
+}
+
+// Evalúa el cumplimiento de un scan contra las versiones objetivo vigentes.
+// Devuelve {sentinelOk, libraryOk} con valores true/false/null (null = sin dato para comparar).
+function evaluarCumplimientoVersion(scan) {
+  if (!versionesObjetivo) return { sentinelOk: null, libraryOk: null };
+  const sentinelOk = versionEsActualOMasNueva(scan.assureEngine, versionesObjetivo.sentinel);
+  const libraryOk  = versionEsActualOMasNueva(scan.assureDocLib, versionesObjetivo.library);
+  return { sentinelOk, libraryOk };
+}
+
 const SCANNER_ESTADO_LABELS = {
   'OK': 'OK',
   'Unknown': 'Desconectado',
