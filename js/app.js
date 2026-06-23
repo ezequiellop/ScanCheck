@@ -4,7 +4,7 @@ import {
   fbSaveScan, fbGetMyScans, fbDeleteScan, fbSoftDeleteScan, fbRestoreScan, fbGetDeletedScans,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
-  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo
+  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -2892,6 +2892,12 @@ function supTab(tab, btn) {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
     setTimeout(() => { if (liveMapInstance) liveMapInstance.invalidateSize(); }, 100);
+  }
+  // Al abrir la pestaña Versiones, marcar la notificación como vista →
+  // cambioDetectado=false en Firestore → el badge naranja desaparece automáticamente
+  // via el onSnapshot de fbWatchVersionesObjetivo que ya está suscripto.
+  if (tab==='versiones' && versionesObjetivo?.cambioDetectado) {
+    fbMarcarVersionesVistas().catch(e => console.warn('Error marcando versiones vistas:', e));
   }
 }
 window.supTab = supTab;

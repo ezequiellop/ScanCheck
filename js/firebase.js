@@ -286,3 +286,11 @@ export function fbWatchVersionesObjetivo(cb) {
     cb(snap.exists() ? snap.data() : null);
   });
 }
+
+// Marca cambioDetectado=false en config/versiones_objetivo — se llama cuando
+// el supervisor abre la pestaña Versiones o toca el badge, indicando que ya vio
+// la notificación de versión nueva. El badge naranja desaparece automáticamente
+// porque fbWatchVersionesObjetivo actualiza versionesObjetivo en tiempo real.
+export async function fbMarcarVersionesVistas() {
+  await updateDoc(doc(db, "config", "versiones_objetivo"), { cambioDetectado: false });
+}
