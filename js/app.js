@@ -333,7 +333,12 @@ async function loadMyData() {
 
   const restorePhotos = (s) => {
     if (s.photos && s.photos.length > 0) return s;
-    return { ...s, photos: photoCache[s.id] || photoCache[s.fbId] || [] };
+    // Fotos en localStorage (legacy / offline)
+    const localPhotos = photoCache[s.id] || photoCache[s.fbId] || [];
+    if (localPhotos.length > 0) return { ...s, photos: localPhotos };
+    // URLs de R2 guardadas en el objeto (ya subidas a la nube)
+    if (s.photoUrls && s.photoUrls.length > 0) return { ...s, photos: s.photoUrls };
+    return s;
   };
 
   const [fbScans, fbReports] = await Promise.all([
@@ -1053,6 +1058,53 @@ function processQRData(raw) {
 }
 
 // ======== SAVE SCAN ========
+// ── Fotos → Cloudflare R2 ────────────────────────────────────
+// Sube las fotos de un scan al bucket R2 y devuelve array de URLs públicas.
+// Si no hay conexión o falla alguna foto, guarda las que pudo y sigue.
+async function uploadPhotosToR2(scanId, photos) {
+  if (!photos || photos.length === 0) return [];
+  const urls = [];
+  for (let i = 0; i < photos.length; i++) {
+    try {
+      const dataUrl = typeof photos[i] === 'string' ? photos[i] : photos[i].dataUrl;
+      if (!dataUrl) continue;
+      // Convertir base64 a blob
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const filename = `foto_${i+1}_${Date.now()}.jpg`;
+      const uploadRes = await fetch(`${PHOTOS_PROXY_URL}/upload/${scanId}/${filename}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'X-ScanCheck-Token': PHOTOS_TOKEN
+        },
+        body: blob
+      });
+      if (uploadRes.ok) {
+        const data = await uploadRes.json();
+        urls.push(data.url);
+      }
+    } catch(e) {
+      console.warn(`Error subiendo foto ${i+1}:`, e.message);
+    }
+  }
+  return urls;
+}
+
+// Carga las URLs de fotos de un scan desde R2 (para mostrar en modal/PDF).
+async function loadPhotosFromR2(scanId) {
+  try {
+    const res = await fetch(`${PHOTOS_PROXY_URL}/list/${scanId}`, {
+      headers: { 'X-ScanCheck-Token': PHOTOS_TOKEN }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.photos || []).map(p => p.url);
+  } catch(e) {
+    return [];
+  }
+}
+
 async function saveScan() {
   const paso  = document.getElementById('inp-paso').value.trim();
   const puesto= document.getElementById('inp-puesto').value.trim();
@@ -1213,6 +1265,20 @@ async function saveScan() {
         localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
       } catch(e) {}
       setSyncStatus('ok');
+      // Subir fotos a R2 en segundo plano (no bloquea el flujo principal)
+      // Las URLs devueltas se guardan en el objeto scan para que las vistas
+      // las puedan mostrar sin depender de localStorage.
+      if (scan.photos && scan.photos.length > 0 && navigator.onLine) {
+        uploadPhotosToR2(fbId || scan.id, scan.photos).then(urls => {
+          if (urls.length > 0) {
+            scan.photoUrls = urls;
+            if (idx !== -1) localScans[idx].photoUrls = urls;
+            // Persistir las URLs en Firestore para acceso futuro
+            fbSaveScan({ ...scan, photoUrls: urls }).catch(() => {});
+            console.log(`✓ ${urls.length} foto(s) subidas a R2`);
+          }
+        }).catch(e => console.warn('Error subiendo fotos a R2:', e.message));
+      }
     } catch(e) {
       setSyncStatus('error');
       queueAdd('scan', scan);
@@ -1226,11 +1292,24 @@ async function saveScan() {
 window.saveScan = saveScan;
 
 // ======== VIEW SCAN MODAL ========
-function viewScan(id) {
+async function viewScan(id) {
   const scan = localScans.find(s=>(s.id===id||s.fbId===id));
   if (!scan) return;
   modalScanId = id;
-  const photos = (scan.photos||[]).map(p=>`<img src="${p}" class="modal-photo" style="margin-bottom:6px" alt="foto">`).join('');
+  // Prioridad de fotos: 1) en memoria (base64), 2) URLs de R2 ya guardadas, 3) cargar desde R2
+  let photoSrcs = scan.photos && scan.photos.length > 0
+    ? scan.photos
+    : scan.photoUrls && scan.photoUrls.length > 0
+      ? scan.photoUrls
+      : [];
+  if (photoSrcs.length === 0 && navigator.onLine) {
+    const scanKey = scan.fbId || scan.id;
+    photoSrcs = await loadPhotosFromR2(scanKey);
+    if (photoSrcs.length > 0) {
+      scan.photoUrls = photoSrcs;
+    }
+  }
+  const photos = photoSrcs.map(p=>`<img src="${p}" class="modal-photo" style="margin-bottom:6px" alt="foto">`).join('');
   document.getElementById('modal-scan-content').innerHTML = `
     ${photos||'<div style="height:70px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:12px;background:var(--bg3);border-radius:10px;margin-bottom:14px">Sin fotos</div>'}
 
@@ -1937,7 +2016,12 @@ async function buildReportPDFDoc(rep) {
   } catch(e) {}
   const restorePhotos = (s) => {
     if (s.photos && s.photos.length > 0) return s;
-    return { ...s, photos: photoCache[s.id] || photoCache[s.fbId] || [] };
+    // Fotos en localStorage (legacy / offline)
+    const localPhotos = photoCache[s.id] || photoCache[s.fbId] || [];
+    if (localPhotos.length > 0) return { ...s, photos: localPhotos };
+    // URLs de R2 guardadas en el objeto (ya subidas a la nube)
+    if (s.photoUrls && s.photoUrls.length > 0) return { ...s, photos: s.photoUrls };
+    return s;
   };
 
   // Priority 1: localScans (in-memory, has photos)
@@ -3319,6 +3403,10 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
+// ── Cloudflare R2 Photos Proxy ───────────────────────────────
+const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
+const PHOTOS_TOKEN     = 'SC_Photos2026_Danaide_XkP9mQ3rTv59828daNa'; // mismo valor que SCANCHECK_PHOTOS_TOKEN en el Worker
+
 const JIRA_PROXY_URL = 'https://scancheck-jira-proxy.elopapa.workers.dev';
 const JIRA_BASE_URL = 'https://danaide-enterprise.atlassian.net';
 const GOOGLE_CLIENT_ID = '1033851892465-fdfkguq9uba6pfie61id75rhnnn4fj1h.apps.googleusercontent.com';
