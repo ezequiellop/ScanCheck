@@ -332,12 +332,14 @@ async function loadMyData() {
   } catch(e) {}
 
   const restorePhotos = (s) => {
-    if (s.photos && s.photos.length > 0) return s;
+    // URLs de R2 siempre se preservan en photoUrls para acceso cross-device
+    const photoUrls = s.photoUrls && s.photoUrls.length > 0 ? s.photoUrls : null;
+    if (s.photos && s.photos.length > 0) return photoUrls ? { ...s, photoUrls } : s;
     // Fotos en localStorage (legacy / offline)
     const localPhotos = photoCache[s.id] || photoCache[s.fbId] || [];
-    if (localPhotos.length > 0) return { ...s, photos: localPhotos };
-    // URLs de R2 guardadas en el objeto (ya subidas a la nube)
-    if (s.photoUrls && s.photoUrls.length > 0) return { ...s, photos: s.photoUrls };
+    if (localPhotos.length > 0) return { ...s, photos: localPhotos, ...(photoUrls ? { photoUrls } : {}) };
+    // Solo URLs de R2
+    if (photoUrls) return { ...s, photoUrls };
     return s;
   };
 
@@ -2024,12 +2026,11 @@ async function buildReportPDFDoc(rep) {
     }
   } catch(e) {}
   const restorePhotos = (s) => {
-    if (s.photos && s.photos.length > 0) return s;
-    // Fotos en localStorage (legacy / offline)
+    const photoUrls = s.photoUrls && s.photoUrls.length > 0 ? s.photoUrls : null;
+    if (s.photos && s.photos.length > 0) return photoUrls ? { ...s, photoUrls } : s;
     const localPhotos = photoCache[s.id] || photoCache[s.fbId] || [];
-    if (localPhotos.length > 0) return { ...s, photos: localPhotos };
-    // URLs de R2 guardadas en el objeto (ya subidas a la nube)
-    if (s.photoUrls && s.photoUrls.length > 0) return { ...s, photos: s.photoUrls };
+    if (localPhotos.length > 0) return { ...s, photos: localPhotos, ...(photoUrls ? { photoUrls } : {}) };
+    if (photoUrls) return { ...s, photos: photoUrls, photoUrls };
     return s;
   };
 
