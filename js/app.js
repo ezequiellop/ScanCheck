@@ -771,10 +771,14 @@ function resetNewScanForm() {
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
   ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
-  capturedPhotos = []; currentOpType = 'mantenimiento'; editingScanId = null;
+  capturedPhotos = []; currentOpType = 'mantenimiento';
+  // NO limpiamos editingScanId aquí — lo gestiona editScan/saveScan directamente
   // Restaurar botón guardar por si se cancela una edición
   const btnG = document.getElementById('btn-save-scan');
   if (btnG) { btnG.textContent = '✓ Guardar Registro'; btnG.style.background = ''; }
+  // Si se navega a new-scan SIN pasar por editScan, limpiar el modo edición
+  if (!window._keepEditId) editingScanId = null;
+  window._keepEditId = false;
   currentIncidenciaSubtipo = 'cambio_equipo'; currentInstalacionSubtipo = 'instalacion_nueva';
   qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null; qrDatosSistema = {};
   document.querySelectorAll('.op-btn[data-op]').forEach(b=>b.classList.remove('active'));
@@ -1446,10 +1450,16 @@ function editScan(id) {
   editingScanId = id;
 
   // Navegar al formulario — resetNewScanForm() se llama automáticamente dentro de showPage
-  // Usamos setTimeout para pre-completar los campos DESPUÉS del reset
+  // IMPORTANTE: guardamos el ID antes de llamar showPage porque resetNewScanForm()
+  // limpia editingScanId. Lo restauramos dentro del setTimeout.
+  const savedEditId = id;
+  window._keepEditId = true; // evitar que resetNewScanForm limpie editingScanId
+  editingScanId = savedEditId; // setear ANTES del showPage
   showPage('new-scan');
 
   setTimeout(() => {
+    // Confirmar editingScanId por si algo lo limpió
+    editingScanId = savedEditId;
     // Preseleccionar el tipo de operación
     const opKey = scan.opType==='mantenimiento' ? 'mantenimiento'
                 : (scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo') ? 'instalacion'
