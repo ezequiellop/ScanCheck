@@ -4,7 +4,7 @@ import {
   fbSaveScan, fbGetMyScans, fbDeleteScan, fbSoftDeleteScan, fbRestoreScan, fbGetDeletedScans,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
-  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas
+  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -1265,17 +1265,22 @@ async function saveScan() {
         localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
       } catch(e) {}
       setSyncStatus('ok');
-      // Subir fotos a R2 en segundo plano (no bloquea el flujo principal)
-      // Las URLs devueltas se guardan en el objeto scan para que las vistas
-      // las puedan mostrar sin depender de localStorage.
+      // Subir fotos a R2 en segundo plano (no bloquea el flujo principal).
+      // Capturamos el fbId en una const local para que el closure de la Promise
+      // siempre tenga el valor correcto independientemente del scope externo.
       if (scan.photos && scan.photos.length > 0 && navigator.onLine) {
-        uploadPhotosToR2(fbId || scan.id, scan.photos).then(urls => {
+        const scanFbId = fbId; // captura explícita para el closure
+        uploadPhotosToR2(scanFbId, scan.photos).then(async urls => {
           if (urls.length > 0) {
             scan.photoUrls = urls;
             if (idx !== -1) localScans[idx].photoUrls = urls;
-            // Persistir las URLs en Firestore para acceso futuro
-            fbSaveScan({ ...scan, photoUrls: urls }).catch(() => {});
-            console.log(`✓ ${urls.length} foto(s) subidas a R2`);
+            // Persistir las URLs en Firestore usando updateDoc directo
+            try {
+              await fbUpdateScan(scanFbId, { photoUrls: urls });
+              console.log(`✓ ${urls.length} foto(s) subidas a R2 y URLs guardadas en Firestore`);
+            } catch(e) {
+              console.warn('Error guardando photoUrls en Firestore:', e.message);
+            }
           }
         }).catch(e => console.warn('Error subiendo fotos a R2:', e.message));
       }
@@ -1598,6 +1603,7 @@ window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
 window.fbGetMyScans = fbGetMyScans;
+window.fbUpdateScan = fbUpdateScan;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
 window.getLocalScans = () => localScans;
