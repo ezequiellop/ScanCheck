@@ -646,16 +646,26 @@ function updateHeroDate() {
   const label = new Date().toLocaleDateString('es-AR', {weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('hero-date').textContent = label.charAt(0).toUpperCase()+label.slice(1);
 }
+function getOrphanScans() {
+  // Registros que no tienen informe cerrado — incluye días anteriores
+  const reportedIds = new Set(localReports.filter(r=>!r.eliminado).flatMap(r=>r.scanIds||[]));
+  return localScans.filter(s => !s.eliminado && !reportedIds.has(s.id) && !reportedIds.has(s.fbId));
+}
+
 function updateStats() {
   const today = getTodayKey();
   const todayScans = localScans.filter(s => localDateKey(s.timestamp) === today);
   document.getElementById('stat-today').textContent   = todayScans.length;
   document.getElementById('stat-total').textContent   = localScans.length;
-  // localReports puede incluir informes eliminados lógicamente por técnicos
-  // (necesario para que el cálculo de cumplimiento de versiones no pierda
-  // datos históricos) — para el contador visible filtramos esos.
   document.getElementById('stat-reports').textContent = localReports.filter(r => !r.eliminado).length;
   document.getElementById('btn-close-day-wrap').classList.toggle('hidden', todayScans.length === 0);
+  // Badge naranja en "Total Registros" si hay registros sin informe de días anteriores
+  const orphans = getOrphanScans().filter(s => localDateKey(s.timestamp) !== today);
+  const badge = document.getElementById('orphan-badge');
+  if (badge) {
+    badge.classList.toggle('hidden', orphans.length === 0);
+    badge.textContent = orphans.length > 0 ? orphans.length : '';
+  }
 }
 
 // ======== TODAY LIST ========
@@ -1787,6 +1797,71 @@ function closeDayReport() {
   showNextPendingReport();
 }
 window.closeDayReport = closeDayReport;
+
+// ── Vista de registros sin informe ──────────────────────────
+function showOrphanScans() {
+  const orphans = getOrphanScans();
+  const el = document.getElementById('orphan-list-content');
+  if (!el) return;
+
+  if (orphans.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3);font-size:14px">
+      ✅ Todos los registros tienen informe cerrado
+    </div>`;
+  } else {
+    // Agrupar por fecha para mejor visualización
+    const byDate = {};
+    orphans.forEach(s => {
+      const fecha = localDateKey(s.timestamp);
+      if (!byDate[fecha]) byDate[fecha] = [];
+      byDate[fecha].push(s);
+    });
+    const today = getTodayKey();
+    el.innerHTML = Object.keys(byDate).sort((a,b) => b.localeCompare(a)).map(fecha => {
+      const label = fecha === today ? 'Hoy' : new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'});
+      const items = byDate[fecha].map(s => `
+        <div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(s.paso||'Sin paso')} — ${escHtml(s.puesto||'Sin puesto')}</div>
+              <div style="font-size:11px;color:var(--text3)">${opLabel(s.opType)} · ${new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</div>
+              ${s.scannerSerie ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">Scanner: ${escHtml(s.scannerSerie)}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button onclick="closeModal('modal-orphans');editScan('${s.id||s.fbId}')" 
+                style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">✏️ Editar</button>
+              <button onclick="deleteOrphanScan('${s.id||s.fbId}')" 
+                style="background:var(--danger,#e53);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">🗑</button>
+            </div>
+          </div>
+          ${s.notas ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${escHtml(s.notas.substring(0,80))}${s.notas.length>80?'…':''}</div>` : ''}
+        </div>`).join('');
+      return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">${label}</div>${items}`;
+    }).join('');
+  }
+
+  document.getElementById('modal-orphans').classList.remove('hidden');
+}
+window.showOrphanScans = showOrphanScans;
+
+async function deleteOrphanScan(id) {
+  if (!confirm('¿Eliminar este registro? Pasará a la papelera del supervisor.')) return;
+  const scan = localScans.find(s => s.id===id || s.fbId===id);
+  if (!scan) return;
+  // Soft delete
+  if (scan.fbId) {
+    try { await fbSoftDeleteScan(scan.fbId, currentUser?.id); } catch(e) {}
+  }
+  localScans = localScans.filter(s => s.id!==id && s.fbId!==id);
+  try {
+    const scansForStorage = localScans.map(({photos,...s})=>({...s,photoCount:(photos||[]).length}));
+    localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+  } catch(e) {}
+  updateStats();
+  showOrphanScans(); // refresh the list
+  showToast('Registro eliminado — visible en papelera del supervisor','success');
+}
+window.deleteOrphanScan = deleteOrphanScan;
 
 function showNextPendingReport() {
   if (pendingReportQueue.length === 0) { pendingReportTotal = 0; showPage('home'); return; }
@@ -3103,7 +3178,7 @@ window.eliminarRegistroDefinitivo = eliminarRegistroDefinitivo;
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','versiones','mapa','export'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','tecnicos','versiones','mapa','export','storage'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
@@ -3117,6 +3192,56 @@ function supTab(tab, btn) {
   }
 }
 window.supTab = supTab;
+
+// ── Monitor de Storage R2 ────────────────────────────────────
+async function loadStorageStats() {
+  const el = document.getElementById('storage-stats-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Consultando storage...</div>';
+  try {
+    const res = await fetch(`${PHOTOS_PROXY_URL}/stats`, {
+      headers: { 'X-ScanCheck-Token': PHOTOS_TOKEN }
+    });
+    if (!res.ok) throw new Error('Error ' + res.status);
+    const d = await res.json();
+    const pct = d.usePct || 0;
+    const color = pct < 60 ? 'var(--accent)' : pct < 85 ? 'var(--warning)' : '#e53';
+    el.innerHTML = `
+      <div style="background:var(--bg2);border-radius:12px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:700;color:var(--text)">Uso del bucket scancheck-photos</span>
+          <span style="font-size:13px;font-weight:700;color:${color}">${pct}%</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:99px;height:10px;overflow:hidden;margin-bottom:12px">
+          <div style="background:${color};height:100%;width:${Math.min(pct,100)}%;border-radius:99px;transition:width .5s"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--text)">${d.totalSizeMB} MB</div>
+            <div style="font-size:11px;color:var(--text3)">Usado</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--text3)">${(d.limitFreeMB/1024).toFixed(0)} GB</div>
+            <div style="font-size:11px;color:var(--text3)">Límite gratuito</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--text)">${d.totalFiles}</div>
+            <div style="font-size:11px;color:var(--text3)">Fotos almacenadas</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--accent)">${(d.limitFreeMB - d.totalSizeMB).toFixed(0)} MB</div>
+            <div style="font-size:11px;color:var(--text3)">Disponible</div>
+          </div>
+        </div>
+        ${pct > 80 ? `<div style="margin-top:12px;padding:10px;background:#e5330022;border-radius:8px;font-size:12px;color:#e53;font-weight:600">⚠️ Uso elevado — considerá limpiar fotos antiguas para evitar cargos</div>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text3);text-align:center">Límite gratuito de Cloudflare R2: 10 GB / mes · Sin costo de egress</div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<div style="text-align:center;padding:20px;color:#e53;font-size:13px">Error al consultar storage: ${e.message}</div>`;
+  }
+}
+window.loadStorageStats = loadStorageStats;
 
 let liveMapStarted=false;
 async function renderSupervisor() {
