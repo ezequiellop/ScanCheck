@@ -148,7 +148,7 @@
         <div class="hero-date" id="hero-date"></div>
         <div class="hero-stats">
           <div class="stat-card"><span class="stat-num" id="stat-today">0</span><span class="stat-label">Hoy</span></div>
-          <div class="stat-card"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Total Registros</span></div>
+          <div class="stat-card" onclick="showOrphanScans()" style="cursor:pointer;position:relative" title="Ver registros sin informe"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Total Registros</span><span id="orphan-badge" class="hidden" style="position:absolute;top:6px;right:8px;background:var(--warning);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center"></span></div>
           <div class="stat-card"><span class="stat-num" id="stat-reports">0</span><span class="stat-label">Informes</span></div>
         </div>
       </div>
@@ -425,6 +425,7 @@
         <button class="sup-tab" onclick="supTab('versiones',this)">Versiones</button>
         <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
         <button class="sup-tab" onclick="supTab('export',this)">Exportar</button>
+        <button class="sup-tab" onclick="supTab('storage',this)">Storage</button>
       </div>
       <div id="sup-informes" class="sup-panel">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
@@ -435,6 +436,16 @@
       </div>
       <div id="sup-tecnicos" class="sup-panel hidden"><div id="sup-tecnicos-list"></div></div>
       <div id="sup-versiones" class="sup-panel hidden"><div id="sup-versiones-content"></div></div>
+      <div id="sup-storage" class="sup-panel hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:700;color:var(--text)">☁️ Storage de Fotos (R2)</div>
+          <button class="btn-ghost small" onclick="loadStorageStats()">↻ Actualizar</button>
+        </div>
+        <div id="storage-stats-content">
+          <div style="text-align:center;padding:30px;color:var(--text3);font-size:13px">Tocá Actualizar para ver el estado del storage</div>
+        </div>
+      </div>
+
       <div id="sup-export" class="sup-panel hidden">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
           <h3 style="margin-bottom:8px">Exportar a Google Sheets</h3>
@@ -469,6 +480,18 @@
 </div>
 
 <!-- JIRA MODAL -->
+<!-- ── MODAL: REGISTROS SIN INFORME ── -->
+<div id="modal-orphans" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-orphans')"></div>
+  <div class="modal-box" style="max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">📋 Registros sin informe</div>
+      <button class="btn-icon" onclick="closeModal('modal-orphans')" style="font-size:20px;line-height:1">×</button>
+    </div>
+    <div id="orphan-list-content"></div>
+  </div>
+</div>
+
 <div id="modal-jira" class="modal hidden">
   <div class="modal-backdrop" onclick="closeModal('modal-jira')"></div>
   <div class="modal-sheet">
