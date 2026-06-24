@@ -177,6 +177,13 @@ export async function fbUpdateScan(fbId, fields) {
   await updateDoc(doc(db, "scans", fbId), fields);
 }
 
+// Reemplaza completamente un documento de scan en Firestore (para edición de registros).
+// A diferencia de fbUpdateScan (que hace merge), esto sobreescribe el documento entero.
+export async function fbReplaceScan(fbId, scanData) {
+  const { photos, ...dataWithoutPhotos } = scanData; // no guardar base64 en Firestore
+  await setDoc(doc(db, "scans", fbId), dataWithoutPhotos);
+}
+
 export async function fbUpdateReport(fbId, fields) {
   // Strip photos from scansSnapshot if present, and clean undefined/NaN
   const clean = { ...fields };

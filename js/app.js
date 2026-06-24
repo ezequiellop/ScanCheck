@@ -4,7 +4,7 @@ import {
   fbSaveScan, fbGetMyScans, fbDeleteScan, fbSoftDeleteScan, fbRestoreScan, fbGetDeletedScans,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
-  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan
+  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -1282,7 +1282,7 @@ async function saveScan() {
     setSyncStatus('syncing');
     try {
       const fbId = isEdit
-        ? (await fbUpdateScan(scan.fbId, {...scan, id: scan.id}), scan.fbId)
+        ? (await fbReplaceScan(scan.fbId, {...scan}), scan.fbId)
         : await fbSaveScan(scan);
       // Importante: guardar el fbId devuelto tanto en el objeto en memoria como
       // en localStorage. Sin esto, si el técnico borra el registro en la MISMA
