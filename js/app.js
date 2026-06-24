@@ -1031,11 +1031,13 @@ function processQRData(raw) {
     if (assureDocLibRuta)  qrDatosSistema.docLibRuta  = assureDocLibRuta;
     if (assureServicio)    qrDatosSistema.servicioEstado = assureServicio;
 
-    if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el&&!el.value) el.value=puestoVal; }
-    if (serieVal)  { const el=document.getElementById('inp-serie');  if(el&&!el.value) el.value=serieVal; }
-    if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el&&!el.value) el.value=dskSerie; }
-    if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el&&!el.value) el.value=dskModelo; }
-    if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el&&!el.value) { el.value=dskEstado; el.classList.toggle('select-placeholder', !el.value); } }
+    // El QR siempre sobreescribe los campos de hardware — son datos de la PC actual,
+    // no del técnico, así que siempre deben reflejar lo que leyó el script.
+    if (puestoVal) { const el=document.getElementById('inp-pc-nombre'); if(el) el.value=puestoVal; }
+    if (serieVal)  { const el=document.getElementById('inp-serie');  if(el) el.value=serieVal; }
+    if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el) el.value=dskSerie; }
+    if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el) el.value=dskModelo; }
+    if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el) { el.value=dskEstado; el.classList.toggle('select-placeholder', !el.value); } }
     if (assureEngine) qrAssureEngine = assureEngine;
     if (assureDocLib) qrAssureDocLib = assureDocLib;
     if (assureLicKey) qrAssureLicKey = assureLicKey;
@@ -2200,21 +2202,47 @@ function renderHistory() {
     const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date((b.date||'1970-01-01')+'T12:00:00').getTime();
     return tb - ta;
   });
-  container.innerHTML = syncBanner + sortedReports.map(rep=>{
+  const renderRepCard = (rep) => {
     const d=new Date(rep.date+'T12:00:00');
     const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const count=rep.scanIds.length;
+    const paso = rep.paso || rep.scansSnapshot?.[0]?.paso || '';
     const jiraBadge=rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:var(--mono);text-decoration:underline">${rep.jiraKey}</a>`:'';
     return `<div class="history-item" onclick="viewReport('${rep.id||rep.fbId}')">
       <div class="history-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div>
       <div class="history-info">
-        <div class="history-date">${label}${jiraBadge}</div>
+        <div class="history-date">${paso?`<span style="color:var(--accent);font-weight:700">${escHtml(paso)}</span> · `:''} ${label}${jiraBadge}</div>
         <div class="history-meta">${count} scanner${count!==1?'s':''} · Inspector: ${escHtml(rep.inspectorName||'—')}</div>
-        <div class="history-meta" style="color:var(--text3)">Técnico: ${escHtml(rep.technicianName||'—')}</div>
+        ${currentUser?.role==='supervisor'?`<div class="history-meta" style="color:var(--text3)">Técnico: ${escHtml(rep.technicianName||'—')}</div>`:''}
       </div>
       <div class="history-badge">${count}</div>
     </div>`;
-  }).join('');
+  };
+
+  if (currentUser?.role === 'supervisor') {
+    // Supervisor: agrupar por técnico, ordenado cronológicamente dentro de cada grupo
+    const byTech = new Map();
+    sortedReports.forEach(rep => {
+      const tech = rep.technicianName || '—';
+      if (!byTech.has(tech)) byTech.set(tech, []);
+      byTech.get(tech).push(rep);
+    });
+    // Ordenar técnicos por informe más reciente
+    const techsSorted = [...byTech.entries()].sort((a,b) => {
+      const ta = a[1][0].createdAt?.seconds ? a[1][0].createdAt.seconds*1000 : new Date(a[1][0].date+'T12:00:00').getTime();
+      const tb = b[1][0].createdAt?.seconds ? b[1][0].createdAt.seconds*1000 : new Date(b[1][0].date+'T12:00:00').getTime();
+      return tb - ta;
+    });
+    container.innerHTML = syncBanner + techsSorted.map(([techName, reps]) =>
+      `<div style="margin-bottom:6px;padding:8px 12px;background:var(--bg3);border-radius:10px;font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">
+        👤 ${escHtml(techName)} <span style="font-weight:400">(${reps.length} informe${reps.length!==1?'s':''})</span>
+      </div>
+      ${reps.map(renderRepCard).join('')}`
+    ).join('');
+  } else {
+    // Técnico: lista cronológica simple (solo ve sus propios informes)
+    container.innerHTML = syncBanner + sortedReports.map(renderRepCard).join('');
+  }
 }
 
 // ======== VIEW REPORT ========
