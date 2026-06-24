@@ -1608,6 +1608,7 @@ window.deleteScanFromModal = deleteScanFromModal;
 window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
 window.fbGetMyScans = fbGetMyScans;
+window.getInternalScans = () => localScans;
 window.fbUpdateScan = fbUpdateScan;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
