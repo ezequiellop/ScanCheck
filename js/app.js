@@ -1740,6 +1740,19 @@ window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
 window.fbGetMyScans = fbGetMyScans;
 window.getInternalScans = () => localScans;
+window.getInternalReports = () => localReports;
+window.debugOrphans = () => {
+  const reportedIds = new Set(localReports.filter(r=>!r.eliminado).flatMap(r=>r.scanIds||[]));
+  console.log('reportedIds:', [...reportedIds]);
+  const result = localScans.map(s=>({
+    id: s.id, fbId: s.fbId, eliminado: s.eliminado,
+    enInforme: reportedIds.has(s.id)||reportedIds.has(s.fbId)
+  }));
+  console.table(result);
+  const orphans = localScans.filter(s => !s.eliminado && !reportedIds.has(s.id) && !reportedIds.has(s.fbId));
+  console.log('Huérfanos encontrados:', orphans.length);
+  return orphans;
+};
 window.fbUpdateScan = fbUpdateScan;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
