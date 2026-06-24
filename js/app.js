@@ -1261,7 +1261,10 @@ async function saveScan() {
 
   // ── MODO EDICIÓN: reemplazar registro existente ───────────
   if (editingScanId) {
+    console.log('[Edit] editingScanId:', editingScanId);
+    console.log('[Edit] localScans ids:', localScans.map(s=>({id:s.id,fbId:s.fbId})));
     const existingIdx = localScans.findIndex(s => s.id===editingScanId || s.fbId===editingScanId);
+    console.log('[Edit] existingIdx:', existingIdx);
     const existing = existingIdx !== -1 ? localScans[existingIdx] : null;
     // Preservar campos que no se pueden cambiar desde el formulario
     if (existing) {
