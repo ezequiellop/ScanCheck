@@ -1271,16 +1271,22 @@ async function saveScan() {
     console.log('[Edit] existingIdx:', existingIdx);
     const existing = existingIdx !== -1 ? localScans[existingIdx] : null;
     // Preservar campos que no se pueden cambiar desde el formulario
-    if (existing) {
-      scan.id        = existing.id;
-      scan.fbId      = existing.fbId;
-      scan.timestamp = existing.timestamp; // mantener timestamp original
-      scan.userId    = existing.userId;
-      scan.userName  = existing.userName;
-      scan.photoUrls = existing.photoUrls; // preservar URLs de R2 existentes
+    // editingScanId puede ser el id local (sc_...) o el fbId de Firestore
+    // Lo usamos directamente como fbId si existing no lo tiene definido
+    const editFbId = (existing?.fbId) ||
+      (editingScanId?.startsWith('sc_') ? null : editingScanId) || null;
+    if (existing || editFbId) {
+      scan.id        = existing?.id        || editingScanId;
+      scan.fbId      = editFbId;
+      scan.timestamp = existing?.timestamp || scan.timestamp;
+      scan.userId    = existing?.userId    || currentUser.id;
+      scan.userName  = existing?.userName  || currentUser.name;
+      scan.photoUrls = existing?.photoUrls || [];
       // Reemplazar en el array — eliminar TODOS los duplicados con mismo id/fbId
-      // antes de insertar el editado, para evitar que queden duplicados
-      localScans = localScans.filter(s => s.id !== existing.id && s.fbId !== existing.fbId);
+      localScans = localScans.filter(s =>
+        s.id !== (existing?.id || editingScanId) &&
+        (editFbId ? s.fbId !== editFbId : true)
+      );
       localScans.push(scan);
     }
     editingScanId = null;
@@ -1306,6 +1312,14 @@ async function saveScan() {
   // Save to Firebase (or queue if offline)
   // En modo edición usamos updateDoc sobre el documento existente (mismo fbId)
   // En modo creación usamos addDoc (fbSaveScan devuelve el nuevo fbId)
+  // Fallback: si el bloque de edición en memoria no encontró el existing y no
+  // asignó fbId, lo tomamos directamente de editingScanId para no crear duplicado
+  // Si estábamos editando pero el bloque de memoria no encontró el scan (raro),
+  // buscamos el fbId directamente para no crear un duplicado con fbSaveScan
+  if (!scan.fbId && editingScanId) {
+    const src = localScans.find(s => s.id===editingScanId || s.fbId===editingScanId);
+    if (src?.fbId) scan.fbId = src.fbId;
+  }
   const isEdit = !!scan.fbId;
   if (navigator.onLine) {
     setSyncStatus('syncing');
