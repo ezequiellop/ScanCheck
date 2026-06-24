@@ -1310,9 +1310,19 @@ async function saveScan() {
   if (navigator.onLine) {
     setSyncStatus('syncing');
     try {
-      const fbId = isEdit
-        ? (await fbReplaceScan(scan.fbId, {...scan}), scan.fbId)
-        : await fbSaveScan(scan);
+      let fbId;
+      if (isEdit) {
+        try {
+          await fbReplaceScan(scan.fbId, {...scan});
+          console.log('[Edit] Firestore reemplazado OK, fbId:', scan.fbId);
+          fbId = scan.fbId;
+        } catch(e) {
+          console.error('[Edit] ERROR en fbReplaceScan:', e.message);
+          fbId = scan.fbId;
+        }
+      } else {
+        fbId = await fbSaveScan(scan);
+      }
       // Importante: guardar el fbId devuelto tanto en el objeto en memoria como
       // en localStorage. Sin esto, si el técnico borra el registro en la MISMA
       // sesión (sin recargar la página), deleteScanFromModal() no encuentra
@@ -1810,6 +1820,7 @@ window.debugOrphans = () => {
   return orphans;
 };
 window.fbUpdateScan = fbUpdateScan;
+window.fbReplaceScan = fbReplaceScan;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
 window.getLocalScans = () => localScans;
