@@ -1504,11 +1504,41 @@ function editScan(id) {
     );
     renderPhotosGrid();
 
-    // Restaurar checklist
+    // Restaurar checklist — mapeo explícito porque las claves del objeto (camelCase)
+    // no coinciden directamente con los IDs del HTML (kebab-case)
     if (scan.checklist) {
-      Object.keys(scan.checklist).forEach(key => {
-        const el = document.getElementById('chk-' + key);
+      const chkMap = {
+        vidrio:             'chk-vidrio',
+        cableUsb:           'chk-cable-usb',
+        fuente:             'chk-fuente',
+        limpieza:           'chk-limpieza',
+        updateAssureId:     'chk-update-assureid',
+        updateLibrerias:    'chk-update-librerias',
+        autoInicioDocAuth:  'chk-autoinicio-doc-auth',
+        autoInicioSentinel: 'chk-autoinicio-sentinel'
+      };
+      Object.entries(chkMap).forEach(([key, elId]) => {
+        const el = document.getElementById(elId);
         if (el) el.checked = !!scan.checklist[key];
+      });
+    }
+    if (scan.checklistInstalacion) {
+      const chkiMap = {
+        fuenteConectada:      'chki-fuente-conectada',
+        usb3:                 'chki-usb3',
+        driversDesko:         'chki-drivers-desko',
+        libreriasDesko:       'chki-librerias-desko',
+        aplicativosDesko:     'chki-aplicativos-desko',
+        assureIdLibrerias:    'chki-assureid-librerias',
+        autoInicioDocAuth:    'chki-autoinicio-doc-auth',
+        autoInicioSentinel:   'chki-autoinicio-sentinel',
+        settingsSensitivity:  'chki-settings-sensitivity',
+        pruebaRevealId:       'chki-prueba-revealid',
+        pruebaSicam:          'chki-prueba-sicam'
+      };
+      Object.entries(chkiMap).forEach(([key, elId]) => {
+        const el = document.getElementById(elId);
+        if (el) el.checked = !!scan.checklistInstalacion[key];
       });
     }
 
