@@ -1335,7 +1335,18 @@ async function saveScan() {
           fbId = scan.fbId;
         }
       } else {
-        fbId = await fbSaveScan(scan);
+        // Verificar que no exista ya un documento con este id local en Firestore
+        // (puede pasar si una edición anterior falló a medias y quedó un fbId huérfano)
+        // Si existe, usamos fbReplaceScan en vez de crear un duplicado
+        const existingInFb = (await window.fbGetMyScans(scan.userId))
+          .find(s => s.id === scan.id && s.fbId && s.fbId !== scan.fbId);
+        if (existingInFb?.fbId) {
+          console.warn('[Save] Documento duplicado detectado, reemplazando en vez de crear:', existingInFb.fbId);
+          await fbReplaceScan(existingInFb.fbId, {...scan, fbId: existingInFb.fbId});
+          fbId = existingInFb.fbId;
+        } else {
+          fbId = await fbSaveScan(scan);
+        }
       }
       // Importante: guardar el fbId devuelto tanto en el objeto en memoria como
       // en localStorage. Sin esto, si el técnico borra el registro en la MISMA
