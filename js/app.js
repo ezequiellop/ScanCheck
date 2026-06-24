@@ -84,6 +84,7 @@ let pageHistory = [];
 let currentReport = null;
 let viewingReportId = null;
 let modalScanId = null;
+let editingScanId = null; // ID del scan que se está editando (null = registro nuevo)
 let cameraStream = null;
 let qrStream = null;
 let capturedPhotos = [];
@@ -751,7 +752,10 @@ function resetNewScanForm() {
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
   ].forEach(id => { const el=document.getElementById(id); if(el)el.checked=false; });
-  capturedPhotos = []; currentOpType = 'mantenimiento';
+  capturedPhotos = []; currentOpType = 'mantenimiento'; editingScanId = null;
+  // Restaurar botón guardar por si se cancela una edición
+  const btnG = document.getElementById('btn-save-scan');
+  if (btnG) { btnG.textContent = '✓ Guardar Registro'; btnG.style.background = ''; }
   currentIncidenciaSubtipo = 'cambio_equipo'; currentInstalacionSubtipo = 'instalacion_nueva';
   qrAssureEngine = null; qrAssureDocLib = null; qrAssureLicKey = null; qrDatosSistema = {};
   document.querySelectorAll('.op-btn[data-op]').forEach(b=>b.classList.remove('active'));
@@ -1235,7 +1239,28 @@ async function saveScan() {
   };
 
   stopCamera(); stopQRScan();
-  localScans.push(scan);
+
+  // ── MODO EDICIÓN: reemplazar registro existente ───────────
+  if (editingScanId) {
+    const existingIdx = localScans.findIndex(s => s.id===editingScanId || s.fbId===editingScanId);
+    const existing = existingIdx !== -1 ? localScans[existingIdx] : null;
+    // Preservar campos que no se pueden cambiar desde el formulario
+    if (existing) {
+      scan.id        = existing.id;
+      scan.fbId      = existing.fbId;
+      scan.timestamp = existing.timestamp; // mantener timestamp original
+      scan.userId    = existing.userId;
+      scan.userName  = existing.userName;
+      scan.photoUrls = existing.photoUrls; // preservar URLs de R2 existentes
+      localScans[existingIdx] = scan;
+    }
+    editingScanId = null;
+    // Restaurar botón guardar
+    const btnGuardar = document.getElementById('btn-save-scan');
+    if (btnGuardar) { btnGuardar.textContent = '✓ Guardar Registro'; btnGuardar.style.background = ''; }
+  } else {
+    localScans.push(scan);
+  }
   // Persist photos to localStorage — survives app close/reload
   if (scan.photos && scan.photos.length > 0) {
     try { localStorage.setItem('scancheck_photos_' + scan.id, JSON.stringify(scan.photos)); } catch(e) { console.warn('Photo storage failed:', e.message); }
@@ -1250,10 +1275,15 @@ async function saveScan() {
   showToast('✓ Scanner registrado','success');
 
   // Save to Firebase (or queue if offline)
+  // En modo edición usamos updateDoc sobre el documento existente (mismo fbId)
+  // En modo creación usamos addDoc (fbSaveScan devuelve el nuevo fbId)
+  const isEdit = !!scan.fbId;
   if (navigator.onLine) {
     setSyncStatus('syncing');
     try {
-      const fbId = await fbSaveScan(scan);
+      const fbId = isEdit
+        ? (await fbUpdateScan(scan.fbId, {...scan, id: scan.id}), scan.fbId)
+        : await fbSaveScan(scan);
       // Importante: guardar el fbId devuelto tanto en el objeto en memoria como
       // en localStorage. Sin esto, si el técnico borra el registro en la MISMA
       // sesión (sin recargar la página), deleteScanFromModal() no encuentra
@@ -1363,10 +1393,101 @@ async function viewScan(id) {
     ${scan.notas?`<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📝 Notas</div><div class="modal-notas">${notasListHtml(scan.notas)}</div>`:''}
 
     ${scan.opType==='reemplazo'||scan.opType==='cambio_equipo'?`<button class="btn-secondary" style="margin-top:10px;width:100%" onclick="downloadActaReemplazo('${id}')">📄 Descargar Acta de Reemplazo</button>`:''}
+
+    ${!scanTieneInforme(scan) ? `<button class="btn-secondary" style="margin-top:12px;width:100%;border-color:var(--accent);color:var(--accent)" onclick="editScan('${id}')">✏️ Editar registro</button>` : ''}
   `;
   document.getElementById('modal-scan').classList.remove('hidden');
 }
 window.viewScan = viewScan;
+
+// Devuelve true si el scan ya tiene informe cerrado (en cuyo caso no se puede editar)
+function scanTieneInforme(scan) {
+  const id = scan.id || scan.fbId;
+  return localReports.some(r =>
+    !r.eliminado && (r.scanIds||[]).some(sid => sid === id || sid === scan.id || sid === scan.fbId)
+  );
+}
+
+// Abre el formulario de registro pre-completado con los datos del scan para editarlo
+function editScan(id) {
+  const scan = localScans.find(s => s.id===id || s.fbId===id);
+  if (!scan) return;
+  if (scanTieneInforme(scan)) { showToast('Este registro ya tiene informe — no se puede editar','error'); return; }
+
+  // Cerrar el modal actual
+  document.getElementById('modal-scan').classList.add('hidden');
+
+  // Guardar referencia al scan que se está editando
+  editingScanId = id;
+
+  // Navegar al formulario de registro
+  showPage('scan');
+
+  // Preseleccionar el tipo de operación
+  setOpType(scan.opType==='mantenimiento'?'mantenimiento':
+            scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?'instalacion':
+            'incidencia',
+    document.querySelector(`.op-btn[data-op="${
+      scan.opType==='mantenimiento'?'mantenimiento':
+      scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?'instalacion':
+      'incidencia'
+    }"]`));
+
+  // Pre-completar campos
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+  setVal('inp-paso', scan.paso);
+  setVal('inp-puesto', scan.puesto);
+  setVal('inp-serie', scan.serie);
+  setVal('inp-scanner-serie', scan.scannerSerie);
+  setVal('inp-scanner-modelo', scan.scannerModelo);
+  setVal('inp-notas', scan.notas);
+  setVal('inp-inv-dnd', scan.invDnd);
+  setVal('inp-inv-dnm', scan.invDnm);
+
+  // Estado scanner
+  const estadoEl = document.getElementById('inp-scanner-estado');
+  if (estadoEl && scan.scannerEstado) {
+    estadoEl.value = scan.scannerEstado;
+    estadoEl.classList.toggle('select-placeholder', !scan.scannerEstado);
+  }
+
+  // Series incidencia cambio equipo
+  if (scan.serieRetira) setVal('inp-serie-retira', scan.serieRetira);
+  if (scan.serieNuevo) setVal('inp-serie-nuevo', scan.serieNuevo);
+  if (scan.actaReemplazo?.nuevoMarcaModelo) setVal('inp-nuevo-marca-modelo', scan.actaReemplazo.nuevoMarcaModelo);
+
+  // Restaurar datos del QR en variables globales y actualizar el preview
+  if (scan.datosSistema) {
+    Object.assign(qrDatosSistema, scan.datosSistema);
+    const preview = Object.entries(scan.datosSistema).map(([k,v])=>`${k}: ${v}`).join('\n');
+    const el = document.getElementById('qr-data-preview');
+    if (el) { el.textContent = preview; el.classList.remove('hidden'); }
+  }
+
+  // Restaurar fotos existentes
+  capturedPhotos = (scan.photos||scan.photoUrls||[]).map(p =>
+    typeof p === 'string' ? { dataUrl: p, info: '' } : p
+  );
+  renderPhotosGrid();
+
+  // Restaurar checklist
+  if (scan.checklist) {
+    Object.keys(scan.checklist).forEach(key => {
+      const el = document.getElementById('chk-' + key);
+      if (el) el.checked = !!scan.checklist[key];
+    });
+  }
+
+  // Cambiar el botón Guardar para que diga "Actualizar registro"
+  const btnGuardar = document.getElementById('btn-save-scan');
+  if (btnGuardar) {
+    btnGuardar.textContent = '✓ Actualizar registro';
+    btnGuardar.style.background = 'var(--warning)';
+  }
+
+  showToast('Editando registro — modificá los campos y guardá', 'success');
+}
+window.editScan = editScan;
 
 function fTag(label,val) { return val?`<div class="field-tag"><span>${label}</span><strong>${escHtml(val)}</strong></div>`:''; }
 function fTagHtml(label,htmlVal) { return htmlVal?`<div class="field-tag"><span>${label}</span><strong>${htmlVal}</strong></div>`:''; }
