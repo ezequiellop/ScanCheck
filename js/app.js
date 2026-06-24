@@ -3354,6 +3354,7 @@ async function renderSupervisor() {
   let allReports=localReports;
   try { allReports=await fbGetAllReports(); } catch(e) {}
   // Orden cronológico: más reciente primero (usa createdAt de Firestore si existe, sino la fecha del informe)
+  // Ordenar cronológicamente dentro de cada técnico (más reciente primero)
   allReports = [...allReports].sort((a,b) => {
     const ta = a.createdAt?.seconds ? a.createdAt.seconds*1000 : new Date(a.date+'T12:00:00').getTime();
     const tb = b.createdAt?.seconds ? b.createdAt.seconds*1000 : new Date(b.date+'T12:00:00').getTime();
@@ -3362,22 +3363,45 @@ async function renderSupervisor() {
   const supList=document.getElementById('sup-informes-list');
   if(!allReports.length) { supList.innerHTML=`<div class="empty-state"><p>Sin informes</p></div>`; }
   else {
-    supList.innerHTML=allReports.map(rep=>{
-      const d=new Date(rep.date+'T12:00:00');
-      const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-      const count=rep.scanIds?.length||0;
-      return `<div class="sup-card" onclick="viewReportSupervisor('${rep.fbId||rep.id}')">
-        <div class="sup-card-top">
-          <div><div class="sup-card-title">${escHtml(rep.technicianName||'—')}</div>
-            <div class="sup-card-meta">${label} · ${count} dispositivo${count!==1?'s':''}</div>
-            <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
+    // Agrupar por técnico manteniendo el orden cronológico dentro de cada grupo
+    const byTech = new Map();
+    allReports.forEach(rep => {
+      const tech = rep.technicianName || '—';
+      if (!byTech.has(tech)) byTech.set(tech, []);
+      byTech.get(tech).push(rep);
+    });
+    // Ordenar técnicos por fecha del informe más reciente
+    const techsSorted = [...byTech.entries()].sort((a,b) => {
+      const ta = a[1][0].createdAt?.seconds ? a[1][0].createdAt.seconds*1000 : new Date(a[1][0].date+'T12:00:00').getTime();
+      const tb = b[1][0].createdAt?.seconds ? b[1][0].createdAt.seconds*1000 : new Date(b[1][0].date+'T12:00:00').getTime();
+      return tb - ta;
+    });
+    supList.innerHTML = techsSorted.map(([techName, reps]) => {
+      const cards = reps.map(rep => {
+        const d = new Date(rep.date+'T12:00:00');
+        const label = d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+        const count = rep.scanIds?.length||0;
+        // Obtener el paso del primer scan del snapshot si está disponible
+        const paso = rep.paso || rep.scansSnapshot?.[0]?.paso || '—';
+        return `<div class="sup-card" onclick="viewReportSupervisor('${rep.fbId||rep.id}')">
+          <div class="sup-card-top">
+            <div style="flex:1;min-width:0">
+              <div class="sup-card-title" style="color:var(--accent)">${escHtml(paso)}</div>
+              <div class="sup-card-meta">${label} · ${count} dispositivo${count!==1?'s':''}</div>
+              <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              ${rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:3px 8px;border-radius:8px;font-family:var(--mono);display:block;margin-bottom:6px;text-decoration:underline">${rep.jiraKey}</a>`:''}
+              <div class="history-badge">${count}</div>
+            </div>
           </div>
-          <div style="text-align:right">
-            ${rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:3px 8px;border-radius:8px;font-family:var(--mono);display:block;margin-bottom:6px;text-decoration:underline">${rep.jiraKey}</a>`:''}
-            <div class="history-badge">${count}</div>
-          </div>
+        </div>`;
+      }).join('');
+      return `
+        <div style="margin-bottom:6px;padding:8px 12px;background:var(--bg3);border-radius:10px;font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">
+          👤 ${escHtml(techName)} <span style="font-weight:400;color:var(--text3)">(${reps.length} informe${reps.length!==1?'s':''})</span>
         </div>
-      </div>`;
+        ${cards}`;
     }).join('');
   }
 
