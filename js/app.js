@@ -1420,72 +1420,72 @@ function editScan(id) {
   // Guardar referencia al scan que se está editando
   editingScanId = id;
 
-  // Navegar al formulario de registro
-  showPage('scan');
+  // Navegar al formulario — resetNewScanForm() se llama automáticamente dentro de showPage
+  // Usamos setTimeout para pre-completar los campos DESPUÉS del reset
+  showPage('new-scan');
 
-  // Preseleccionar el tipo de operación
-  setOpType(scan.opType==='mantenimiento'?'mantenimiento':
-            scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?'instalacion':
-            'incidencia',
-    document.querySelector(`.op-btn[data-op="${
-      scan.opType==='mantenimiento'?'mantenimiento':
-      scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?'instalacion':
-      'incidencia'
-    }"]`));
+  setTimeout(() => {
+    // Preseleccionar el tipo de operación
+    const opKey = scan.opType==='mantenimiento' ? 'mantenimiento'
+                : (scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo') ? 'instalacion'
+                : 'incidencia';
+    const opBtn = document.querySelector(`.op-btn[data-op="${opKey}"]`);
+    if (opBtn) setOpType(opKey, opBtn);
 
-  // Pre-completar campos
-  const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
-  setVal('inp-paso', scan.paso);
-  setVal('inp-puesto', scan.puesto);
-  setVal('inp-serie', scan.serie);
-  setVal('inp-scanner-serie', scan.scannerSerie);
-  setVal('inp-scanner-modelo', scan.scannerModelo);
-  setVal('inp-notas', scan.notas);
-  setVal('inp-inv-dnd', scan.invDnd);
-  setVal('inp-inv-dnm', scan.invDnm);
+    // Pre-completar campos
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    setVal('inp-paso', scan.paso);
+    setVal('inp-puesto', scan.puesto);
+    setVal('inp-serie', scan.serie);
+    setVal('inp-scanner-serie', scan.scannerSerie);
+    setVal('inp-scanner-modelo', scan.scannerModelo);
+    setVal('inp-notas', scan.notas);
+    setVal('inp-inv-dnd', scan.invDnd);
+    setVal('inp-inv-dnm', scan.invDnm);
 
-  // Estado scanner
-  const estadoEl = document.getElementById('inp-scanner-estado');
-  if (estadoEl && scan.scannerEstado) {
-    estadoEl.value = scan.scannerEstado;
-    estadoEl.classList.toggle('select-placeholder', !scan.scannerEstado);
-  }
+    // Estado scanner
+    const estadoEl = document.getElementById('inp-scanner-estado');
+    if (estadoEl && scan.scannerEstado) {
+      estadoEl.value = scan.scannerEstado;
+      estadoEl.classList.toggle('select-placeholder', !scan.scannerEstado);
+    }
 
-  // Series incidencia cambio equipo
-  if (scan.serieRetira) setVal('inp-serie-retira', scan.serieRetira);
-  if (scan.serieNuevo) setVal('inp-serie-nuevo', scan.serieNuevo);
-  if (scan.actaReemplazo?.nuevoMarcaModelo) setVal('inp-nuevo-marca-modelo', scan.actaReemplazo.nuevoMarcaModelo);
+    // Series incidencia / cambio equipo
+    if (scan.serieRetira) setVal('inp-serie-retira', scan.serieRetira);
+    if (scan.serieNuevo)  setVal('inp-serie-nuevo',  scan.serieNuevo);
+    if (scan.actaReemplazo?.nuevoMarcaModelo) setVal('inp-nuevo-marca-modelo', scan.actaReemplazo.nuevoMarcaModelo);
 
-  // Restaurar datos del QR en variables globales y actualizar el preview
-  if (scan.datosSistema) {
-    Object.assign(qrDatosSistema, scan.datosSistema);
-    const preview = Object.entries(scan.datosSistema).map(([k,v])=>`${k}: ${v}`).join('\n');
-    const el = document.getElementById('qr-data-preview');
-    if (el) { el.textContent = preview; el.classList.remove('hidden'); }
-  }
+    // Restaurar datos del QR en variables globales y el preview
+    if (scan.datosSistema) {
+      Object.assign(qrDatosSistema, scan.datosSistema);
+      const preview = Object.entries(scan.datosSistema).map(([k,v])=>`${k}: ${v}`).join('\n');
+      const el = document.getElementById('qr-data-preview');
+      if (el) { el.textContent = preview; el.classList.remove('hidden'); }
+    }
 
-  // Restaurar fotos existentes
-  capturedPhotos = (scan.photos||scan.photoUrls||[]).map(p =>
-    typeof p === 'string' ? { dataUrl: p, info: '' } : p
-  );
-  renderPhotosGrid();
+    // Restaurar fotos — las URLs de R2 se usan como thumbnails
+    capturedPhotos = (scan.photoUrls||scan.photos||[]).map(p =>
+      typeof p === 'string' ? { dataUrl: p, info: '' } : p
+    );
+    renderPhotosGrid();
 
-  // Restaurar checklist
-  if (scan.checklist) {
-    Object.keys(scan.checklist).forEach(key => {
-      const el = document.getElementById('chk-' + key);
-      if (el) el.checked = !!scan.checklist[key];
-    });
-  }
+    // Restaurar checklist
+    if (scan.checklist) {
+      Object.keys(scan.checklist).forEach(key => {
+        const el = document.getElementById('chk-' + key);
+        if (el) el.checked = !!scan.checklist[key];
+      });
+    }
 
-  // Cambiar el botón Guardar para que diga "Actualizar registro"
-  const btnGuardar = document.getElementById('btn-save-scan');
-  if (btnGuardar) {
-    btnGuardar.textContent = '✓ Actualizar registro';
-    btnGuardar.style.background = 'var(--warning)';
-  }
+    // Cambiar botón Guardar a "Actualizar registro"
+    const btnGuardar = document.getElementById('btn-save-scan');
+    if (btnGuardar) {
+      btnGuardar.textContent = '✓ Actualizar registro';
+      btnGuardar.style.background = 'var(--warning)';
+    }
 
-  showToast('Editando registro — modificá los campos y guardá', 'success');
+    showToast('Editando registro — modificá los campos y guardá', 'success');
+  }, 50);
 }
 window.editScan = editScan;
 
