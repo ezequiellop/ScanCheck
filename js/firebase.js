@@ -3,7 +3,7 @@
 // ============================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot, getDocs, getDocsFromServer, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjid5hHW5v_wWjXM0sI3fuEdE3CYNV5KQ",
@@ -112,7 +112,10 @@ export async function fbSaveScan(scan) {
 
 export async function fbGetMyScans(userId) {
   const q = query(collection(db, "scans"), where("userId","==",userId));
-  const snap = await getDocs(q);
+  // Usar getDocsFromServer para saltear el caché local de Firestore y siempre
+  // traer los datos más recientes del servidor — evita que ediciones recientes
+  // queden ocultas por el caché offline de IndexedDB.
+  const snap = await getDocsFromServer(q);
   const r = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
   r.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
   return r.filter(s => !s.eliminado);
