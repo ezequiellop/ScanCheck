@@ -38,6 +38,25 @@ async function processSyncQueue() {
         const fbId = await fbSaveScan(item.data);
         const si = localScans.findIndex(s => s.id === item.data.id);
         if (si !== -1) localScans[si].fbId = fbId;
+        // Subir fotos a R2 que quedaron pendientes por falta de conexión
+        // Las fotos pueden estar en item.data.photos (si se guardaron en la cola)
+        // o en localStorage con la clave scancheck_photos_{id}
+        let photos = item.data.photos || [];
+        if (photos.length === 0) {
+          try {
+            const stored = localStorage.getItem('scancheck_photos_' + item.data.id);
+            if (stored) photos = JSON.parse(stored);
+          } catch(e) {}
+        }
+        if (photos.length > 0 && fbId) {
+          uploadPhotosToR2(fbId, photos).then(async urls => {
+            if (urls.length > 0) {
+              if (si !== -1) localScans[si].photoUrls = urls;
+              try { await fbUpdateScan(fbId, { photoUrls: urls }); } catch(e) {}
+              console.log(`✓ ${urls.length} foto(s) sincronizadas a R2 (offline→online)`);
+            }
+          }).catch(e => console.warn('Error subiendo fotos offline a R2:', e.message));
+        }
       } else if (item.type === 'report') {
         const repFb = {
           ...item.data,
