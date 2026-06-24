@@ -649,7 +649,16 @@ function updateHeroDate() {
 function getOrphanScans() {
   // Registros que no tienen informe cerrado — incluye días anteriores
   const reportedIds = new Set(localReports.filter(r=>!r.eliminado).flatMap(r=>r.scanIds||[]));
-  return localScans.filter(s => !s.eliminado && !reportedIds.has(s.id) && !reportedIds.has(s.fbId));
+  const seen = new Set();
+  return localScans.filter(s => {
+    if (s.eliminado) return false;
+    if (reportedIds.has(s.id) || reportedIds.has(s.fbId)) return false;
+    // Deduplicar por fbId (puede haber duplicados si el scan está en localScans dos veces)
+    const key = s.fbId || s.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function updateStats() {
@@ -1262,7 +1271,10 @@ async function saveScan() {
       scan.userId    = existing.userId;
       scan.userName  = existing.userName;
       scan.photoUrls = existing.photoUrls; // preservar URLs de R2 existentes
-      localScans[existingIdx] = scan;
+      // Reemplazar en el array — eliminar TODOS los duplicados con mismo id/fbId
+      // antes de insertar el editado, para evitar que queden duplicados
+      localScans = localScans.filter(s => s.id !== existing.id && s.fbId !== existing.fbId);
+      localScans.push(scan);
     }
     editingScanId = null;
     // Restaurar botón guardar
@@ -1740,6 +1752,7 @@ window.fbDeleteScan = fbDeleteScan;
 window.fbGetAllReports = fbGetAllReports;
 window.fbGetMyScans = fbGetMyScans;
 window.getInternalScans = () => localScans;
+window.getOrphanScans = getOrphanScans;
 window.getInternalReports = () => localReports;
 window.debugOrphans = () => {
   const reportedIds = new Set(localReports.filter(r=>!r.eliminado).flatMap(r=>r.scanIds||[]));
