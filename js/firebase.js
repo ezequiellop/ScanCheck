@@ -173,6 +173,10 @@ export async function fbSaveReport(report) {
   return ref.id;
 }
 
+export async function fbUpdateScan(fbId, fields) {
+  await updateDoc(doc(db, "scans", fbId), fields);
+}
+
 export async function fbUpdateReport(fbId, fields) {
   // Strip photos from scansSnapshot if present, and clean undefined/NaN
   const clean = { ...fields };
