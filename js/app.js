@@ -1301,11 +1301,14 @@ async function viewScan(id) {
   const scan = localScans.find(s=>(s.id===id||s.fbId===id));
   if (!scan) return;
   modalScanId = id;
-  // Prioridad de fotos: 1) en memoria (base64), 2) URLs de R2 ya guardadas, 3) cargar desde R2
-  let photoSrcs = scan.photos && scan.photos.length > 0
-    ? scan.photos
-    : scan.photoUrls && scan.photoUrls.length > 0
-      ? scan.photoUrls
+  // Prioridad de fotos:
+  // 1) URLs de R2 (válidas en cualquier dispositivo, preferidas)
+  // 2) base64 en memoria (solo disponible en el dispositivo que las tomó)
+  // 3) Cargar desde R2 si no hay nada
+  let photoSrcs = scan.photoUrls && scan.photoUrls.length > 0
+    ? scan.photoUrls
+    : scan.photos && scan.photos.length > 0
+      ? scan.photos
       : [];
   if (photoSrcs.length === 0 && navigator.onLine) {
     const scanKey = scan.fbId || scan.id;
