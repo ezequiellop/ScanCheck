@@ -1216,7 +1216,8 @@ async function saveScan() {
     autoInicioSentinel: document.getElementById('chki-autoinicio-sentinel').checked,
     settingsSensitivity:document.getElementById('chki-settings-sensitivity').checked,
     pruebaRevealId:     document.getElementById('chki-prueba-revealid').checked,
-    pruebaSicam:        document.getElementById('chki-prueba-sicam').checked
+    pruebaSicam:        document.getElementById('chki-prueba-sicam').checked,
+    loggingFilter:      document.getElementById('chki-logging-filter')?.checked || false
   };
 
   // Datos del Acta de Reemplazo — solo cuando es cambio_equipo (Incidencia)
@@ -1613,7 +1614,8 @@ function editScan(id) {
         autoInicioSentinel:   'chki-autoinicio-sentinel',
         settingsSensitivity:  'chki-settings-sensitivity',
         pruebaRevealId:       'chki-prueba-revealid',
-        pruebaSicam:          'chki-prueba-sicam'
+        pruebaSicam:          'chki-prueba-sicam',
+        loggingFilter:        'chki-logging-filter'
       };
       Object.entries(chkiMap).forEach(([key, elId]) => {
         const el = document.getElementById(elId);
@@ -1657,7 +1659,8 @@ const CHECKLIST_INSTALACION_LABELS = {
   assureIdLibrerias:   'AssureID Librerías',
   autoInicioDocAuth:   'Inicio Auto AssureID Document Authentication',
   autoInicioSentinel:  'Inicio Auto AssureID Sentinel Rest API',
-  settingsSensitivity: 'AssureID Settings/Authentication/Sensitivity Very Low',
+  settingsSensitivity: 'AssureID Settings/Authentication/Sensitivity Low',
+  loggingFilter:       'Logging Filter Solo marcar Fatal Errors',
   pruebaRevealId:      'Prueba Reveal ID',
   pruebaSicam:         'Prueba Sicam'
 };
