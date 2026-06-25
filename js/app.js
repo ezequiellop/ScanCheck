@@ -610,8 +610,8 @@ function getWatermarkLines() {
   const coords = currentLocation ? `${currentLocation.lat.toFixed(6)}, ${currentLocation.lon.toFixed(6)}` : 'GPS no disponible';
   const lines = [`${fecha}  ${hora}`, coords];
   if (currentLocation?.address) {
-    // Shorten address to keep watermark compact (max ~60 chars)
-    const addr = currentLocation.address.length > 60 ? currentLocation.address.substring(0,57)+'...' : currentLocation.address;
+    // Dirección completa en la marca de agua — el canvas se ajusta al ancho disponible
+    const addr = currentLocation.address;
     lines.push(addr);
   }
   return lines;
@@ -905,11 +905,26 @@ window.capturePhoto = capturePhoto;
 function drawWatermarkOnCanvas(ctx,w,h) {
   const lines=getWatermarkLines(), pad=12, lineH=18;
   const fontSize=Math.max(11,Math.min(15,w*0.011));
+  const maxW = w - pad*2;
+  ctx.font=`${fontSize}px monospace`;
+  // Si una línea es más ancha que el canvas, reducir font size hasta que entre
+  const fittedLines = lines.map(l => {
+    let fs = fontSize;
+    ctx.font=`${fs}px monospace`;
+    while(ctx.measureText(l).width > maxW && fs > 8) {
+      fs -= 0.5;
+      ctx.font=`${fs}px monospace`;
+    }
+    return { text: l, fontSize: fs };
+  });
   const boxH=lines.length*lineH+pad*2;
   ctx.fillStyle='rgba(0,0,0,0.62)';
   ctx.fillRect(0,h-boxH,w,boxH);
-  ctx.font=`${fontSize}px monospace`; ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.textAlign='left';
-  lines.forEach((l,i)=>ctx.fillText(l,pad,h-boxH+pad+(i+1)*lineH-3));
+  ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.textAlign='left';
+  fittedLines.forEach(({text,fontSize:fs},i)=>{
+    ctx.font=`${fs}px monospace`;
+    ctx.fillText(text,pad,h-boxH+pad+(i+1)*lineH-3);
+  });
   ctx.fillStyle='#00d4aa'; ctx.fillRect(0,h-boxH,4,boxH);
 }
 
