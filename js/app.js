@@ -2640,25 +2640,24 @@ async function buildReportPDFDoc(rep) {
       }
 
       // Photos — TODAS en grilla de 2 columnas
-      // Priorizar URLs de R2 sobre base64 en memoria
-      // Si son URLs (http), convertir a base64 para que jsPDF pueda usarlas
-      // Priorizar base64 en memoria (más rápido, no requiere descarga)
-      // Solo usar URLs de R2 si no hay base64 disponible
-      let photos = s.photos?.length > 0 ? s.photos : (s.photoUrls?.length > 0 ? s.photoUrls : []);
-      if (photos.length > 0 && photos[0]?.startsWith('http')) {
-        const toBase64 = url => new Promise((res,rej) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const c = document.createElement('canvas');
-            c.width = img.naturalWidth; c.height = img.naturalHeight;
-            c.getContext('2d').drawImage(img,0,0);
-            res(c.toDataURL('image/jpeg', 0.85));
-          };
-          img.onerror = () => rej(new Error('img load fail'));
-          img.src = url;
-        });
-        try { photos = await Promise.all(photos.map(u => toBase64(u))); } catch(e) { photos = []; }
+      // Prioridad: 1) base64 en memoria, 2) photoUrls en scan, 3) buscar en R2 por fbId
+      const urlToB64 = url => new Promise(res => {
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        img.onload = () => { const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); res(c.toDataURL('image/jpeg',0.85)); };
+        img.onerror = () => res(null);
+        img.src = url;
+      });
+      let photos = [];
+      if (s.photos?.length > 0) {
+        photos = s.photos;
+      } else {
+        let urls = s.photoUrls?.length > 0 ? s.photoUrls : [];
+        if (urls.length === 0 && (s.fbId||s.id) && navigator.onLine) {
+          urls = await loadPhotosFromR2(s.fbId||s.id);
+        }
+        if (urls.length > 0) {
+          photos = (await Promise.all(urls.map(urlToB64))).filter(Boolean);
+        }
       }
       if (photos.length > 0) {
         const cols = Math.min(photos.length, 2);
@@ -3919,7 +3918,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '24.06.2026-v171'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '24.06.2026-v172'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
