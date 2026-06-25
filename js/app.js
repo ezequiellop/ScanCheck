@@ -2490,7 +2490,7 @@ async function buildReportPDFDoc(rep) {
       ['Técnico',      rep.technicianName||'—'],
       ['Inspector DNM',    rep.inspectorName||'—'],
       ['Dispositivos', String(scanIds.length)],
-      ['Jira',         rep.jiraKey||'Pendiente']
+      ['Jira',         rep.jiraKey || rep.jiraTicketExistente || 'Pendiente']
     ];
     infoItems.forEach(([lbl,val],i) => {
       const cx = M+4+(i*(W-M*2)/4);
@@ -3900,7 +3900,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '24.06.2026-v168'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '24.06.2026-v169'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
