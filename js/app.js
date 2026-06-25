@@ -2312,11 +2312,29 @@ async function viewReport(id) {
   if (!sig && rep.fbId) {
     try { sig = await fbGetSignature(rep.fbId); } catch(e) {}
   }
-  const scans = localScans.filter(s=>rep.scanIds.includes(s.id||s.fbId));
+  // Prioridad para mostrar scans: 1) localScans (tiene fotos en memoria)
+  // 2) scansSnapshot del informe (tiene datos pero no fotos)
+  // Luego cargamos fotos desde R2 si no están en memoria
+  let scans = localScans.filter(s=>rep.scanIds.includes(s.id||s.fbId));
+  if (scans.length === 0 && rep.scansSnapshot?.length > 0) {
+    scans = rep.scansSnapshot;
+  }
+  // Para cada scan sin fotos en memoria, intentar cargar desde R2
+  const scansConFotos = await Promise.all(scans.map(async s => {
+    if ((s.photos?.length || 0) > 0 || (s.photoUrls?.length || 0) > 0) return s;
+    const scanKey = s.fbId || s.id;
+    if (scanKey && navigator.onLine) {
+      const urls = await loadPhotosFromR2(scanKey);
+      if (urls.length > 0) return { ...s, photoUrls: urls };
+    }
+    return s;
+  }));
   const d=new Date(rep.date+'T12:00:00');
   const label=d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const scanRows=scans.map((s,i)=>{
-    const photos=(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('');
+  const scanRows=scansConFotos.map((s,i)=>{
+    // Priorizar URLs de R2 sobre base64 en memoria
+    const photoSrcs = s.photoUrls?.length > 0 ? s.photoUrls : (s.photos||[]);
+    const photos=photoSrcs.map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('');
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
       <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${photos}
@@ -3673,7 +3691,7 @@ async function viewReportSupervisor(id) {
     ${rep.jiraKey?`<div style="font-size:12px;color:var(--accent2);background:rgba(0,174,255,.1);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-family:var(--mono)">🔗 Jira: <a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(rep.jiraKey)}</a></div>`:''}
     ${scans.map((s,i)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg3)">
       <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
-      ${(s.photos||[]).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
+      ${(s.photoUrls?.length>0?s.photoUrls:(s.photos||[])).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">🖨 Scanner DESKO</div>
       <div style="font-size:12px;color:var(--text2)">
@@ -3882,7 +3900,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '24.06.2026-v165'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '24.06.2026-v168'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
