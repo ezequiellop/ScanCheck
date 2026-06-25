@@ -624,7 +624,7 @@ function getWatermarkLines() {
 const pageTitles = {
   'home':'Inicio','new-scan':'Nuevo Registro','report':'Informe del Día',
   'view-report':'Ver Informe','history':'Historial',
-  'supervisor':'Panel Supervisor'
+  'supervisor':'Panel Supervisor','viajes':'Mis Viajes'
 };
 
 function showPage(name, addHistory=true) {
@@ -4154,7 +4154,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '25.06.2026-v173'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v174'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
