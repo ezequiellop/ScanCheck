@@ -4,7 +4,8 @@ import {
   fbSaveScan, fbGetMyScans, fbDeleteScan, fbSoftDeleteScan, fbRestoreScan, fbGetDeletedScans,
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
-  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan
+  fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan,
+  fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -104,6 +105,8 @@ let currentReport = null;
 let viewingReportId = null;
 let modalScanId = null;
 let editingScanId = null; // ID del scan que se está editando (null = registro nuevo)
+let localViajes = []; // viajes del técnico actual
+let viajeAbierto = null; // viaje en curso (sin fecha de llegada)
 let cameraStream = null;
 let qrStream = null;
 let capturedPhotos = [];
@@ -638,6 +641,7 @@ function showPage(name, addHistory=true) {
   if (name === 'mis-tickets') { loadJiraTickets(); }
   if (name === 'history')    renderHistory();
   if (name === 'new-scan')   resetNewScanForm();
+  if (name === 'viajes')     loadViajes();
   if (name === 'supervisor') renderSupervisor();
 }
 window.showPage = showPage;
@@ -1964,6 +1968,238 @@ function closeDayReport() {
   showNextPendingReport();
 }
 window.closeDayReport = closeDayReport;
+
+// ── VIAJES ───────────────────────────────────────────────────
+async function loadViajes() {
+  try {
+    localViajes = await fbGetMyViajes(currentUser.id);
+    viajeAbierto = localViajes.find(v => v.estado === 'abierto') || null;
+  } catch(e) { localViajes = []; viajeAbierto = null; }
+  renderViajes();
+  renderViajeAbiertoBanner();
+}
+
+function renderViajeAbiertoBanner() {
+  const el = document.getElementById('viaje-abierto-banner');
+  if (!el) return;
+  if (!viajeAbierto) { el.innerHTML = ''; return; }
+  const km = viajeAbierto.kmSalida;
+  const fecha = new Date(viajeAbierto.fechaSalida).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
+  el.innerHTML = `<div style="background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.3);border-radius:12px;padding:12px 16px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:4px">🚗 Viaje en curso</div>
+    <div style="font-size:13px;color:var(--text)">Salida: ${fecha} · ${km.toLocaleString()} km</div>
+    ${viajeAbierto.destinoLabel?`<div style="font-size:12px;color:var(--text2)">Destino: ${escHtml(viajeAbierto.destinoLabel)}</div>`:''}
+    <button class="btn-primary" style="width:100%;margin-top:10px" onclick="showCerrarViaje()">🏁 Registrar llegada</button>
+  </div>`;
+}
+
+function renderViajes() {
+  const el = document.getElementById('viajes-list');
+  if (!el) return;
+  const cerrados = localViajes.filter(v => v.estado === 'cerrado');
+  if (cerrados.length === 0) { el.innerHTML = '<div class="empty-state"><p>Sin viajes cerrados</p></div>'; return; }
+  // Agrupar por mes
+  const byMes = {};
+  cerrados.forEach(v => {
+    const mes = v.fechaSalida?.substring(0,7) || '—';
+    if (!byMes[mes]) byMes[mes] = [];
+    byMes[mes].push(v);
+  });
+  el.innerHTML = Object.keys(byMes).sort((a,b)=>b.localeCompare(a)).map(mes => {
+    const label = new Date(mes+'-15').toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+    const totalKm = byMes[mes].reduce((s,v)=>s+(v.kmRecorridos||0),0);
+    const items = byMes[mes].map(v => {
+      const fechaSal = new Date(v.fechaSalida).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
+      const fechaLleg = v.fechaLlegada ? new Date(v.fechaLlegada).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.destinoLabel||'Sin destino especificado')}</div>
+            <div style="font-size:11px;color:var(--text3)">Salida: ${fechaSal} · Llegada: ${fechaLleg}</div>
+            <div style="font-size:11px;color:var(--text3)">Od. salida: ${v.kmSalida?.toLocaleString()} km → Od. llegada: ${v.kmLlegada?.toLocaleString()||'—'} km</div>
+            ${v.distanciaGPS?`<div style="font-size:11px;color:var(--text3)">Distancia GPS estimada: ~${v.distanciaGPS} km</div>`:''}
+          </div>
+          <div style="text-align:right;flex-shrink:0;padding-left:12px">
+            <div style="font-size:22px;font-weight:700;color:var(--accent)">${(v.kmRecorridos||0).toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--text3)">km</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 0 4px">${label} — Total: ${totalKm.toLocaleString()} km</div>${items}`;
+  }).join('');
+}
+
+function showIniciarViaje() {
+  if (viajeAbierto) { showToast('Ya tenés un viaje en curso — registrá la llegada primero','error'); return; }
+  const el = document.getElementById('modal-viaje-content');
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🚗 Iniciar viaje</div>
+    <div class="form-group">
+      <label>Km odómetro de SALIDA *</label>
+      <input type="number" id="inp-km-salida" placeholder="Ej: 125430" min="0" style="font-size:18px;font-weight:700">
+    </div>
+    <div class="form-group">
+      <label>Destino / descripción del viaje</label>
+      <input type="text" id="inp-viaje-destino" placeholder="Ej: Jama, Clorinda, Paso de los Libres..." maxlength="100">
+    </div>
+    <div class="form-group">
+      <label>Vehículo (patente)</label>
+      <input type="text" id="inp-viaje-vehiculo" placeholder="Ej: AB 123 CD" maxlength="20" value="${currentUser?.vehiculo||''}">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-viaje')">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="guardarInicioViaje()">Iniciar viaje</button>
+    </div>`;
+  document.getElementById('modal-viaje').classList.remove('hidden');
+}
+
+async function guardarInicioViaje() {
+  const kmSalida = parseInt(document.getElementById('inp-km-salida')?.value);
+  if (!kmSalida || kmSalida <= 0) { showToast('Ingresá el km del odómetro','error'); return; }
+  const destino = document.getElementById('inp-viaje-destino')?.value.trim() || '';
+  const vehiculo = document.getElementById('inp-viaje-vehiculo')?.value.trim() || '';
+  const viaje = {
+    id: 'vj_'+Date.now(),
+    userId: currentUser.id,
+    userName: currentUser.name,
+    vehiculo,
+    fechaSalida: new Date().toISOString(),
+    kmSalida,
+    destinoLabel: destino,
+    fechaLlegada: null,
+    kmLlegada: null,
+    kmRecorridos: null,
+    distanciaGPS: null,
+    estado: 'abierto',
+    createdAt: new Date().toISOString()
+  };
+  try {
+    const fbId = await fbSaveViaje(viaje);
+    viaje.fbId = fbId;
+    localViajes.unshift(viaje);
+    viajeAbierto = viaje;
+    closeModal('modal-viaje');
+    renderViajeAbiertoBanner();
+    renderViajes();
+    showToast('✓ Viaje iniciado','success');
+  } catch(e) { showToast('Error al guardar viaje: '+e.message,'error'); }
+}
+
+function showCerrarViaje() {
+  if (!viajeAbierto) return;
+  const el = document.getElementById('modal-viaje-content');
+  const kmSalida = viajeAbierto.kmSalida;
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🏁 Registrar llegada</div>
+    <div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+      Km odómetro de salida: <strong>${kmSalida?.toLocaleString()} km</strong>
+    </div>
+    <div class="form-group">
+      <label>Km odómetro de LLEGADA *</label>
+      <input type="number" id="inp-km-llegada" placeholder="Ej: 126150" min="${kmSalida+1}" style="font-size:18px;font-weight:700">
+    </div>
+    <div id="km-diff-preview" style="text-align:center;font-size:28px;font-weight:700;color:var(--accent);margin:8px 0;display:none"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-viaje')">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="guardarCierreViaje()">Guardar llegada</button>
+    </div>`;
+  document.getElementById('inp-km-llegada').addEventListener('input', function() {
+    const diff = parseInt(this.value) - kmSalida;
+    const preview = document.getElementById('km-diff-preview');
+    if (diff > 0) { preview.textContent = diff.toLocaleString()+' km recorridos'; preview.style.display='block'; }
+    else { preview.style.display='none'; }
+  });
+  document.getElementById('modal-viaje').classList.remove('hidden');
+}
+
+async function guardarCierreViaje() {
+  const kmLlegada = parseInt(document.getElementById('inp-km-llegada')?.value);
+  if (!kmLlegada || kmLlegada <= viajeAbierto.kmSalida) { showToast('El km de llegada debe ser mayor al de salida','error'); return; }
+  const kmRecorridos = kmLlegada - viajeAbierto.kmSalida;
+  // Calcular distancia GPS estimada usando los registros del día
+  const hoy = localScans.filter(s => localDateKey(s.timestamp) === localDateKey(viajeAbierto.fechaSalida) && s.userId === currentUser.id);
+  let distanciaGPS = null;
+  if (hoy.length >= 2) {
+    let total = 0;
+    for (let i = 1; i < hoy.length; i++) {
+      const a = hoy[i-1], b = hoy[i];
+      if (a.lat && b.lat) {
+        const R = 6371, dLat = (b.lat-a.lat)*Math.PI/180, dLon = (b.lon-a.lon)*Math.PI/180;
+        const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+        total += R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+      }
+    }
+    distanciaGPS = Math.round(total);
+  }
+  try {
+    await fbUpdateViaje(viajeAbierto.fbId, {
+      fechaLlegada: new Date().toISOString(),
+      kmLlegada,
+      kmRecorridos,
+      distanciaGPS,
+      estado: 'cerrado'
+    });
+    // Update local
+    const idx = localViajes.findIndex(v => v.fbId === viajeAbierto.fbId);
+    if (idx !== -1) {
+      localViajes[idx] = { ...localViajes[idx], fechaLlegada: new Date().toISOString(), kmLlegada, kmRecorridos, distanciaGPS, estado: 'cerrado' };
+    }
+    viajeAbierto = null;
+    closeModal('modal-viaje');
+    renderViajeAbiertoBanner();
+    renderViajes();
+    showToast(`✓ Viaje cerrado — ${kmRecorridos.toLocaleString()} km recorridos`,'success');
+  } catch(e) { showToast('Error al guardar: '+e.message,'error'); }
+}
+window.showIniciarViaje = showIniciarViaje;
+window.guardarInicioViaje = guardarInicioViaje;
+window.showCerrarViaje = showCerrarViaje;
+window.guardarCierreViaje = guardarCierreViaje;
+
+// ── VIAJES SUPERVISOR ─────────────────────────────────────────
+async function loadSupViajes() {
+  const el = document.getElementById('sup-viajes-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando...</div>';
+  try {
+    const viajes = await fbGetAllViajes();
+    if (viajes.length === 0) { el.innerHTML = '<div class="empty-state"><p>Sin viajes registrados</p></div>'; return; }
+    // Agrupar por técnico
+    const byTech = {};
+    viajes.filter(v=>v.estado==='cerrado').forEach(v => {
+      const t = v.userName||'—';
+      if (!byTech[t]) byTech[t] = { viajes:[], totalKm:0 };
+      byTech[t].viajes.push(v);
+      byTech[t].totalKm += v.kmRecorridos||0;
+    });
+    el.innerHTML = Object.keys(byTech).sort().map(tech => {
+      const { viajes: tvs, totalKm } = byTech[tech];
+      const rows = tvs.map(v => {
+        const fechaSal = new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'});
+        const fechaLleg = v.fechaLlegada ? new Date(v.fechaLlegada).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'}) : '—';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <div>
+            <div style="font-weight:600;color:var(--text)">${escHtml(v.destinoLabel||'Sin destino')}</div>
+            <div style="color:var(--text3)">${fechaSal} → ${fechaLleg} · Od: ${v.kmSalida?.toLocaleString()} → ${v.kmLlegada?.toLocaleString()}</div>
+            ${v.distanciaGPS?`<div style="color:var(--text3)">GPS estimado: ~${v.distanciaGPS} km</div>`:''}
+          </div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent);padding-left:12px">${(v.kmRecorridos||0).toLocaleString()} km</div>
+        </div>`;
+      }).join('');
+      return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">👤 ${escHtml(tech)}</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${totalKm.toLocaleString()} km total</div>
+        </div>
+        ${rows}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="text-align:center;padding:20px;color:#e53">Error: ${e.message}</div>`;
+  }
+}
+window.loadSupViajes = loadSupViajes;
 
 // ── Vista de registros sin informe ──────────────────────────
 function showOrphanScans() {
@@ -3410,7 +3646,7 @@ window.eliminarRegistroDefinitivo = eliminarRegistroDefinitivo;
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','versiones','mapa','export','storage'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','tecnicos','versiones','mapa','export','storage','viajes'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
@@ -3918,7 +4154,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '24.06.2026-v172'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v173'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';

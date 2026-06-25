@@ -289,6 +289,33 @@ export async function fbGetAllUsers() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// ── VIAJES (control de km) ────────────────────────────────────
+export async function fbSaveViaje(viaje) {
+  const { id, fbId, ...data } = viaje;
+  if (fbId) {
+    await setDoc(doc(db, "viajes", fbId), data);
+    return fbId;
+  }
+  const ref = await addDoc(collection(db, "viajes"), data);
+  return ref.id;
+}
+
+export async function fbUpdateViaje(fbId, fields) {
+  await updateDoc(doc(db, "viajes", fbId), fields);
+}
+
+export async function fbGetMyViajes(userId) {
+  const q = query(collection(db, "viajes"), where("userId","==",userId), orderBy("fechaSalida","desc"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+}
+
+export async function fbGetAllViajes() {
+  const q = query(collection(db, "viajes"), orderBy("fechaSalida","desc"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+}
+
 // ── CONFIG (versiones objetivo de AssureID, detectadas por el GBG Monitor) ──
 export async function fbGetVersionesObjetivo() {
   const snap = await getDoc(doc(db, "config", "versiones_objetivo"));
