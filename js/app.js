@@ -2640,7 +2640,26 @@ async function buildReportPDFDoc(rep) {
       }
 
       // Photos — TODAS en grilla de 2 columnas
-      const photos = s.photos||[];
+      // Priorizar URLs de R2 sobre base64 en memoria
+      // Si son URLs (http), convertir a base64 para que jsPDF pueda usarlas
+      // Priorizar base64 en memoria (más rápido, no requiere descarga)
+      // Solo usar URLs de R2 si no hay base64 disponible
+      let photos = s.photos?.length > 0 ? s.photos : (s.photoUrls?.length > 0 ? s.photoUrls : []);
+      if (photos.length > 0 && photos[0]?.startsWith('http')) {
+        const toBase64 = url => new Promise((res,rej) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            c.getContext('2d').drawImage(img,0,0);
+            res(c.toDataURL('image/jpeg', 0.85));
+          };
+          img.onerror = () => rej(new Error('img load fail'));
+          img.src = url;
+        });
+        try { photos = await Promise.all(photos.map(u => toBase64(u))); } catch(e) { photos = []; }
+      }
       if (photos.length > 0) {
         const cols = Math.min(photos.length, 2);
         const pw = (W - M*2 - (cols > 1 ? 4 : 0)) / cols;
@@ -3900,7 +3919,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '24.06.2026-v169'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '24.06.2026-v171'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
