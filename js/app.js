@@ -641,7 +641,7 @@ function showPage(name, addHistory=true) {
   if (name === 'mis-tickets') { loadJiraTickets(); }
   if (name === 'history')    renderHistory();
   if (name === 'new-scan')   resetNewScanForm();
-  if (name === 'viajes')     loadViajes();
+  if (name === 'viajes')     { loadViajes(); window.scrollTo(0,0); }
   if (name === 'supervisor') renderSupervisor();
 }
 window.showPage = showPage;
@@ -4154,7 +4154,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '25.06.2026-v174'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v175'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
