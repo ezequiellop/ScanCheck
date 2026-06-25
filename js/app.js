@@ -1284,6 +1284,27 @@ async function saveScan() {
 
   stopCamera(); stopQRScan();
 
+  // Aviso si no hay fotos — no bloqueante, igual que el aviso de ticket de Jira
+  if (capturedPhotos.length === 0) {
+    const continuar = await new Promise(resolve => {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+      modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:320px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+        <div style="font-size:20px;margin-bottom:12px;text-align:center">📷</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;text-align:center">Sin fotos adjuntas</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:20px;text-align:center;line-height:1.4">No agregaste ninguna foto al registro.<br>Se recomienda documentar el estado del equipo con al menos una foto.</div>
+        <div style="display:flex;gap:10px">
+          <button id="modal-foto-agregar" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Agregar foto</button>
+          <button id="modal-foto-continuar" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer">Guardar igual</button>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('modal-foto-agregar').onclick = () => { document.body.removeChild(modal); resolve(false); };
+      document.getElementById('modal-foto-continuar').onclick = () => { document.body.removeChild(modal); resolve(true); };
+    });
+    if (!continuar) return; // vuelve al formulario para agregar fotos
+  }
+
   // ── MODO EDICIÓN: reemplazar registro existente ───────────
   if (editingScanId) {
     console.log('[Edit] editingScanId:', editingScanId);
@@ -2207,12 +2228,15 @@ function renderHistory() {
     const label=d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const count=rep.scanIds.length;
     const paso = rep.paso || rep.scansSnapshot?.[0]?.paso || '';
+    const opType = rep.scansSnapshot?.[0]?.opType || '';
+    const opBadge = opType ? `<span class="op-badge ${opType}" style="font-size:10px;padding:1px 7px;margin-left:6px">${opLabel(opType)}</span>` : '';
     const jiraBadge=rep.jiraKey?`<a href="${JIRA_BASE_URL}/browse/${escHtml(rep.jiraKey)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:rgba(0,174,255,.15);color:var(--accent2);padding:2px 8px;border-radius:8px;margin-left:6px;font-family:var(--mono);text-decoration:underline">${rep.jiraKey}</a>`:'';
     return `<div class="history-item" onclick="viewReport('${rep.id||rep.fbId}')">
       <div class="history-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div>
       <div class="history-info">
-        <div class="history-date">${paso?`<span style="color:var(--accent);font-weight:700">${escHtml(paso)}</span> · `:''} ${label}${jiraBadge}</div>
-        <div class="history-meta">${count} scanner${count!==1?'s':''} · Inspector: ${escHtml(rep.inspectorName||'—')}</div>
+        <div class="history-date">${paso?`<span style="color:var(--accent);font-weight:700">${escHtml(paso)}</span>`:''} ${opBadge} ${jiraBadge}</div>
+        <div class="history-meta">${label} · ${count} scanner${count!==1?'s':''}</div>
+        <div class="history-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
         ${currentUser?.role==='supervisor'?`<div class="history-meta" style="color:var(--text3)">Técnico: ${escHtml(rep.technicianName||'—')}</div>`:''}
       </div>
       <div class="history-badge">${count}</div>
@@ -3430,10 +3454,12 @@ async function renderSupervisor() {
         const count = rep.scanIds?.length||0;
         // Obtener el paso del primer scan del snapshot si está disponible
         const paso = rep.paso || rep.scansSnapshot?.[0]?.paso || '—';
+        const opType = rep.scansSnapshot?.[0]?.opType || '';
+        const opBadge = opType ? `<span class="op-badge ${opType}" style="font-size:10px;padding:1px 7px;margin-left:6px">${opLabel(opType)}</span>` : '';
         return `<div class="sup-card" onclick="viewReportSupervisor('${rep.fbId||rep.id}')">
           <div class="sup-card-top">
             <div style="flex:1;min-width:0">
-              <div class="sup-card-title" style="color:var(--accent)">${escHtml(paso)}</div>
+              <div class="sup-card-title" style="color:var(--accent)">${escHtml(paso)} ${opBadge}</div>
               <div class="sup-card-meta">${label} · ${count} dispositivo${count!==1?'s':''}</div>
               <div class="sup-card-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
             </div>
