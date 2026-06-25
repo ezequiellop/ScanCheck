@@ -493,16 +493,10 @@
 
 <!-- JIRA MODAL -->
     <!-- ── PÁGINA: VIAJES ── -->
-    <div id="page-viajes" class="page hidden">
-      <div class="page-header">
-        <button class="btn-back" onclick="showPage('home')">←</button>
-        <h2>Mis Viajes</h2>
-      </div>
-      <div class="page-content">
-        <div id="viaje-abierto-banner"></div>
-        <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showIniciarViaje()">🚗 Iniciar nuevo viaje</button>
-        <div id="viajes-list"><div class="empty-state"><p>Sin viajes registrados</p></div></div>
-      </div>
+    <div id="page-viajes" class="page">
+      <div id="viaje-abierto-banner"></div>
+      <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showIniciarViaje()">🚗 Iniciar nuevo viaje</button>
+      <div id="viajes-list"><div class="empty-state"><p>Sin viajes registrados</p></div></div>
     </div>
 
     <!-- ── MODAL: INICIAR / CERRAR VIAJE ── -->
