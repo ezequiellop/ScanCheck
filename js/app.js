@@ -649,7 +649,9 @@ function goBack() {
 }
 window.goBack = goBack;
 
-function toggleMenu() { document.getElementById('dropdown-menu').classList.toggle('hidden'); }
+function toggleMenu() {
+  const vEl = document.getElementById('app-version-label');
+  if (vEl) vEl.textContent = typeof APP_VERSION !== 'undefined' ? 'ScanCheck ' + APP_VERSION : ''; document.getElementById('dropdown-menu').classList.toggle('hidden'); }
 window.toggleMenu = toggleMenu;
 document.addEventListener('click', e => {
   const m = document.getElementById('dropdown-menu');
@@ -3862,6 +3864,8 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
+const APP_VERSION = '24.06.2026-v165'; // Fecha + nro de SW — actualizar junto con sw.js
+
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
 const PHOTOS_TOKEN     = 'SC_Photos2026_Danaide_XkP9mQ3rTv59828daNa'; // mismo valor que SCANCHECK_PHOTOS_TOKEN en el Worker
