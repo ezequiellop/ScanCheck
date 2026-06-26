@@ -342,6 +342,15 @@ export async function fbGetDeletedViajes() {
   return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
+export async function fbSaveServiceData(userId, data) {
+  await updateDoc(doc(db, "users", userId), { serviceData: data });
+}
+
+export async function fbGetServiceData(userId) {
+  const snap = await getDoc(doc(db, "users", userId));
+  return snap.exists() ? snap.data().serviceData || null : null;
+}
+
 // ── CONFIG (versiones objetivo de AssureID, detectadas por el GBG Monitor) ──
 export async function fbGetVersionesObjetivo() {
   const snap = await getDoc(doc(db, "config", "versiones_objetivo"));

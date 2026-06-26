@@ -6,7 +6,8 @@ import {
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
   fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan,
   fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes,
-  fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes
+  fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes,
+  fbSaveServiceData, fbGetServiceData
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -67,6 +68,25 @@ async function processSyncQueue() {
         const fbId = await fbSaveReport(repFb);
         const ri = localReports.findIndex(r=>r.id===item.id);
         if (ri>=0) localReports[ri].fbId = fbId;
+      } else if (item.type === 'viaje') {
+        // Sincronizar viaje que no llegó a Firestore por falta de conexión
+        const fbId = await fbSaveViaje(item.data);
+        const vi = localViajes.findIndex(v => v.id === item.data.id);
+        if (vi !== -1) {
+          localViajes[vi].fbId = fbId;
+          if (viajeAbierto?.id === item.data.id) viajeAbierto.fbId = fbId;
+          // Actualizar localStorage con el fbId
+          try {
+            const stored = localStorage.getItem('scancheck_viaje_abierto_'+item.data.userId);
+            if (stored) {
+              const v = JSON.parse(stored);
+              if (v.id === item.data.id) {
+                localStorage.setItem('scancheck_viaje_abierto_'+item.data.userId, JSON.stringify({...v, fbId}));
+              }
+            }
+          } catch(e) {}
+        }
+        console.log('✓ Viaje sincronizado a Firestore (offline→online):', fbId);
       }
     } catch(e) {
       console.warn('Sync queue item failed:', item.type, item.id, e.message);
@@ -2149,18 +2169,29 @@ async function guardarInicioViaje() {
     estado: 'abierto',
     createdAt: new Date().toISOString()
   };
-  try {
-    const fbId = await fbSaveViaje(viaje);
-    viaje.fbId = fbId;
-    localViajes.unshift(viaje);
-    viajeAbierto = viaje;
-    // Persistir en localStorage para sobrevivir recargas de la app
-    try { localStorage.setItem('scancheck_viaje_abierto_'+currentUser.id, JSON.stringify(viaje)); } catch(e) {}
-    closeModal('modal-viaje');
-    renderViajeAbiertoBanner();
-    renderViajes();
-    showToast('✓ Viaje iniciado','success');
-  } catch(e) { showToast('Error al guardar viaje: '+e.message,'error'); }
+  localViajes.unshift(viaje);
+  viajeAbierto = viaje;
+  try { localStorage.setItem('scancheck_viaje_abierto_'+currentUser.id, JSON.stringify(viaje)); } catch(e) {}
+  closeModal('modal-viaje');
+  renderViajeAbiertoBanner();
+  renderViajes();
+
+  if (navigator.onLine) {
+    try {
+      const fbId = await fbSaveViaje(viaje);
+      viaje.fbId = fbId;
+      localViajes[0].fbId = fbId;
+      // Actualizar localStorage con fbId
+      try { localStorage.setItem('scancheck_viaje_abierto_'+currentUser.id, JSON.stringify(viaje)); } catch(e) {}
+      showToast('✓ Viaje iniciado','success');
+    } catch(e) {
+      queueAdd('viaje', viaje);
+      showToast('✓ Viaje iniciado (se sincronizará al recuperar conexión)','success');
+    }
+  } else {
+    queueAdd('viaje', viaje);
+    showToast('✓ Viaje iniciado sin conexión — se sincronizará automáticamente','success');
+  }
 }
 
 function showCerrarViaje() {
@@ -2263,6 +2294,229 @@ window.showIniciarViaje = showIniciarViaje;
 window.guardarInicioViaje = guardarInicioViaje;
 window.showCerrarViaje = showCerrarViaje;
 window.guardarCierreViaje = guardarCierreViaje;
+
+// ── REPORTE SERVICE ───────────────────────────────────────────
+async function showReporteService() {
+  const el = document.getElementById('modal-service-content');
+  // Recuperar datos guardados previamente
+  let saved = {};
+  try {
+    // Intentar cargar desde Firestore primero, localStorage como fallback
+    const fromFirestore = await fbGetServiceData(currentUser.id);
+    if (fromFirestore) {
+      saved = fromFirestore;
+    } else {
+      const local = localStorage.getItem('scancheck_service_'+currentUser.id);
+      if (local) saved = JSON.parse(local);
+    }
+  } catch(e) {
+    try { saved = JSON.parse(localStorage.getItem('scancheck_service_'+currentUser.id)||'{}'); } catch(e2) {}
+  }
+
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🔧 Reporte para Service</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Ingresá los datos del último service para calcular los km laborales del período.</div>
+    <div class="form-group">
+      <label>Fecha del último service *</label>
+      <input type="date" id="inp-service-fecha" value="${saved.fecha||''}">
+    </div>
+    <div class="form-group">
+      <label>Km del odómetro en el último service *</label>
+      <input type="number" id="inp-service-km" placeholder="Ej: 95000" value="${saved.km||''}" min="0">
+    </div>
+    <div class="form-group">
+      <label>Km actuales del odómetro *</label>
+      <input type="number" id="inp-service-km-actual" placeholder="Ej: 106500" value="${saved.kmActual||''}" min="0">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Si tenés un viaje reciente, se puede tomar del último odómetro registrado.</div>
+    </div>
+    <div class="form-group">
+      <label>Nombre del titular del vehículo</label>
+      <input type="text" id="inp-service-titular" placeholder="Ej: Juan Pérez" value="${saved.titular||currentUser?.name||''}">
+    </div>
+    <div class="form-group">
+      <label>Vehículo (marca, modelo, patente)</label>
+      <input type="text" id="inp-service-vehiculo" placeholder="Ej: Renault Kangoo - AB 123 CD" value="${saved.vehiculo||''}">
+    </div>
+    <div id="service-preview" style="display:none;background:var(--bg3);border-radius:10px;padding:12px;margin:12px 0"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-service')">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="calcularReporteService()">Calcular</button>
+    </div>
+    <div id="service-pdf-btn" style="display:none;margin-top:10px">
+      <button class="btn-primary" style="width:100%;background:var(--accent2)" onclick="generarPDFService()">📄 Descargar PDF</button>
+    </div>
+  `;
+
+  // Autocompletar km actual desde el último viaje cerrado
+  const ultimoViaje = localViajes.filter(v=>v.estado==='cerrado'&&v.kmLlegada).sort((a,b)=>new Date(b.fechaLlegada)-new Date(a.fechaLlegada))[0];
+  if (ultimoViaje?.kmLlegada && !saved.kmActual) {
+    setTimeout(()=>{
+      const inp = document.getElementById('inp-service-km-actual');
+      if (inp && !inp.value) inp.value = ultimoViaje.kmLlegada;
+    }, 50);
+  }
+
+  document.getElementById('modal-service').classList.remove('hidden');
+}
+window.showReporteService = showReporteService;
+
+async function calcularReporteService() {
+  const fechaService = document.getElementById('inp-service-fecha')?.value;
+  const kmService = parseInt(document.getElementById('inp-service-km')?.value);
+  const kmActual = parseInt(document.getElementById('inp-service-km-actual')?.value);
+  const titular = document.getElementById('inp-service-titular')?.value.trim();
+  const vehiculo = document.getElementById('inp-service-vehiculo')?.value.trim();
+
+  if (!fechaService || !kmService || !kmActual) { showToast('Completá todos los campos obligatorios','error'); return; }
+  if (kmActual <= kmService) { showToast('El km actual debe ser mayor al km del service','error'); return; }
+
+  // Guardar en Firestore (persiste aunque se limpie el caché) y localStorage como respaldo
+  const serviceDataToSave = {fecha:fechaService, km:kmService, kmActual, titular, vehiculo};
+  try { await fbSaveServiceData(currentUser.id, serviceDataToSave); } catch(e) {}
+  try { localStorage.setItem('scancheck_service_'+currentUser.id, JSON.stringify(serviceDataToSave)); } catch(e) {}
+
+  // Calcular km laborales desde la fecha del service
+  const desdeFecha = new Date(fechaService+'T00:00:00');
+  const viajesLaboral = localViajes.filter(v =>
+    v.estado === 'cerrado' && !v.eliminado &&
+    v.kmRecorridos > 0 &&
+    new Date(v.fechaSalida) >= desdeFecha
+  );
+  const kmLaborales = viajesLaboral.reduce((s,v) => s+(v.kmRecorridos||0), 0);
+  const kmTotales = kmActual - kmService;
+  const pct = kmTotales > 0 ? Math.round(kmLaborales/kmTotales*100) : 0;
+
+  const preview = document.getElementById('service-preview');
+  preview.style.display = 'block';
+  preview.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">Resumen del período</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--accent)">${kmTotales.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text3)">Km totales recorridos</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--accent2)">${kmLaborales.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text3)">Km laborales</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--text)">${pct}%</div>
+        <div style="font-size:10px;color:var(--text3)">Uso laboral</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--text)">${viajesLaboral.length}</div>
+        <div style="font-size:10px;color:var(--text3)">Viajes registrados</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">Período: ${new Date(fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})} → hoy</div>
+  `;
+
+  // Guardar para el PDF
+  window._serviceData = { fechaService, kmService, kmActual, kmTotales, kmLaborales, pct, titular, vehiculo, viajesLaboral };
+  document.getElementById('service-pdf-btn').style.display = 'block';
+}
+window.calcularReporteService = calcularReporteService;
+
+async function generarPDFService() {
+  const d = window._serviceData;
+  if (!d) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const M = 18, W = 210, CW = W-M*2;
+  let y = 12;
+
+  // Logo
+  try { doc.addImage(DANAIDE_LOGO,'JPEG',M,y,38,14); } catch(e) {}
+
+  // Título
+  doc.setFontSize(16); doc.setFont(undefined,'bold');
+  doc.setTextColor(0,212,170);
+  doc.text('REPORTE DE KM LABORALES', W/2, y+8, {align:'center'});
+  doc.setFontSize(10); doc.setFont(undefined,'normal');
+  doc.setTextColor(120,140,160);
+  doc.text('Para reimbursement proporcional de service vehicular', W/2, y+14, {align:'center'});
+  y += 24;
+
+  // Datos del técnico y vehículo
+  doc.setFillColor(15,32,39); doc.roundedRect(M,y,CW,28,3,3,'F');
+  doc.setFontSize(9); doc.setTextColor(200,220,230);
+  doc.text('TÉCNICO', M+6, y+7);
+  doc.setFont(undefined,'bold'); doc.setFontSize(12); doc.setTextColor(255,255,255);
+  doc.text(d.titular||currentUser?.name||'—', M+6, y+14);
+  doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(180,200,220);
+  doc.text(`Vehículo: ${d.vehiculo||'—'}`, M+6, y+21);
+  doc.text(`Período: ${new Date(d.fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})} → ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}`, M+6, y+27);
+  y += 34;
+
+  // Resumen
+  doc.setFontSize(11); doc.setFont(undefined,'bold'); doc.setTextColor(0,212,170);
+  doc.text('RESUMEN DEL PERÍODO', M, y); y += 6;
+  const cols = [
+    ['Km odómetro en el último service', d.kmService.toLocaleString()+' km'],
+    ['Km odómetro actuales', d.kmActual.toLocaleString()+' km'],
+    ['Total km recorridos en el período', d.kmTotales.toLocaleString()+' km'],
+    ['Km recorridos por trabajo (ScanCheck)', d.kmLaborales.toLocaleString()+' km'],
+    ['Porcentaje de uso laboral', d.pct+'%'],
+  ];
+  cols.forEach(([label, val], i) => {
+    const bg = i%2===0 ? [20,40,55] : [15,32,39];
+    doc.setFillColor(...bg); doc.rect(M, y, CW, 7, 'F');
+    doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(180,200,220);
+    doc.text(label, M+4, y+5);
+    doc.setFont(undefined,'bold'); doc.setTextColor(0,212,170);
+    doc.text(val, W-M-4, y+5, {align:'right'});
+    y += 7;
+  });
+  y += 8;
+
+  // Detalle de viajes
+  doc.setFontSize(11); doc.setFont(undefined,'bold'); doc.setTextColor(0,212,170);
+  doc.text('DETALLE DE VIAJES LABORALES', M, y); y += 6;
+
+  // Header
+  doc.setFillColor(0,212,170); doc.rect(M, y, CW, 7, 'F');
+  doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(10,22,40);
+  doc.text('Fecha salida', M+3, y+5);
+  doc.text('Destino', M+35, y+5);
+  doc.text('Km salida', M+100, y+5);
+  doc.text('Km llegada', M+125, y+5);
+  doc.text('Km rec.', W-M-4, y+5, {align:'right'});
+  y += 7;
+
+  d.viajesLaboral.forEach((v,i) => {
+    if (y > 265) { doc.addPage(); y = 20; }
+    const bg = i%2===0 ? [20,40,55] : [15,32,39];
+    doc.setFillColor(...bg); doc.rect(M, y, CW, 6, 'F');
+    doc.setFontSize(7.5); doc.setFont(undefined,'normal'); doc.setTextColor(180,200,220);
+    const fecha = new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'});
+    doc.text(fecha, M+3, y+4);
+    const dest = (v.destinoLabel||'—').substring(0,30);
+    doc.text(dest, M+35, y+4);
+    doc.text((v.kmSalida||0).toLocaleString(), M+100, y+4);
+    doc.text((v.kmLlegada||0).toLocaleString(), M+125, y+4);
+    doc.setFont(undefined,'bold'); doc.setTextColor(0,212,170);
+    doc.text((v.kmRecorridos||0).toLocaleString()+' km', W-M-4, y+4, {align:'right'});
+    y += 6;
+  });
+
+  // Total
+  y += 2;
+  doc.setFillColor(0,80,60); doc.rect(M, y, CW, 8, 'F');
+  doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(0,212,170);
+  doc.text('TOTAL KM LABORALES', M+4, y+5.5);
+  doc.text(d.kmLaborales.toLocaleString()+' km', W-M-4, y+5.5, {align:'right'});
+  y += 14;
+
+  // Footer note
+  doc.setFontSize(8); doc.setFont(undefined,'italic'); doc.setTextColor(100,120,140);
+  const nota = `Este reporte fue generado automáticamente por ScanCheck (Danaide Enterprise) el ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}. Los kilómetros laborales corresponden a viajes registrados en el sistema durante el período indicado.`;
+  const notaLines = doc.splitTextToSize(nota, CW);
+  doc.text(notaLines, M, y);
+
+  doc.save(`Reporte_Service_${(d.titular||currentUser?.name||'Tecnico').replace(/\s+/g,'_')}_${new Date().toISOString().substring(0,10)}.pdf`);
+  showToast('✓ PDF generado', 'success');
+}
+window.generarPDFService = generarPDFService;
 
 // ── VIAJES SUPERVISOR ─────────────────────────────────────────
 async function loadSupViajes() {
@@ -4559,7 +4813,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v186'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v189'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
