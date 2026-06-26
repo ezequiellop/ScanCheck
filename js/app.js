@@ -2086,9 +2086,9 @@ function renderViajes() {
             <div style="font-size:10px;color:var(--text3)">km</div>
           </div>
         <button onclick="eliminarViaje('${v.fbId}')"
-          style="width:100%;margin-top:6px;padding:6px;border-radius:8px;border:1px solid #e53;background:transparent;color:#e53;font-size:12px;font-weight:600;cursor:pointer">
-          🗑 Eliminar viaje
-        </button>
+          style="margin-top:6px;padding:3px 10px;border-radius:6px;border:1px solid rgba(238,85,51,.4);background:transparent;color:rgba(238,85,51,.7);font-size:11px;cursor:pointer;float:right">
+          🗑 Eliminar
+        </button><div style="clear:both"></div>
         </div>
 
       </div>`;
@@ -4856,7 +4856,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v190'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v191'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
