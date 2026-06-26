@@ -2153,6 +2153,18 @@ async function guardarInicioViaje() {
     } catch(e) { console.warn('Error subiendo foto odómetro:', e.message); }
   }
 
+  // Capturar GPS de salida
+  let latSalida = null, lonSalida = null;
+  try {
+    if (navigator.geolocation) {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, {timeout:5000})
+      );
+      latSalida = pos.coords.latitude;
+      lonSalida = pos.coords.longitude;
+    }
+  } catch(e) { console.warn('GPS salida no disponible:', e.message); }
+
   const viaje = {
     id: 'vj_'+Date.now(),
     userId: currentUser.id,
@@ -2161,8 +2173,12 @@ async function guardarInicioViaje() {
     fechaSalida: new Date().toISOString(),
     kmSalida,
     destinoLabel: destino,
+    latSalida,
+    lonSalida,
     fechaLlegada: null,
     kmLlegada: null,
+    latLlegada: null,
+    lonLlegada: null,
     kmRecorridos: null,
     distanciaGPS: null,
     fotoOdometroSalida: fotoOdometroSalidaUrl,
@@ -2252,6 +2268,18 @@ async function guardarCierreViaje() {
     distanciaGPS = Math.round(total);
   }
   try {
+  // Capturar GPS de llegada
+  let latLlegada = null, lonLlegada = null;
+  try {
+    if (navigator.geolocation) {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, {timeout:5000})
+      );
+      latLlegada = pos.coords.latitude;
+      lonLlegada = pos.coords.longitude;
+    }
+  } catch(e) { console.warn('GPS llegada no disponible:', e.message); }
+
   // Subir foto del odómetro de llegada a R2
   let fotoOdometroLlegadaUrl = null;
   const fotoLlegadaInput = document.getElementById('inp-foto-odometro-llegada');
@@ -2273,6 +2301,8 @@ async function guardarCierreViaje() {
       kmLlegada,
       kmRecorridos,
       distanciaGPS,
+      latLlegada,
+      lonLlegada,
       fotoOdometroLlegada: fotoOdometroLlegadaUrl,
       estado: 'cerrado'
     });
@@ -2713,14 +2743,27 @@ async function mostrarMapaRecorrido(viaje) {
     }
   } catch(e) {}
 
-  if (scansDelDia.length < 2) {
-    showToast('Se necesitan al menos 2 registros con GPS para trazar el recorrido','error');
+  // Verificar que haya al menos 2 puntos GPS (incluyendo salida/llegada del viaje)
+  const totalPuntos = scansDelDia.length +
+    (viaje.latSalida ? 1 : 0) +
+    (viaje.latLlegada ? 1 : 0);
+  if (totalPuntos < 2) {
+    showToast('Se necesitan al menos 2 puntos GPS para trazar el recorrido','error');
     return;
   }
 
-  // Ordenar por timestamp
+  // Armar array de puntos GPS: salida → scans → llegada
+  const puntosGPS = [];
+  if (viaje.latSalida && viaje.lonSalida) {
+    puntosGPS.push({ lat: viaje.latSalida, lon: viaje.lonSalida, timestamp: viaje.fechaSalida, paso: '📍 Punto de salida', puesto: '', esPuntoViaje: true });
+  }
   scansDelDia.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-  const coords = scansDelDia.map(s => [s.lon, s.lat]); // ORS usa [lon, lat]
+  puntosGPS.push(...scansDelDia);
+  if (viaje.latLlegada && viaje.lonLlegada) {
+    puntosGPS.push({ lat: viaje.latLlegada, lon: viaje.lonLlegada, timestamp: viaje.fechaLlegada, paso: '🏁 Punto de llegada', puesto: '', esPuntoViaje: true });
+  }
+  const todosLosPuntos = puntosGPS.length >= 2 ? puntosGPS : scansDelDia;
+  const coords = todosLosPuntos.map(s => [s.lon, s.lat]); // ORS usa [lon, lat]
 
   // Mostrar modal con mapa
   const modal = document.createElement('div');
@@ -2742,8 +2785,8 @@ async function mostrarMapaRecorrido(viaje) {
     attribution: '© OpenStreetMap'
   }).addTo(map);
 
-  // Agregar marcadores de cada paso
-  scansDelDia.forEach((s, i) => {
+  // Agregar marcadores de cada paso (incluyendo salida y llegada)
+  todosLosPuntos.forEach((s, i) => {
     const color = i === 0 ? '#00d4aa' : i === scansDelDia.length-1 ? '#ff5555' : '#1a6fbd';
     const icon = L.divIcon({
       html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">${i+1}</div>`,
@@ -4813,7 +4856,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v189'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v190'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
