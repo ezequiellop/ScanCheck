@@ -2313,16 +2313,16 @@ window.loadSupViajes = loadSupViajes;
 // ── MAPA DE RECORRIDO (OpenRouteService) ─────────────────────
 async function mostrarMapaRecorrido(viaje) {
   // Obtener puntos GPS de los scans del día del viaje
-  const fechaViaje = viaje.fechaSalida?.substring(0,10);
+  const fechaSalida = new Date(viaje.fechaSalida);
+  const fechaLlegada = viaje.fechaLlegada ? new Date(viaje.fechaLlegada) : new Date();
   let scansDelDia = [];
   try {
-    const q = await fbGetMyViajes(viaje.userId); // ya tenemos los viajes
-    // Buscar scans del técnico ese día en localScans o Firestore
-    scansDelDia = localScans.filter(s =>
-      s.userId === viaje.userId &&
-      s.timestamp?.substring(0,10) === fechaViaje &&
-      s.lat && s.lon
-    );
+    // Buscar todos los scans del técnico entre la fecha de salida y llegada
+    scansDelDia = localScans.filter(s => {
+      if (s.userId !== viaje.userId || !s.lat || !s.lon) return false;
+      const ts = new Date(s.timestamp);
+      return ts >= fechaSalida && ts <= fechaLlegada;
+    });
     if (scansDelDia.length === 0) {
       // Buscar en Firestore
       const { getDocsFromServer, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
@@ -2415,6 +2415,7 @@ async function extraerKmDesdefoto(dataUrl) {
   try {
     const base64 = dataUrl.split(',')[1];
     const mediaType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+    console.log('[Odómetro] Enviando foto a Claude, mediaType:', mediaType, 'base64 length:', base64?.length);
     const res = await fetch(CLAUDE_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ScanCheck-Token': PHOTOS_TOKEN },
@@ -2430,14 +2431,17 @@ async function extraerKmDesdefoto(dataUrl) {
         }]
       })
     });
-    if (!res.ok) return null;
+    console.log('[Odómetro] HTTP status:', res.status);
     const data = await res.json();
+    console.log('[Odómetro] Respuesta Claude:', JSON.stringify(data).substring(0, 200));
+    if (!res.ok) return null;
     const text = data.content?.[0]?.text?.trim();
+    console.log('[Odómetro] Texto extraído:', text);
     if (!text || text === 'ERROR') return null;
     const num = parseInt(text.replace(/[^0-9]/g,''));
     return isNaN(num) ? null : num;
   } catch(e) {
-    console.warn('Error extrayendo km desde foto:', e.message);
+    console.error('[Odómetro] Error:', e.message);
     return null;
   }
 }
@@ -4426,7 +4430,7 @@ window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v181'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v183'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
