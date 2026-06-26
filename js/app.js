@@ -2759,10 +2759,11 @@ async function mostrarMapaRecorrido(viaje) {
   // Mostrar modal con mapa
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;flex-direction:column;padding:16px';
+  modal.id = 'modal-mapa-recorrido';
   modal.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:15px;font-weight:700;color:#fff">🗺️ Recorrido — ${escHtml(viaje.destinoLabel||'Sin destino')}</div>
-      <button onclick="this.closest('[style]').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer">✕ Cerrar</button>
+      <button onclick="document.getElementById('modal-mapa-recorrido').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer">✕ Cerrar</button>
     </div>
     <div id="mapa-recorrido" style="flex:1;border-radius:12px;overflow:hidden;min-height:300px"></div>
     <div id="mapa-recorrido-info" style="color:#fff;font-size:12px;text-align:center;padding:8px">Calculando ruta...</div>
@@ -4847,7 +4848,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v193'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v194'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
