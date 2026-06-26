@@ -5,7 +5,8 @@ import {
   fbSaveReport, fbUpdateReport, fbGetSignature, fbGetMyReports, fbGetAllReports, fbDeleteReport, fbSoftDeleteReport, fbRestoreReport, fbGetDeletedReports,
   fbUpdateLocation, fbWatchLocations, fbGetAllLocations, fbWatchAllReports,
   fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan,
-  fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes
+  fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes,
+  fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -1991,7 +1992,8 @@ window.closeDayReport = closeDayReport;
 // ── VIAJES ───────────────────────────────────────────────────
 async function loadViajes() {
   try {
-    localViajes = await fbGetMyViajes(currentUser.id);
+    const todos = await fbGetMyViajes(currentUser.id);
+    localViajes = todos.filter(v => !v.eliminado);
     viajeAbierto = localViajes.find(v => v.estado === 'abierto') || null;
     // Si Firestore no tiene viaje abierto pero sí hay uno en localStorage
     // (por ejemplo si la app se recargó antes de sincronizar), restaurarlo
@@ -2063,6 +2065,10 @@ function renderViajes() {
             <div style="font-size:22px;font-weight:700;color:var(--accent)">${(v.kmRecorridos||0).toLocaleString()}</div>
             <div style="font-size:10px;color:var(--text3)">km</div>
           </div>
+        <button onclick="eliminarViaje('${v.fbId}')"
+          style="width:100%;margin-top:6px;padding:6px;border-radius:8px;border:1px solid #e53;background:transparent;color:#e53;font-size:12px;font-weight:600;cursor:pointer">
+          🗑 Eliminar viaje
+        </button>
         </div>
 
       </div>`;
@@ -2309,6 +2315,128 @@ async function loadSupViajes() {
   }
 }
 window.loadSupViajes = loadSupViajes;
+
+async function eliminarViaje(fbId) {
+  if (!confirm('¿Eliminar este viaje? Irá a la papelera del supervisor.')) return;
+  try {
+    await fbSoftDeleteViaje(fbId, currentUser?.id);
+    localViajes = localViajes.filter(v => v.fbId !== fbId);
+    if (viajeAbierto?.fbId === fbId) {
+      viajeAbierto = null;
+      try { localStorage.removeItem('scancheck_viaje_abierto_'+currentUser.id); } catch(e) {}
+    }
+    renderViajes();
+    renderViajeAbiertoBanner();
+    showToast('Viaje eliminado — visible en papelera del supervisor', 'success');
+  } catch(e) { showToast('Error al eliminar: '+e.message, 'error'); }
+}
+window.eliminarViaje = eliminarViaje;
+
+async function showPapeleraViajes() {
+  const el = document.getElementById('papelera-viajes-content');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando...</div>';
+  document.getElementById('modal-papelera-viajes').classList.remove('hidden');
+  try {
+    const deleted = await fbGetDeletedViajes();
+    if (deleted.length === 0) {
+      el.innerHTML = '<div class="empty-state"><p>La papelera está vacía</p></div>';
+      return;
+    }
+    el.innerHTML = deleted.map(v => {
+      const fecha = new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'});
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.userName||'—')} — ${escHtml(v.destinoLabel||'Sin destino')}</div>
+        <div style="font-size:11px;color:var(--text3)">${fecha} · ${(v.kmRecorridos||0).toLocaleString()} km</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="restaurarViaje('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent);color:#0a1628;font-size:12px;font-weight:600;cursor:pointer">↩ Restaurar</button>
+          <button onclick="borrarViajeDefinitivo('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:#e53;color:#fff;font-size:12px;font-weight:600;cursor:pointer">✕ Borrar definitivamente</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="text-align:center;padding:20px;color:#e53">Error: ${e.message}</div>`;
+  }
+}
+window.showPapeleraViajes = showPapeleraViajes;
+
+async function restaurarViaje(fbId) {
+  try {
+    await fbRestoreViaje(fbId);
+    showToast('Viaje restaurado', 'success');
+    showPapeleraViajes();
+    loadSupViajes();
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+window.restaurarViaje = restaurarViaje;
+
+async function borrarViajeDefinitivo(fbId) {
+  if (!confirm('¿Borrar definitivamente? Esta acción no se puede deshacer.')) return;
+  try {
+    await fbHardDeleteViaje(fbId);
+    showToast('Viaje eliminado definitivamente', 'success');
+    showPapeleraViajes();
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+window.borrarViajeDefinitivo = borrarViajeDefinitivo;
+
+// ── EXPORT VIAJES A GOOGLE SHEETS ────────────────────────────
+async function exportViajesSheets() {
+  showToast('Exportando viajes a Sheets...', 'success');
+  try {
+    const viajes = await fbGetAllViajes();
+    const cerrados = viajes.filter(v => !v.eliminado && v.estado === 'cerrado');
+    if (cerrados.length === 0) { showToast('No hay viajes cerrados para exportar', 'error'); return; }
+
+    // Para cada viaje, obtener los pasos y provincia de los scans asociados
+    const rows = cerrados.map(v => {
+      const fechaSalida = v.fechaSalida ? new Date(v.fechaSalida).toLocaleDateString('es-AR') : '';
+      const fechaLlegada = v.fechaLlegada ? new Date(v.fechaLlegada).toLocaleDateString('es-AR') : '';
+      // Buscar scans del técnico en el rango del viaje
+      const salida = new Date(v.fechaSalida);
+      const llegada = v.fechaLlegada ? new Date(v.fechaLlegada) : new Date();
+      const scansViaje = localScans.filter(s =>
+        s.userId === v.userId && s.lat && s.lon &&
+        new Date(s.timestamp) >= salida && new Date(s.timestamp) <= llegada
+      );
+      const pasos = scansViaje.length > 0
+        ? [...new Set(scansViaje.map(s => s.paso).filter(Boolean))].join(', ')
+        : (v.destinoLabel || '');
+      const provincia = scansViaje.length > 0
+        ? [...new Set(scansViaje.map(s => s.address?.split(',').slice(-3,-2)[0]?.trim()).filter(Boolean))].join(', ')
+        : '';
+      return [
+        fechaSalida,
+        fechaLlegada,
+        v.userName || '',
+        v.vehiculo || '',
+        v.destinoLabel || '',
+        pasos,
+        provincia,
+        v.kmSalida || '',
+        v.kmLlegada || '',
+        v.kmRecorridos || '',
+        v.distanciaGPS || ''
+      ];
+    });
+
+    const headers = ['Fecha Salida','Fecha Llegada','Técnico','Vehículo','Destino','Pasos Visitados','Provincia','Km Salida','Km Llegada','Km Recorridos','Distancia GPS'];
+    const values = [headers, ...rows];
+
+    const token = await getGoogleToken();
+    // Clear and update Viajes sheet
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/Viajes!A:K:clear`, {
+      method: 'POST', headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' }
+    });
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/Viajes!A1:K${values.length}?valueInputOption=RAW`, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    });
+    if (!res.ok) throw new Error('Error Sheets: '+(await res.text()).substring(0,100));
+    showToast(`✓ ${rows.length} viajes exportados a Sheets`, 'success');
+  } catch(e) { showToast('Error exportando: '+e.message, 'error'); }
+}
+window.exportViajesSheets = exportViajesSheets;
 
 // ── MAPA DE RECORRIDO (OpenRouteService) ─────────────────────
 async function mostrarMapaRecorrido(viaje) {
@@ -4431,7 +4559,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v184'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v185'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
