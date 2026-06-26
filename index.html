@@ -460,7 +460,11 @@
       <div id="sup-viajes" class="sup-panel hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
           <div style="font-size:15px;font-weight:700;color:var(--text)">🚗 Control de Viajes</div>
-          <button class="btn-ghost small" onclick="loadSupViajes()">↻ Actualizar</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn-ghost small" onclick="exportViajesSheets()">📊 Sheets</button>
+            <button class="btn-ghost small" onclick="showPapeleraViajes()">🗑 Papelera</button>
+            <button class="btn-ghost small" onclick="loadSupViajes()">↻ Actualizar</button>
+          </div>
         </div>
         <div id="sup-viajes-content"><div class="empty-state"><p>Tocá Actualizar para cargar</p></div></div>
       </div>
@@ -495,6 +499,19 @@
     <div class="modal-handle"></div>
     <div id="modal-scan-content"></div>
     <button class="btn-ghost danger" onclick="deleteScanFromModal()" style="width:100%;margin-top:8px">Eliminar registro</button>
+  </div>
+</div>
+
+<!-- PAPELERA VIAJES MODAL -->
+<div id="modal-papelera-viajes" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-papelera-viajes')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">🗑 Papelera de Viajes</div>
+      <button class="btn-icon" onclick="closeModal('modal-papelera-viajes')" style="font-size:20px">×</button>
+    </div>
+    <div id="papelera-viajes-content"></div>
   </div>
 </div>
 
