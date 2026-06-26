@@ -127,7 +127,24 @@ let locationUpdateTimer = null;
 window.addEventListener('DOMContentLoaded', () => {
   initSignatureCanvas();
   requestLocation();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // Detectar cuando hay una nueva versión del SW disponible
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker?.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+            // Hay una versión nueva activa — avisar al usuario sin forzar recarga
+            showToast('Nueva versión disponible — recargá para actualizar', 'success');
+          }
+        });
+      });
+    }).catch(() => {});
+    // Detectar si el SW controló la página (puede causar recarga en algunos casos)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      console.log('[SW] Controller changed — nueva versión activa');
+    });
+  }
   // Check if we returned from QR scanner page
   const qrResult = sessionStorage.getItem('scancheck_qr_result');
   if (qrResult) {
@@ -1911,6 +1928,8 @@ window.debugOrphans = () => {
   return orphans;
 };
 window.fbUpdateScan = fbUpdateScan;
+window.fbGetMyViajes = fbGetMyViajes;
+window.fbGetAllViajes = fbGetAllViajes;
 window.fbReplaceScan = fbReplaceScan;
 window.fbDeleteReport = fbDeleteReport;
 window.getLocalReports = () => localReports;
@@ -1974,7 +1993,28 @@ async function loadViajes() {
   try {
     localViajes = await fbGetMyViajes(currentUser.id);
     viajeAbierto = localViajes.find(v => v.estado === 'abierto') || null;
-  } catch(e) { localViajes = []; viajeAbierto = null; }
+    // Si Firestore no tiene viaje abierto pero sí hay uno en localStorage
+    // (por ejemplo si la app se recargó antes de sincronizar), restaurarlo
+    if (!viajeAbierto) {
+      try {
+        const stored = localStorage.getItem('scancheck_viaje_abierto_'+currentUser.id);
+        if (stored) {
+          const v = JSON.parse(stored);
+          // Solo restaurar si tiene menos de 7 días (viaje muy viejo probablemente es basura)
+          const age = Date.now() - new Date(v.fechaSalida).getTime();
+          if (age < 7*24*60*60*1000) viajeAbierto = v;
+          else localStorage.removeItem('scancheck_viaje_abierto_'+currentUser.id);
+        }
+      } catch(e) {}
+    }
+  } catch(e) {
+    localViajes = [];
+    // Si Firestore falla, intentar con localStorage
+    try {
+      const stored = localStorage.getItem('scancheck_viaje_abierto_'+currentUser.id);
+      if (stored) viajeAbierto = JSON.parse(stored);
+    } catch(e2) {}
+  }
   renderViajes();
   renderViajeAbiertoBanner();
 }
@@ -2079,6 +2119,8 @@ async function guardarInicioViaje() {
     viaje.fbId = fbId;
     localViajes.unshift(viaje);
     viajeAbierto = viaje;
+    // Persistir en localStorage para sobrevivir recargas de la app
+    try { localStorage.setItem('scancheck_viaje_abierto_'+currentUser.id, JSON.stringify(viaje)); } catch(e) {}
     closeModal('modal-viaje');
     renderViajeAbiertoBanner();
     renderViajes();
@@ -2146,6 +2188,8 @@ async function guardarCierreViaje() {
       localViajes[idx] = { ...localViajes[idx], fechaLlegada: new Date().toISOString(), kmLlegada, kmRecorridos, distanciaGPS, estado: 'cerrado' };
     }
     viajeAbierto = null;
+    // Limpiar viaje abierto del localStorage
+    try { localStorage.removeItem('scancheck_viaje_abierto_'+currentUser.id); } catch(e) {}
     closeModal('modal-viaje');
     renderViajeAbiertoBanner();
     renderViajes();
@@ -4154,7 +4198,7 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '25.06.2026-v175'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v176'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
