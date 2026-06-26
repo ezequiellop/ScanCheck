@@ -2732,15 +2732,9 @@ async function mostrarMapaRecorrido(viaje) {
       const ts = new Date(s.timestamp);
       return ts >= fechaSalida && ts <= fechaLlegada;
     });
-    if (scansDelDia.length === 0) {
-      // Buscar en Firestore
-      const { getDocsFromServer, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-      showToast('Sin puntos GPS para este viaje','error');
-      return;
-    }
   } catch(e) {}
 
-  // Verificar que haya al menos 2 puntos GPS (incluyendo salida/llegada del viaje)
+  // Verificar que haya al menos 2 puntos GPS (scans + salida/llegada del viaje)
   const totalPuntos = scansDelDia.length +
     (viaje.latSalida ? 1 : 0) +
     (viaje.latLlegada ? 1 : 0);
@@ -4853,7 +4847,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v192'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v193'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
