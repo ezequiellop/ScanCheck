@@ -2073,7 +2073,7 @@ function renderViajes() {
     const items = byMes[mes].map(v => {
       const fechaSal = new Date(v.fechaSalida).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
       const fechaLleg = v.fechaLlegada ? new Date(v.fechaLlegada).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'}) : '—';
-      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);position:relative"><button onclick="eliminarViaje('${v.fbId}')" title="Eliminar viaje" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:rgba(238,85,51,.5);font-size:16px;cursor:pointer;padding:2px;line-height:1">🗑</button>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.destinoLabel||'Sin destino especificado')}</div>
@@ -2085,10 +2085,7 @@ function renderViajes() {
             <div style="font-size:22px;font-weight:700;color:var(--accent)">${(v.kmRecorridos||0).toLocaleString()}</div>
             <div style="font-size:10px;color:var(--text3)">km</div>
           </div>
-        <button onclick="eliminarViaje('${v.fbId}')"
-          style="margin-top:6px;padding:3px 10px;border-radius:6px;border:1px solid rgba(238,85,51,.4);background:transparent;color:rgba(238,85,51,.7);font-size:11px;cursor:pointer;float:right">
-          🗑 Eliminar
-        </button><div style="clear:both"></div>
+
         </div>
 
       </div>`;
@@ -2628,7 +2625,7 @@ async function showPapeleraViajes() {
     }
     el.innerHTML = deleted.map(v => {
       const fecha = new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'});
-      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);position:relative"><button onclick="eliminarViaje('${v.fbId}')" title="Eliminar viaje" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:rgba(238,85,51,.5);font-size:16px;cursor:pointer;padding:2px;line-height:1">🗑</button>
         <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.userName||'—')} — ${escHtml(v.destinoLabel||'Sin destino')}</div>
         <div style="font-size:11px;color:var(--text3)">${fecha} · ${(v.kmRecorridos||0).toLocaleString()} km</div>
         <div style="display:flex;gap:8px;margin-top:8px">
@@ -4856,7 +4853,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v191'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v192'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
