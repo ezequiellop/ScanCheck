@@ -2064,6 +2064,7 @@ function renderViajes() {
             <div style="font-size:10px;color:var(--text3)">km</div>
           </div>
         </div>
+
       </div>`;
     }).join('');
     return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 0 4px">${label} — Total: ${totalKm.toLocaleString()} km</div>${items}`;
@@ -2087,6 +2088,17 @@ function showIniciarViaje() {
       <label>Vehículo (patente)</label>
       <input type="text" id="inp-viaje-vehiculo" placeholder="Ej: AB 123 CD" maxlength="20" value="${currentUser?.vehiculo||''}">
     </div>
+    <div class="form-group">
+      <label>Foto del odómetro de salida <span style="color:var(--text3);font-size:11px">(recomendado)</span></label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" id="inp-foto-odometro-salida" accept="image/*" capture="environment" style="display:none" onchange="previewFotoOdometro(this,'preview-odo-salida')">
+        <button type="button" onclick="document.getElementById('inp-foto-odometro-salida').click()" 
+          style="padding:8px 14px;border-radius:8px;border:1px dashed var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;cursor:pointer">
+          📷 Sacar foto
+        </button>
+        <img id="preview-odo-salida" style="display:none;width:60px;height:45px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+      </div>
+    </div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-viaje')">Cancelar</button>
       <button class="btn-primary" style="flex:1" onclick="guardarInicioViaje()">Iniciar viaje</button>
@@ -2099,6 +2111,22 @@ async function guardarInicioViaje() {
   if (!kmSalida || kmSalida <= 0) { showToast('Ingresá el km del odómetro','error'); return; }
   const destino = document.getElementById('inp-viaje-destino')?.value.trim() || '';
   const vehiculo = document.getElementById('inp-viaje-vehiculo')?.value.trim() || '';
+  // Subir foto del odómetro de salida a R2 si la adjuntaron
+  let fotoOdometroSalidaUrl = null;
+  const fotoInput = document.getElementById('inp-foto-odometro-salida');
+  if (fotoInput?.files?.[0]) {
+    try {
+      const viajeId = 'vj_'+Date.now();
+      const reader = new FileReader();
+      const dataUrl = await new Promise(res => { reader.onload = e => res(e.target.result); reader.readAsDataURL(fotoInput.files[0]); });
+      const blob = await (await fetch(dataUrl)).blob();
+      const uploadRes = await fetch(`${PHOTOS_PROXY_URL}/upload/${viajeId}/odometro_salida.jpg`, {
+        method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-ScanCheck-Token': PHOTOS_TOKEN }, body: blob
+      });
+      if (uploadRes.ok) fotoOdometroSalidaUrl = (await uploadRes.json()).url;
+    } catch(e) { console.warn('Error subiendo foto odómetro:', e.message); }
+  }
+
   const viaje = {
     id: 'vj_'+Date.now(),
     userId: currentUser.id,
@@ -2111,6 +2139,7 @@ async function guardarInicioViaje() {
     kmLlegada: null,
     kmRecorridos: null,
     distanciaGPS: null,
+    fotoOdometroSalida: fotoOdometroSalidaUrl,
     estado: 'abierto',
     createdAt: new Date().toISOString()
   };
@@ -2142,6 +2171,17 @@ function showCerrarViaje() {
       <input type="number" id="inp-km-llegada" placeholder="Ej: 126150" min="${kmSalida+1}" style="font-size:18px;font-weight:700">
     </div>
     <div id="km-diff-preview" style="text-align:center;font-size:28px;font-weight:700;color:var(--accent);margin:8px 0;display:none"></div>
+    <div class="form-group" style="margin-top:8px">
+      <label>Foto del odómetro de llegada <span style="color:var(--text3);font-size:11px">(recomendado)</span></label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" id="inp-foto-odometro-llegada" accept="image/*" capture="environment" style="display:none" onchange="previewFotoOdometro(this,'preview-odo-llegada')">
+        <button type="button" onclick="document.getElementById('inp-foto-odometro-llegada').click()"
+          style="padding:8px 14px;border-radius:8px;border:1px dashed var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;cursor:pointer">
+          📷 Sacar foto
+        </button>
+        <img id="preview-odo-llegada" style="display:none;width:60px;height:45px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+      </div>
+    </div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-viaje')">Cancelar</button>
       <button class="btn-primary" style="flex:1" onclick="guardarCierreViaje()">Guardar llegada</button>
@@ -2175,11 +2215,28 @@ async function guardarCierreViaje() {
     distanciaGPS = Math.round(total);
   }
   try {
+  // Subir foto del odómetro de llegada a R2
+  let fotoOdometroLlegadaUrl = null;
+  const fotoLlegadaInput = document.getElementById('inp-foto-odometro-llegada');
+  if (fotoLlegadaInput?.files?.[0]) {
+    try {
+      const viajeId = viajeAbierto.fbId || viajeAbierto.id;
+      const reader2 = new FileReader();
+      const dataUrl2 = await new Promise(res => { reader2.onload = e => res(e.target.result); reader2.readAsDataURL(fotoLlegadaInput.files[0]); });
+      const blob2 = await (await fetch(dataUrl2)).blob();
+      const uploadRes2 = await fetch(`${PHOTOS_PROXY_URL}/upload/${viajeId}/odometro_llegada.jpg`, {
+        method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-ScanCheck-Token': PHOTOS_TOKEN }, body: blob2
+      });
+      if (uploadRes2.ok) fotoOdometroLlegadaUrl = (await uploadRes2.json()).url;
+    } catch(e) { console.warn('Error subiendo foto odómetro llegada:', e.message); }
+  }
+
     await fbUpdateViaje(viajeAbierto.fbId, {
       fechaLlegada: new Date().toISOString(),
       kmLlegada,
       kmRecorridos,
       distanciaGPS,
+      fotoOdometroLlegada: fotoOdometroLlegadaUrl,
       estado: 'cerrado'
     });
     // Update local
@@ -2227,9 +2284,17 @@ async function loadSupViajes() {
             <div style="font-weight:600;color:var(--text)">${escHtml(v.destinoLabel||'Sin destino')}</div>
             <div style="color:var(--text3)">${fechaSal} → ${fechaLleg} · Od: ${v.kmSalida?.toLocaleString()} → ${v.kmLlegada?.toLocaleString()}</div>
             ${v.distanciaGPS?`<div style="color:var(--text3)">GPS estimado: ~${v.distanciaGPS} km</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:6px">
+              ${v.fotoOdometroSalida?`<div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Salida</div><img src="${v.fotoOdometroSalida}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="window.open('${v.fotoOdometroSalida}')"></div>`:''}
+              ${v.fotoOdometroLlegada?`<div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Llegada</div><img src="${v.fotoOdometroLlegada}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="window.open('${v.fotoOdometroLlegada}')"></div>`:''}
+            </div>
           </div>
           <div style="font-size:18px;font-weight:700;color:var(--accent);padding-left:12px">${(v.kmRecorridos||0).toLocaleString()} km</div>
-        </div>`;
+        </div>
+        <button onclick="mostrarMapaRecorrido(JSON.parse(this.dataset.v))" data-v="${escHtml(JSON.stringify(v))}"
+          style="width:100%;margin-top:6px;padding:6px;border-radius:8px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">
+          🗺️ Ver recorrido
+        </button>`;
       }).join('');
       return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -2244,6 +2309,168 @@ async function loadSupViajes() {
   }
 }
 window.loadSupViajes = loadSupViajes;
+
+// ── MAPA DE RECORRIDO (OpenRouteService) ─────────────────────
+async function mostrarMapaRecorrido(viaje) {
+  // Obtener puntos GPS de los scans del día del viaje
+  const fechaViaje = viaje.fechaSalida?.substring(0,10);
+  let scansDelDia = [];
+  try {
+    const q = await fbGetMyViajes(viaje.userId); // ya tenemos los viajes
+    // Buscar scans del técnico ese día en localScans o Firestore
+    scansDelDia = localScans.filter(s =>
+      s.userId === viaje.userId &&
+      s.timestamp?.substring(0,10) === fechaViaje &&
+      s.lat && s.lon
+    );
+    if (scansDelDia.length === 0) {
+      // Buscar en Firestore
+      const { getDocsFromServer, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      showToast('Sin puntos GPS para este viaje','error');
+      return;
+    }
+  } catch(e) {}
+
+  if (scansDelDia.length < 2) {
+    showToast('Se necesitan al menos 2 registros con GPS para trazar el recorrido','error');
+    return;
+  }
+
+  // Ordenar por timestamp
+  scansDelDia.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const coords = scansDelDia.map(s => [s.lon, s.lat]); // ORS usa [lon, lat]
+
+  // Mostrar modal con mapa
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;flex-direction:column;padding:16px';
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:15px;font-weight:700;color:#fff">🗺️ Recorrido — ${escHtml(viaje.destinoLabel||'Sin destino')}</div>
+      <button onclick="this.closest('[style]').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer">✕ Cerrar</button>
+    </div>
+    <div id="mapa-recorrido" style="flex:1;border-radius:12px;overflow:hidden;min-height:300px"></div>
+    <div id="mapa-recorrido-info" style="color:#fff;font-size:12px;text-align:center;padding:8px">Calculando ruta...</div>
+  `;
+  document.body.appendChild(modal);
+
+  // Init Leaflet map
+  await new Promise(r => setTimeout(r, 100));
+  const map = L.map('mapa-recorrido');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Agregar marcadores de cada paso
+  scansDelDia.forEach((s, i) => {
+    const color = i === 0 ? '#00d4aa' : i === scansDelDia.length-1 ? '#ff5555' : '#1a6fbd';
+    const icon = L.divIcon({
+      html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">${i+1}</div>`,
+      iconSize: [28,28], iconAnchor: [14,14], className: ''
+    });
+    L.marker([s.lat, s.lon], {icon})
+      .addTo(map)
+      .bindPopup(`<strong>${escHtml(s.paso||'Paso '+i)}</strong><br>${escHtml(s.puesto||'')}<br><small>${new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</small>`);
+  });
+
+  // Llamar a OpenRouteService para obtener la ruta real por carreteras
+  try {
+    const res = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+      method: 'POST',
+      headers: {
+        'Authorization': ORS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ coordinates: coords })
+    });
+    if (!res.ok) throw new Error('ORS error ' + res.status);
+    const data = await res.json();
+    const route = data.features?.[0];
+    if (route) {
+      // Dibujar la ruta en el mapa
+      L.geoJSON(route, {
+        style: { color: '#1a6fbd', weight: 4, opacity: 0.85 }
+      }).addTo(map);
+      // Ajustar vista al recorrido
+      const bounds = L.geoJSON(route).getBounds();
+      map.fitBounds(bounds, { padding: [20,20] });
+      // Mostrar distancia real
+      const distKm = (route.properties?.summary?.distance / 1000).toFixed(1);
+      const durMin = Math.round(route.properties?.summary?.duration / 60);
+      document.getElementById('mapa-recorrido-info').innerHTML =
+        `📍 ${scansDelDia.length} pasos visitados · 🛣️ ${distKm} km por ruta · ⏱️ ~${durMin} min de conducción`;
+    }
+  } catch(e) {
+    // Fallback: línea recta entre puntos
+    const latlngs = scansDelDia.map(s => [s.lat, s.lon]);
+    L.polyline(latlngs, { color: '#1a6fbd', weight: 3, dashArray: '8,6' }).addTo(map);
+    map.fitBounds(L.polyline(latlngs).getBounds(), { padding: [20,20] });
+    document.getElementById('mapa-recorrido-info').innerHTML =
+      `📍 ${scansDelDia.length} pasos visitados · ⚠️ Ruta aproximada (sin conexión a ORS)`;
+  }
+}
+window.mostrarMapaRecorrido = mostrarMapaRecorrido;
+
+// Extrae el valor del odómetro de una foto usando Claude API (vision)
+async function extraerKmDesdefoto(dataUrl) {
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const mediaType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+    const res = await fetch(CLAUDE_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ScanCheck-Token': PHOTOS_TOKEN },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 100,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: 'Esta es una foto del odómetro de un vehículo. Extraé SOLO el número de kilómetros que se ve en el display (sin puntos, sin comas, solo el número entero). Si no podés leerlo claramente, respondé "ERROR". Respondé ÚNICAMENTE con el número, sin texto adicional.' }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.content?.[0]?.text?.trim();
+    if (!text || text === 'ERROR') return null;
+    const num = parseInt(text.replace(/[^0-9]/g,''));
+    return isNaN(num) ? null : num;
+  } catch(e) {
+    console.warn('Error extrayendo km desde foto:', e.message);
+    return null;
+  }
+}
+
+function previewFotoOdometro(input, previewId) {
+  const preview = document.getElementById(previewId);
+  if (!input.files?.[0]) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    // Determinar qué campo de km llenar según el preview
+    const kmFieldId = previewId === 'preview-odo-salida' ? 'inp-km-salida' : 'inp-km-llegada';
+    const kmField = document.getElementById(kmFieldId);
+    if (kmField) {
+      kmField.placeholder = '⏳ Leyendo odómetro...';
+      kmField.disabled = true;
+      const km = await extraerKmDesdefoto(e.target.result);
+      kmField.disabled = false;
+      if (km) {
+        kmField.value = km;
+        kmField.style.borderColor = 'var(--accent)';
+        showToast(`✓ Odómetro leído: ${km.toLocaleString()} km`, 'success');
+        // Disparar evento input para actualizar el preview de diferencia (en cierre)
+        kmField.dispatchEvent(new Event('input'));
+      } else {
+        kmField.placeholder = 'No se pudo leer — ingresá manualmente';
+      }
+    }
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+window.previewFotoOdometro = previewFotoOdometro;
 
 // ── Vista de registros sin informe ──────────────────────────
 function showOrphanScans() {
@@ -4197,8 +4424,9 @@ async function syncAllReports() {
 }
 window.syncAllReports = syncAllReports;
 
-// ======== GOOGLE SHEETS EXPORT ========
-const APP_VERSION = '25.06.2026-v176'; // Fecha + nro de SW — actualizar junto con sw.js
+// ======== GOOGLE SHEETS EXPORT ========const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
+const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
+const APP_VERSION = '25.06.2026-v181'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
