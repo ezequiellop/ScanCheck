@@ -2402,13 +2402,18 @@ async function calcularReporteService() {
   try { await fbSaveServiceData(currentUser.id, serviceDataToSave); } catch(e) {}
   try { localStorage.setItem('scancheck_service_'+currentUser.id, JSON.stringify(serviceDataToSave)); } catch(e) {}
 
-  // Calcular km laborales desde la fecha del service
-  const desdeFecha = new Date(fechaService+'T00:00:00');
+  // Usar fechaCorte si existe (último reporte generado), sino usar fecha del service
+  // Esto evita que los viajes ya reportados se cuenten de nuevo
+  const fechaCorte = saved.fechaCorte || null;
+  const desdeFecha = fechaCorte
+    ? new Date(fechaCorte)
+    : new Date(fechaService+'T00:00:00');
   const viajesLaboral = localViajes.filter(v =>
     v.estado === 'cerrado' && !v.eliminado &&
     v.kmRecorridos > 0 &&
     new Date(v.fechaSalida) >= desdeFecha
   );
+  const esPrimerReporte = !fechaCorte;
   const kmLaborales = viajesLaboral.reduce((s,v) => s+(v.kmRecorridos||0), 0);
   const kmTotales = kmActual - kmService;
   const pct = kmTotales > 0 ? Math.round(kmLaborales/kmTotales*100) : 0;
@@ -2435,11 +2440,17 @@ async function calcularReporteService() {
         <div style="font-size:10px;color:var(--text3)">Viajes registrados</div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text3)">Período: ${new Date(fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})} → hoy</div>
+    <div style="font-size:11px;color:var(--text3)">
+      ${esPrimerReporte
+        ? 'Período: desde ' + new Date(fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ' → hoy'
+        : 'Período: desde el último reporte generado (' + new Date(fechaCorte).toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ') → hoy'
+      }
+    </div>
+    ${viajesLaboral.length === 0 ? '<div style="margin-top:8px;padding:8px;background:rgba(238,85,51,.1);border-radius:8px;font-size:12px;color:#e53;text-align:center">No hay viajes nuevos desde el último reporte generado</div>' : ''}
   `;
 
   // Guardar para el PDF
-  window._serviceData = { fechaService, kmService, kmActual, kmTotales, kmLaborales, pct, titular, vehiculo, viajesLaboral };
+  window._serviceData = { fechaService, kmService, kmActual, kmTotales, kmLaborales, pct, titular, vehiculo, viajesLaboral, fechaCorte };
   document.getElementById('service-pdf-btn').style.display = 'block';
 }
 window.calcularReporteService = calcularReporteService;
@@ -2472,7 +2483,10 @@ async function generarPDFService() {
   doc.text(d.titular||currentUser?.name||'—', M+6, y+14);
   doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(180,200,220);
   doc.text(`Vehículo: ${d.vehiculo||'—'}`, M+6, y+21);
-  doc.text(`Período: ${new Date(d.fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})} → ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}`, M+6, y+27);
+  const periodoLabel = d.fechaCorte
+    ? 'Desde: ' + new Date(d.fechaCorte).toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ' → ' + new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})
+    : new Date(d.fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ' → ' + new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
+  doc.text('Período: ' + periodoLabel, M+6, y+27);
   y += 34;
 
   // Resumen
@@ -2541,7 +2555,14 @@ async function generarPDFService() {
   doc.text(notaLines, M, y);
 
   doc.save(`Reporte_Service_${(d.titular||currentUser?.name||'Tecnico').replace(/\s+/g,'_')}_${new Date().toISOString().substring(0,10)}.pdf`);
-  showToast('✓ PDF generado', 'success');
+  // Guardar fecha de corte — los viajes anteriores a este momento no entran en el próximo reporte
+  try {
+    const stored = JSON.parse(localStorage.getItem('scancheck_service_'+currentUser.id)||'{}');
+    const updated = { ...stored, fechaCorte: new Date().toISOString() };
+    await fbSaveServiceData(currentUser.id, updated);
+    localStorage.setItem('scancheck_service_'+currentUser.id, JSON.stringify(updated));
+  } catch(e) {}
+  showToast('✓ PDF generado — próximo reporte solo incluirá viajes nuevos', 'success');
 }
 window.generarPDFService = generarPDFService;
 
@@ -4848,7 +4869,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v194'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v195'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
