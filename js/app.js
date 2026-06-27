@@ -987,17 +987,29 @@ function startQRScan() {
     .then(stream => {
       video.srcObject = stream;
       video.play();
+      const hint = document.getElementById('qr-scan-hint');
+      let frames = 0;
       qrScanInterval = setInterval(() => {
+        frames++;
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          if (hint) hint.textContent = `📷 ${canvas.width}x${canvas.height} | frame ${frames} | jsQR: ${typeof jsQR}`;
+          if (typeof jsQR === 'undefined') {
+            if (hint) hint.textContent = '❌ jsQR no está cargado';
+            return;
+          }
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height);
           if (code) {
             stopQRScannerModal();
             processQRData(code.data);
+          } else if (frames % 10 === 0) {
+            if (hint) hint.textContent = `🔍 Buscando QR... (${canvas.width}x${canvas.height})`;
           }
+        } else {
+          if (hint) hint.textContent = `⏳ Iniciando cámara... (estado: ${video.readyState})`;
         }
       }, 150);
     })
@@ -4896,7 +4908,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v199'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v200'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
