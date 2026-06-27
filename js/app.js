@@ -2339,6 +2339,7 @@ async function showReporteService() {
   } catch(e) {
     try { saved = JSON.parse(localStorage.getItem('scancheck_service_'+currentUser.id)||'{}'); } catch(e2) {}
   }
+  window._serviceDataSaved = saved; // hacer disponible para calcularReporteService
 
   el.innerHTML = `
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🔧 Reporte para Service</div>
@@ -2404,6 +2405,7 @@ async function calcularReporteService() {
 
   // Usar fechaCorte si existe (último reporte generado), sino usar fecha del service
   // Esto evita que los viajes ya reportados se cuenten de nuevo
+  const saved = window._serviceDataSaved || {};
   const fechaCorte = saved.fechaCorte || null;
   const desdeFecha = fechaCorte
     ? new Date(fechaCorte)
@@ -4869,7 +4871,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v196'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v197'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
