@@ -973,7 +973,24 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 // ======== QR SCAN ========
 let qrScanInterval = null;
 
-function startQRScan() {
+async function startQRScan() {
+  // Esperar a que jsQR esté disponible (puede tardar si se carga desde CDN)
+  if (typeof jsQR === 'undefined') {
+    showToast('Cargando escáner...', 'success');
+    let tries = 0;
+    await new Promise(resolve => {
+      const check = setInterval(() => {
+        tries++;
+        if (typeof jsQR !== 'undefined') { clearInterval(check); resolve(); }
+        if (tries > 30) { clearInterval(check); resolve(); } // máx 3 segundos
+      }, 100);
+    });
+  }
+  if (typeof jsQR === 'undefined') {
+    showToast('No se pudo cargar el escáner QR', 'error');
+    return;
+  }
+
   // Usar modal inline — funciona en PWA y en APK con Capacitor
   const modal = document.getElementById('modal-qr-scanner');
   if (!modal) return;
@@ -4917,7 +4934,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v203'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v204'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
