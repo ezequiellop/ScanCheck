@@ -1002,9 +1002,9 @@ function startQRScan() {
           }
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) {
+          if (code && qrScanInterval) {
             stopQRScannerModal();
-            processQRData(code.data);
+            setTimeout(() => processQRData(code.data), 100);
           } else if (frames % 10 === 0) {
             if (hint) hint.textContent = `🔍 Buscando QR... (${canvas.width}x${canvas.height})`;
           }
@@ -1021,10 +1021,19 @@ function startQRScan() {
 window.startQRScan = startQRScan;
 
 function stopQRScannerModal() {
-  if (qrScanInterval) { clearInterval(qrScanInterval); qrScanInterval = null; }
-  const video = document.getElementById('qr-video-inline');
-  if (video?.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-  document.getElementById('modal-qr-scanner')?.classList.add('hidden');
+  try {
+    if (qrScanInterval) { clearInterval(qrScanInterval); qrScanInterval = null; }
+    const video = document.getElementById('qr-video-inline');
+    if (video) {
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => { try { t.stop(); } catch(e){} });
+        video.srcObject = null;
+      }
+      video.pause();
+    }
+    const modal = document.getElementById('modal-qr-scanner');
+    if (modal) modal.classList.add('hidden');
+  } catch(e) { console.warn('stopQRScannerModal error:', e); }
 }
 
 function closeQRScannerModal() {
@@ -4908,7 +4917,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v201'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v203'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
