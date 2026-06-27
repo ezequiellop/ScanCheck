@@ -971,29 +971,54 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 }
 
 // ======== QR SCAN ========
+let qrScanInterval = null;
+
 function startQRScan() {
-  // Listen for result from the QR scanner window
-  window.addEventListener('message', onQRMessage);
+  // Usar modal inline — funciona en PWA y en APK con Capacitor
+  const modal = document.getElementById('modal-qr-scanner');
+  if (!modal) return;
+  modal.classList.remove('hidden');
 
-  // Also check sessionStorage in case we came back from the scanner page
-  const stored = sessionStorage.getItem('scancheck_qr_result');
-  if (stored) {
-    sessionStorage.removeItem('scancheck_qr_result');
-    processQRData(stored);
-    return;
-  }
+  const video = document.getElementById('qr-video-inline');
+  const canvas = document.getElementById('qr-canvas-inline');
+  const ctx = canvas.getContext('2d');
 
-  // Open the standalone QR scanner page (avoids ES module scope issues with jsQR)
-  const scannerUrl = new URL('qr-scanner.html', window.location.href).href;
-  const popup = window.open(scannerUrl, 'qr_scanner', 'width=400,height=700');
-
-  // If popup was blocked, navigate in same tab
-  if (!popup || popup.closed) {
-    sessionStorage.setItem('scancheck_return_page', currentPage);
-    window.location.href = scannerUrl;
-  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(stream => {
+      video.srcObject = stream;
+      video.play();
+      qrScanInterval = setInterval(() => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+            stopQRScannerModal();
+            processQRData(code.data);
+          }
+        }
+      }, 150);
+    })
+    .catch(e => {
+      showToast('No se pudo acceder a la cámara: '+e.message, 'error');
+      modal.classList.add('hidden');
+    });
 }
 window.startQRScan = startQRScan;
+
+function stopQRScannerModal() {
+  if (qrScanInterval) { clearInterval(qrScanInterval); qrScanInterval = null; }
+  const video = document.getElementById('qr-video-inline');
+  if (video?.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  document.getElementById('modal-qr-scanner')?.classList.add('hidden');
+}
+
+function closeQRScannerModal() {
+  stopQRScannerModal();
+}
+window.closeQRScannerModal = closeQRScannerModal;
 
 function onQRMessage(event) {
   if (event.data && event.data.type === 'QR_DATA') {
@@ -4871,7 +4896,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v198'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v199'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
