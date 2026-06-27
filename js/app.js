@@ -973,90 +973,42 @@ function drawWatermarkOnCanvas(ctx,w,h) {
 // ======== QR SCAN ========
 let qrScanInterval = null;
 
-async function startQRScan() {
-  // Esperar a que jsQR esté disponible (puede tardar si se carga desde CDN)
-  if (typeof jsQR === 'undefined') {
-    showToast('Cargando escáner...', 'success');
-    let tries = 0;
-    await new Promise(resolve => {
-      const check = setInterval(() => {
-        tries++;
-        if (typeof jsQR !== 'undefined') { clearInterval(check); resolve(); }
-        if (tries > 30) { clearInterval(check); resolve(); } // máx 3 segundos
-      }, 100);
-    });
-  }
-  if (typeof jsQR === 'undefined') {
-    showToast('No se pudo cargar el escáner QR', 'error');
+function startQRScan() {
+  // Listen for result from the QR scanner window
+  window.addEventListener('message', onQRMessage);
+
+  // Also check sessionStorage in case we came back from the scanner page
+  const stored = sessionStorage.getItem('scancheck_qr_result');
+  if (stored) {
+    sessionStorage.removeItem('scancheck_qr_result');
+    processQRData(stored);
     return;
   }
 
-  // Usar modal inline — funciona en PWA y en APK con Capacitor
-  const modal = document.getElementById('modal-qr-scanner');
-  if (!modal) return;
-  modal.classList.remove('hidden');
+  // Open the standalone QR scanner page
+  const scannerUrl = new URL('qr-scanner.html', window.location.href).href;
+  const popup = window.open(scannerUrl, 'qr_scanner', 'width=400,height=700');
 
-  const video = document.getElementById('qr-video-inline');
-  const canvas = document.getElementById('qr-canvas-inline');
-  const ctx = canvas.getContext('2d');
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => {
-      video.srcObject = stream;
-      video.play();
-      const hint = document.getElementById('qr-scan-hint');
-      let frames = 0;
-      qrScanInterval = setInterval(() => {
-        frames++;
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          if (hint) hint.textContent = `📷 ${canvas.width}x${canvas.height} | frame ${frames} | jsQR: ${typeof jsQR}`;
-          if (typeof jsQR === 'undefined') {
-            if (hint) hint.textContent = '❌ jsQR no está cargado';
-            return;
-          }
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code && qrScanInterval) {
-            stopQRScannerModal();
-            setTimeout(() => processQRData(code.data), 100);
-          } else if (frames % 10 === 0) {
-            if (hint) hint.textContent = `🔍 Buscando QR... (${canvas.width}x${canvas.height})`;
-          }
-        } else {
-          if (hint) hint.textContent = `⏳ Iniciando cámara... (estado: ${video.readyState})`;
-        }
-      }, 150);
-    })
-    .catch(e => {
-      showToast('No se pudo acceder a la cámara: '+e.message, 'error');
-      modal.classList.add('hidden');
-    });
+  // If popup was blocked, navigate in same tab
+  if (!popup || popup.closed) {
+    sessionStorage.setItem('scancheck_return_page', currentPage);
+    window.location.href = scannerUrl;
+  }
 }
 window.startQRScan = startQRScan;
 
-function stopQRScannerModal() {
-  try {
-    if (qrScanInterval) { clearInterval(qrScanInterval); qrScanInterval = null; }
-    const video = document.getElementById('qr-video-inline');
-    if (video) {
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => { try { t.stop(); } catch(e){} });
-        video.srcObject = null;
-      }
-      video.pause();
-    }
-    const modal = document.getElementById('modal-qr-scanner');
-    if (modal) modal.classList.add('hidden');
-  } catch(e) { console.warn('stopQRScannerModal error:', e); }
+function onQRMessage(event) {
+  if (event.data && event.data.type === 'QR_DATA') {
+    window.removeEventListener('message', onQRMessage);
+    processQRData(event.data.data);
+  } else if (event.data && event.data.type === 'QR_CANCEL') {
+    window.removeEventListener('message', onQRMessage);
+  }
 }
 
-function closeQRScannerModal() {
-  stopQRScannerModal();
+function stopQRScan() {
+  qrScanning = false;
 }
-window.closeQRScannerModal = closeQRScannerModal;
 
 function onQRMessage(event) {
   if (event.data && event.data.type === 'QR_DATA') {
@@ -4934,7 +4886,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v205'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v206'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
