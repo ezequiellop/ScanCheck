@@ -2724,7 +2724,7 @@ async function exportViajesSheets() {
     const headers = ['Fecha Salida','Fecha Llegada','Técnico','Vehículo','Destino','Pasos Visitados','Provincia','Km Salida','Km Llegada','Km Recorridos','Distancia GPS'];
     const values = [headers, ...rows];
 
-    const token = await getGoogleToken();
+    const token = await getGoogleAccessToken();
     // Clear and update Viajes sheet
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/Viajes!A:K:clear`, {
       method: 'POST', headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' }
@@ -4869,7 +4869,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v195'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v196'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
