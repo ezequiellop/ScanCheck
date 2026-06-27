@@ -1010,19 +1010,6 @@ function stopQRScan() {
   qrScanning = false;
 }
 
-function onQRMessage(event) {
-  if (event.data && event.data.type === 'QR_DATA') {
-    window.removeEventListener('message', onQRMessage);
-    processQRData(event.data.data);
-  } else if (event.data && event.data.type === 'QR_CANCEL') {
-    window.removeEventListener('message', onQRMessage);
-  }
-}
-
-function stopQRScan() {
-  // QR scanning now handled by qr-scanner.html popup
-  qrScanning = false;
-}
 window.stopQRScan = stopQRScan;
 
 function scanQRFrame(vid) {
@@ -4886,7 +4873,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v206'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v207'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
