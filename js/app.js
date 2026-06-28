@@ -996,6 +996,7 @@ function startQRScan() {
   }
 }
 window.startQRScan = startQRScan;
+window.processQRData = processQRData;
 
 function onQRMessage(event) {
   if (event.data && event.data.type === 'QR_DATA') {
@@ -2136,20 +2137,31 @@ async function guardarInicioViaje() {
   if (!kmSalida || kmSalida <= 0) { showToast('Ingresá el km del odómetro','error'); return; }
   const destino = document.getElementById('inp-viaje-destino')?.value.trim() || '';
   const vehiculo = document.getElementById('inp-viaje-vehiculo')?.value.trim() || '';
+
+  // Mostrar spinner mientras se procesa
+  const btnIniciar = document.getElementById('modal-viaje-content')?.querySelector('.btn-primary');
+  if (btnIniciar) { btnIniciar.disabled = true; btnIniciar.innerHTML = '⏳ Iniciando...'; }
   // Subir foto del odómetro de salida a R2 si la adjuntaron
   let fotoOdometroSalidaUrl = null;
+  let fotoOdometroSalidaDataUrl = null;
   const fotoInput = document.getElementById('inp-foto-odometro-salida');
   if (fotoInput?.files?.[0]) {
     try {
-      const viajeId = 'vj_'+Date.now();
+      const tempId = 'vj_'+Date.now();
       const reader = new FileReader();
-      const dataUrl = await new Promise(res => { reader.onload = e => res(e.target.result); reader.readAsDataURL(fotoInput.files[0]); });
-      const blob = await (await fetch(dataUrl)).blob();
-      const uploadRes = await fetch(`${PHOTOS_PROXY_URL}/upload/${viajeId}/odometro_salida.jpg`, {
-        method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-ScanCheck-Token': PHOTOS_TOKEN }, body: blob
-      });
-      if (uploadRes.ok) fotoOdometroSalidaUrl = (await uploadRes.json()).url;
-    } catch(e) { console.warn('Error subiendo foto odómetro:', e.message); }
+      fotoOdometroSalidaDataUrl = await new Promise(res => { reader.onload = e => res(e.target.result); reader.readAsDataURL(fotoInput.files[0]); });
+      if (navigator.onLine) {
+        const blob = await (await fetch(fotoOdometroSalidaDataUrl)).blob();
+        const uploadRes = await fetch(`${PHOTOS_PROXY_URL}/upload/${tempId}/odometro_salida.jpg`, {
+          method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-ScanCheck-Token': PHOTOS_TOKEN }, body: blob
+        });
+        if (uploadRes.ok) fotoOdometroSalidaUrl = (await uploadRes.json()).url;
+      }
+      // Guardar dataUrl en localStorage para subir después si no hay conexión
+      if (!fotoOdometroSalidaUrl) {
+        try { localStorage.setItem('scancheck_foto_odo_salida_pendiente', JSON.stringify({dataUrl: fotoOdometroSalidaDataUrl, tempId})); } catch(e) {}
+      }
+    } catch(e) { console.warn('Error subiendo foto odómetro salida:', e.message); }
   }
 
   // Capturar GPS de salida
@@ -2250,6 +2262,10 @@ function showCerrarViaje() {
 async function guardarCierreViaje() {
   const kmLlegada = parseInt(document.getElementById('inp-km-llegada')?.value);
   if (!kmLlegada || kmLlegada <= viajeAbierto.kmSalida) { showToast('El km de llegada debe ser mayor al de salida','error'); return; }
+
+  // Mostrar spinner mientras se procesa
+  const btnCerrar = document.getElementById('modal-viaje-content')?.querySelector('.btn-primary');
+  if (btnCerrar) { btnCerrar.disabled = true; btnCerrar.innerHTML = '⏳ Guardando...'; }
   const kmRecorridos = kmLlegada - viajeAbierto.kmSalida;
   // Calcular distancia GPS estimada usando los registros del día
   const hoy = localScans.filter(s => localDateKey(s.timestamp) === localDateKey(viajeAbierto.fechaSalida) && s.userId === currentUser.id);
@@ -4873,7 +4889,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v207'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v209'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
