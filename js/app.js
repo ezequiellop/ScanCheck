@@ -485,98 +485,191 @@ function setSyncStatus(state) {
 // Coordenadas de cada paso/aeropuerto para autocompletar el campo "Nombre del paso"
 // cuando el técnico está dentro de un radio de 1000m del punto.
 const PASOS_COORDS = [
-  // ── NEUQUÉN / RÍO NEGRO ──
-  { nombre: 'AERO CHAPELCO',                           lat: -40.0750, lon: -71.1361 },
-  { nombre: 'AERO NEUQUEN',                            lat: -38.9489, lon: -68.1556 },
-  { nombre: 'Cardenal Antonio Samoré',                 lat: -40.7000, lon: -71.9333 },
-  { nombre: 'Pérez Rosales',                           lat: -41.0167, lon: -71.8167 },
-  { nombre: 'Pino Hachado',                            lat: -38.6500, lon: -70.8833 },
-  // ── BUENOS AIRES ──
-  { nombre: 'AERO MAR DEL PLATA',                      lat: -37.9342, lon: -57.5733 },
-  // ── BUENOS AIRES METROPOLITANA / PUERTO ──
-  { nombre: 'GUARDIA DE PUERTO',                       lat: -34.6100, lon: -58.3700 },
-  { nombre: 'PUERTO TIGRE',                            lat: -34.4333, lon: -58.5833 },
-  { nombre: 'TERMINAL DE CRUCEROS',                    lat: -34.6150, lon: -58.3650 },
-  { nombre: 'Terminal Cruceros Pto.Madryn',             lat: -42.762279, lon: -65.025183 },
-  // ── INTERNOS / OFICINAS ──
-  { nombre: 'ANTARTIDA ARGENTINA - CAPACITACIONES',    lat: -34.6000, lon: -58.4500 },
-  { nombre: 'ANTARTIDA ARGENTINA - CONTROL MIGRATORIO',lat: -34.6000, lon: -58.4500 },
-  { nombre: 'ANTARTIDA ARGENTINA - INFORMATICA',       lat: -34.6000, lon: -58.4500 },
-  { nombre: 'RENAPER - CONTROL DE CALIDAD - INFORMATICA', lat: -34.6050, lon: -58.4550 },
-  // ── ENTRE RÍOS (Uruguay) ──
-  { nombre: 'Colón - Paysandú',                        lat: -32.2646, lon: -58.1015 },
-  { nombre: 'Concordia - Salto',                       lat: -31.2751, lon: -57.9383 },
-  { nombre: 'Gualeguaychú - Fray Bentos',              lat: -33.1006, lon: -58.2487 },
-  // ── AYSÉN (Chile) ──
-  { nombre: 'Coyhaique',                               lat: -45.528841, lon: -71.565858 },
-  { nombre: 'Huemules',                                lat: -45.910672, lon: -71.686750 },
-  { nombre: 'Jeinemeni',                               lat: -46.559708, lon: -71.654742 },
-  { nombre: 'Triana',                                  lat: -45.572500, lon: -71.698341 },
-  // ── CÓRDOBA / SANTA FE / SAN LUIS ──
-  { nombre: 'AERO CORDOBA',                            lat: -31.3236, lon: -64.2083 },
-  { nombre: 'AERO MERLO - CONLARA',                    lat: -32.3800, lon: -65.1797 },
-  { nombre: 'AERO ROSARIO',                            lat: -32.9036, lon: -60.7850 },
-  { nombre: 'AERO SAUCE VIEJO',                        lat: -31.7117, lon: -60.8117 },
-  // ── FORMOSA / CHACO ──
-  { nombre: 'AERO FORMOSA',                            lat: -26.2127, lon: -58.2281 },
-  { nombre: 'AERO RESISTENCIA',                        lat: -27.4500, lon: -59.0561 },
-  { nombre: 'Clorinda - Puerto José A. Falcón (ENTRADA)', lat: -25.3013, lon: -57.7200 },
-  { nombre: 'Clorinda - Puerto José A. Falcón (SALIDA)',  lat: -25.3013, lon: -57.7200 },
-  { nombre: 'Colonia General Belgrano - General Bruguez', lat: -25.1833, lon: -58.0833 },
-  { nombre: 'Pasarela La Fraternidad',                  lat: -24.8833, lon: -57.9333 },
-  { nombre: 'Puerto Formosa - Puerto Alberdi',          lat: -26.1833, lon: -58.1833 },
-  { nombre: 'Puerto Pilcomayo - Puerto Itá Enramada',   lat: -25.3667, lon: -57.6500 },
-  // ── MISIONES (Brasil/Paraguay) ──
-  { nombre: 'AERO IGUAZU',                             lat: -25.7373, lon: -54.4734 },
-  { nombre: 'Andresito - Capanema',                    lat: -26.0500, lon: -53.9000 },
-  { nombre: 'Bernardo de Irigoyen - Dionisio Cerqueira', lat: -26.2553, lon: -53.6469 },
-  { nombre: 'Iguazú - Foz do Iguaçú',                  lat: -25.5950, lon: -54.5800 },
-  { nombre: 'Pepirí Guazú - Sao Miguel',               lat: -27.1167, lon: -53.7833 },
-  { nombre: 'Puerto Eldorado - Puerto Mayor Julio Otaño', lat: -26.3833, lon: -54.6167 },
-  { nombre: 'Puerto Iguazú - Puerto Tres Fronteras',   lat: -25.5833, lon: -54.5833 },
-  { nombre: 'San Antonio - Santo Antonio',              lat: -26.0833, lon: -53.7000 },
-  { nombre: 'Alba Posse - Porto Maua',                  lat: -27.5667, lon: -54.6667 },
-  { nombre: 'El Soberbio - Porto Soberbo',              lat: -27.2833, lon: -54.1833 },
-  { nombre: 'Panambí - Vera Cruz',                     lat: -27.3500, lon: -54.0333 },
-  { nombre: 'Paso de La Barca - Porto Xavier',          lat: -28.0000, lon: -55.1500 },
-  { nombre: 'Posadas - Encarnación',                   lat: -27.3667, lon: -55.8667 },
-  { nombre: 'Posadas - Encarnación (FFCC)',             lat: -27.3833, lon: -55.8833 },
-  { nombre: 'Puerto Candelaria - Campichuelo',          lat: -27.4167, lon: -55.7500 },
-  { nombre: 'Puerto Maní - Puerto Bella Vista - Sur',   lat: -28.5000, lon: -56.0000 },
-  { nombre: 'Puerto Rico - Puerto Triunfo (Puerto Gral San Martin)', lat: -26.8000, lon: -55.0500 },
-  // ── CORRIENTES (Brasil) ──
-  { nombre: 'Paso de los Libres - Uruguayana',         lat: -29.7431, lon: -57.0931 },
-  { nombre: 'Santo Tomé - Sao Borja',                  lat: -28.5500, lon: -56.0333 },
-  { nombre: 'Yaciretá - Yaciretá',                     lat: -27.4667, lon: -56.6167 },
-  // ── JUJUY / SALTA (Bolivia/Chile/Paraguay) ──
-  { nombre: 'AERO JUJUY',                              lat: -24.3833, lon: -65.0833 },
-  { nombre: 'Aguas Blancas- Bermejo',                  lat: -22.730179, lon: -64.359882 },
-  { nombre: 'El Condado - La Mámora',                  lat: -21.8667, lon: -63.7167 },
-  { nombre: 'Jama',                                    lat: -23.237279, lon: -67.022829 },
-  { nombre: 'La Quiaca - Villazón',                    lat: -22.097996, lon: -65.595876 },
-  { nombre: 'Misión La Paz - Pozo Hondo',              lat: -22.379117, lon: -62.522833 },
-  { nombre: 'Puerto "Las Chalanas"',                   lat: -22.733238, lon: -64.352446 },
-  { nombre: 'Salvador Mazza-Yacuiba',                  lat: -22.053606, lon: -63.684486 },
-  { nombre: 'Sico',                                    lat: -23.873750, lon: -67.156933 },
-  // ── MENDOZA (Chile) ──
-  { nombre: 'Pehuenche',                               lat: -35.6000, lon: -70.3833 },
-  { nombre: 'Portillo de Piuquenes',                   lat: -33.5000, lon: -69.8500 },
-  { nombre: 'Sistema Cristo Redentor (HORCONES)',      lat: -32.8167, lon: -69.8000 },
-  { nombre: 'Sistema Cristo Redentor (LIBERTADORES)',  lat: -32.8333, lon: -70.0667 },
-  { nombre: 'Sistema Cristo Redentor (USPALLATA)',     lat: -32.5833, lon: -69.3500 },
-  { nombre: 'Vergara',                                 lat: -35.2005, lon: -70.5191 },
-  // ── SANTIAGO DEL ESTERO ──
-  { nombre: 'AERO TERMAS DE RIO HONDO',                lat: -27.4950, lon: -64.9350 },
-  { nombre: 'San Francisco',                           lat: -26.913700, lon: -68.129025 },
-  // ── SANTA CRUZ / TDF ──
-  { nombre: 'AERO RIO GALLEGOS',                       lat: -51.6089, lon: -69.3127 },
-  { nombre: 'AERO USHUAIA',                            lat: -54.8433, lon: -68.2958 },
-  { nombre: 'Laurita - Casas Viejas',                  lat: -51.690333, lon: -72.297350 },
-  { nombre: 'Río Bella Vista (ex Radman)',              lat: -54.0167, lon: -68.5000 },
-  { nombre: 'Río Don Guillermo',                       lat: -51.255800, lon: -72.236200 },
-  { nombre: 'San Sebastián',                           lat: -53.299560, lon: -68.459107 },
-  { nombre: 'Paso San Sebastián Entrada',               lat: -53.299847, lon: -68.457673 },
-  { nombre: 'Paso San Sebastián Salida',                lat: -53.299355, lon: -68.460136 },
+  // ── INTERNOS DNM (oficinas, aeropuertos — no son pasos del IGN) ──
+  { nombre: 'AERO CHAPELCO',                           lat: -40.0750, lon: -71.1361, prov: 'NEUQUEN', pais: '-' },
+  { nombre: 'AERO NEUQUEN',                            lat: -38.9489, lon: -68.1556, prov: 'NEUQUEN', pais: '-' },
+  { nombre: 'AERO MAR DEL PLATA',                      lat: -37.9342, lon: -57.5733, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'GUARDIA DE PUERTO',                       lat: -34.6100, lon: -58.3700, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'PUERTO TIGRE',                            lat: -34.4333, lon: -58.5833, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'TERMINAL DE CRUCEROS',                    lat: -34.6150, lon: -58.3650, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'Terminal Cruceros Pto.Madryn',             lat: -42.762279, lon: -65.025183, prov: 'CHUBUT', pais: '-' },
+  { nombre: 'ANTARTIDA ARGENTINA - CAPACITACIONES',    lat: -34.6000, lon: -58.4500, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'ANTARTIDA ARGENTINA - CONTROL MIGRATORIO',lat: -34.6000, lon: -58.4500, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'ANTARTIDA ARGENTINA - INFORMATICA',       lat: -34.6000, lon: -58.4500, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'RENAPER - CONTROL DE CALIDAD - INFORMATICA', lat: -34.6050, lon: -58.4550, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'AERO CORDOBA',                            lat: -31.3236, lon: -64.2083, prov: 'CORDOBA', pais: '-' },
+  { nombre: 'AERO MERLO - CONLARA',                    lat: -32.3800, lon: -65.1797, prov: 'SAN LUIS', pais: '-' },
+  { nombre: 'AERO ROSARIO',                            lat: -32.9036, lon: -60.7850, prov: 'SANTA FE', pais: '-' },
+  { nombre: 'AERO SAUCE VIEJO',                        lat: -31.7117, lon: -60.8117, prov: 'SANTA FE', pais: '-' },
+  { nombre: 'AERO FORMOSA',                            lat: -26.2127, lon: -58.2281, prov: 'FORMOSA', pais: '-' },
+  { nombre: 'AERO RESISTENCIA',                        lat: -27.4500, lon: -59.0561, prov: 'CHACO', pais: '-' },
+  { nombre: 'AERO IGUAZU',                             lat: -25.7373, lon: -54.4734, prov: 'MISIONES', pais: '-' },
+  { nombre: 'AERO JUJUY',                              lat: -24.3833, lon: -65.0833, prov: 'JUJUY', pais: '-' },
+  { nombre: 'AERO TERMAS DE RIO HONDO',                lat: -27.4950, lon: -64.9350, prov: 'SANTIAGO DEL ESTERO', pais: '-' },
+  { nombre: 'AERO RIO GALLEGOS',                       lat: -51.6089, lon: -69.3127, prov: 'SANTA CRUZ', pais: '-' },
+  { nombre: 'AERO USHUAIA',                            lat: -54.8433, lon: -68.2958, prov: 'TIERRA DEL FUEGO', pais: '-' },
+
+  // ── PASOS DE FRONTERA OFICIALES — Fuente: IGN (Instituto Geográfico Nacional)
+  // Capa: pasos_de_fronteras_internacionales — 158 pasos según Resolución 482/2020 MSG
+  // Actualizar: https://wms.ign.gob.ar/geoserver/ows?service=WFS&version=2.0.0&request=GetFeature&typeName=ign:pasos_de_fronteras_internacionales&outputFormat=application/json
+  { nombre: 'SALVADOR MAZZA - YACUIBA', lat: -22.05302, lon: -63.68383, prov: 'SALTA', pais: 'BOLIVIA' },
+  { nombre: 'PUERTO CHALANAS - BERMEJO', lat: -22.73192708, lon: -64.35146154, prov: 'SALTA', pais: 'BOLIVIA' },
+  { nombre: 'AGUAS BLANCAS - BERMEJO', lat: -22.72626, lon: -64.36939, prov: 'SALTA', pais: 'BOLIVIA' },
+  { nombre: 'EL CONDADO - LA MAMORA', lat: -22.19008366, lon: -64.65271139, prov: 'SALTA', pais: 'BOLIVIA' },
+  { nombre: 'LA QUIACA - VILLAZON', lat: -22.09651351, lon: -65.59617958, prov: 'JUJUY', pais: 'BOLIVIA' },
+  { nombre: 'PASO DE LOS LIBRES - URUGUAYANA', lat: -29.7429, lon: -57.09323, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'PUERTO YAPEYU - PUERTO SAN MARCOS', lat: -29.4973386, lon: -56.83688672, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'PUERTO LA CRUZ - ITAQUI', lat: -29.15613421, lon: -56.60306194, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'PUERTO ALVEAR - PUERTO ITAQUI', lat: -29.11590519, lon: -56.55456402, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'SANTO TOME - SAO BORJA', lat: -28.61077, lon: -56.0144, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'PUERTO GARRUCHOS - GARRUCHOS', lat: -28.1800015, lon: -55.64204696, prov: 'CORRIENTES', pais: 'BRASIL' },
+  { nombre: 'PUERTO SAN ISIDRO - SAN ISIDRO', lat: -28.05462585, lon: -55.41269536, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PUERTO SANTA MARIA - COLONIA FLORIDA', lat: -27.96713654, lon: -55.33999714, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PASO DE LA BARCA - PORTO XAVIER', lat: -27.89576494, lon: -55.13688334, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PANAMBI - VERACRUZ', lat: -27.73188719, lon: -54.90821205, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'BARRA BONITA - MBIGUA', lat: -27.60422311, lon: -54.83972993, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PUERTO ALBA POSSE - PORTO MAUA', lat: -27.57253166, lon: -54.67547481, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'AURORA - PRATOS', lat: -27.49822514, lon: -54.51709924, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'ALICIA - SAN ANTONIO', lat: -27.46719715, lon: -54.34646759, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'EL SOBERBIO - PORTO SOBERBO', lat: -27.30027287, lon: -54.19181095, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PEPIRI GUAZU - SAO MIGUEL', lat: -26.61316, lon: -53.73439, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'BERNARDO DE IRIGOYEN - DIONISIO CERQUEIRA', lat: -26.25472, lon: -53.64357, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'INTEGRACION - PLANALTO', lat: -25.76909179, lon: -53.85128968, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'SAN ANTONIO - SANTO ANTONIO', lat: -26.05686, lon: -53.7307, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'ANDRESITO - CAPANEMA', lat: -25.60210773, lon: -53.97002106, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'IGUAZU - FOZ DO IGUACU', lat: -25.58877, lon: -54.56149, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'PUERTO IGUAZU - PUERTO MEIRA', lat: -25.59219112, lon: -54.57958065, prov: 'MISIONES', pais: 'BRASIL' },
+  { nombre: 'JAMA', lat: -23.22657, lon: -67.06284, prov: 'JUJUY', pais: 'CHILE' },
+  { nombre: 'SICO', lat: -23.84443, lon: -67.26124, prov: 'SALTA', pais: 'CHILE' },
+  { nombre: 'SOCOMPA', lat: -24.45167, lon: -68.28972, prov: 'SALTA', pais: 'CHILE' },
+  { nombre: 'SAN FRANCISCO', lat: -26.8734713, lon: -68.29855904, prov: 'CATAMARCA', pais: 'CHILE' },
+  { nombre: 'PIRCAS NEGRAS', lat: -28.06976, lon: -69.29927, prov: 'LA RIOJA', pais: 'CHILE' },
+  { nombre: 'AGUA NEGRA', lat: -30.19288, lon: -69.82611, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'MIRANDA', lat: -30.66469, lon: -70.24225, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'EL PORTILLO DEL VENTILLO', lat: -30.70715, lon: -70.25629, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'GUANA', lat: -30.7384, lon: -70.26303, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'DEL PORTILLO', lat: -30.76655, lon: -70.27258, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'VALLE HERMOSO', lat: -30.78314, lon: -70.28319, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'LOS AZULES', lat: -30.94991, lon: -70.31548, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'CALDERON', lat: -31.26818, lon: -70.52698, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'EL AZUFRE', lat: -31.30476, lon: -70.5437, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'CASA DE PIEDRA', lat: -31.5509, lon: -70.55914, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'PUENTECILLAS', lat: -31.67206, lon: -70.51093, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'MONDACA', lat: -31.85435, lon: -70.42671, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'LAS OJOTAS', lat: -31.91856, lon: -70.24027, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'QUEBRADA FRIA', lat: -32.0832, lon: -70.33997, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'LAS LLARETAS', lat: -32.15019, lon: -70.31459, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'SISTEMA CRISTO REDENTOR', lat: -32.81463874, lon: -70.08270061, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'PORTILLO DE PIUQUENES', lat: -33.63171, lon: -69.87568, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'CAJON DEL MAIPO', lat: -34.22253, lon: -69.80109, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'VERGARA', lat: -35.20573, lon: -70.52035, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'PEHUENCHE', lat: -35.98193, lon: -70.39425, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'PICHACHEN', lat: -37.45368, lon: -71.12408, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'COPAHUE', lat: -37.82586, lon: -71.12845, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'PINO HACHADO', lat: -38.66336, lon: -70.89684, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'ICALMA', lat: -38.83368, lon: -71.26799, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'MAMUIL MALAL', lat: -39.58254, lon: -71.46177, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'CARIRRIÑE', lat: -39.7889, lon: -71.68129, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'HUA HUM', lat: -40.10042, lon: -71.67238, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'CARDENAL ANTONIO SAMORE', lat: -40.7126, lon: -71.9444, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'PEREZ ROSALES', lat: -41.06929245, lon: -71.82763333, prov: 'RIO NEGRO', pais: 'CHILE' },
+  { nombre: 'VURILOCHE', lat: -41.22471219, lon: -71.85819792, prov: 'RIO NEGRO', pais: 'CHILE' },
+  { nombre: 'RIO MANSO', lat: -41.50832403, lon: -71.84666659, prov: 'RIO NEGRO', pais: 'CHILE' },
+  { nombre: 'RIO PUELO', lat: -42.10390471, lon: -71.72774597, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'FUTALEUFU', lat: -43.17559, lon: -71.75516, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'RIO ENCUENTRO', lat: -43.588, lon: -71.70713, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'LAS PAMPAS', lat: -44.24904, lon: -71.80902, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'RIO FRIAS', lat: -44.55076, lon: -71.09968, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'PAMPA ALTA', lat: -45.23279, lon: -71.34687, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'COYHAIQUE', lat: -45.5224, lon: -71.55568, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'TRIANA', lat: -45.58242, lon: -71.73438, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'HUEMULES', lat: -45.91465, lon: -71.6451, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'INGENIERO PALLAVICINI - IBAÑEZ', lat: -46.27573, lon: -71.72741, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'JEINEMENI', lat: -46.58446, lon: -71.6614, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'ROBALLOS', lat: -47.1579, lon: -71.85607, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'RIO MAYER - RIBERA NORTE', lat: -48.20728073, lon: -72.31312413, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'RIO MOSCO', lat: -48.48371, lon: -72.56014, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'LAGO SAN MARTIN - O\'HIGGINS', lat: -48.8678282, lon: -72.66675602, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'RIO DON GUILLERMO', lat: -51.24599, lon: -72.25899, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'DOROTEA', lat: -51.58612, lon: -72.34812, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'LAURITA - CASAS VIEJAS', lat: -51.68467, lon: -72.29877, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'INTEGRACION AUSTRAL', lat: -52.14144, lon: -69.51979, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'SAN SEBASTIAN', lat: -53.31999, lon: -68.6065, prov: 'TIERRA DEL FUEGO', pais: 'CHILE' },
+  { nombre: 'RIO BELLA VISTA (EX RADMAN)', lat: -54.00012, lon: -68.6076, prov: 'TIERRA DEL FUEGO', pais: 'CHILE' },
+  { nombre: 'PUERTO ALMANZA - PUERTO WILLIAMS', lat: -54.89442285, lon: -67.57991516, prov: 'TIERRA DEL FUEGO', pais: 'CHILE' },
+  { nombre: 'JAMA NORTE', lat: -23.22730104, lon: -67.06306905, prov: 'JUJUY', pais: 'CHILE' },
+  { nombre: 'JAMA SUR', lat: -23.23302639, lon: -67.06481523, prov: 'JUJUY', pais: 'CHILE' },
+  { nombre: 'LAGUNA SICO', lat: -23.87487642, lon: -67.27139769, prov: 'SALTA', pais: 'CHILE' },
+  { nombre: 'DE BUTA MALLIN', lat: -37.21137959, lon: -71.11994541, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'REIGOLIL', lat: -39.12043114, lon: -71.41558248, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'HUA HUM FLUVIAL', lat: -40.10323, lon: -71.6735, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'RIO PUELO FLUVIAL', lat: -42.1053, lon: -71.72847, prov: 'CHUBUT', pais: 'CHILE' },
+  { nombre: 'PORTEZUELO DE LA DIVISORIA', lat: -48.96116761, lon: -72.81650166, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'MARCONI', lat: -49.16678593, lon: -73.11601803, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'CONDOR - DANIEL POSESION', lat: -52.16263, lon: -69.15071, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'CERRO REDONDO - DANIEL FRONTERA', lat: -52.22342, lon: -68.94627, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'MONTE DINERO', lat: -52.33245, lon: -68.41937, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'ALFA CULLEN', lat: -52.77846193, lon: -68.60672373, prov: 'TIERRA DEL FUEGO', pais: 'CHILE' },
+  { nombre: 'PASCUA LAMA', lat: -29.3201, lon: -70.01467, prov: 'SAN JUAN', pais: 'CHILE' },
+  { nombre: 'CAÑADON ALFA', lat: -52.70003, lon: -68.60675, prov: 'TIERRA DEL FUEGO', pais: 'CHILE' },
+  { nombre: 'CONDOR II', lat: -52.28348, lon: -68.73934, prov: 'SANTA CRUZ', pais: 'CHILE' },
+  { nombre: 'PUERTO ITA IBATE - PANCHITO LOPEZ', lat: -27.41241552, lon: -57.32031396, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO YAHAPE - PUERTO CERRITO', lat: -27.36617034, lon: -57.65327313, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO ITATI - PUERTO ITA CORA', lat: -27.26249494, lon: -58.24183747, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO PASO DE LA PATRIA - PASO DE LA PATRIA', lat: -27.30920027, lon: -58.57351431, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'YACIRETA - YACIRETA', lat: -27.48231, lon: -56.72125, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO SAN ANTONIO DE APIPE - PUERTO AYOLAS', lat: -27.50428478, lon: -56.74062406, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO ITUZAINGO - PUERTO AYOLAS', lat: -27.58170266, lon: -56.69731891, prov: 'CORRIENTES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO IGUAZU - PUERTO TRES FRONTERAS', lat: -25.59317423, lon: -54.58907024, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO LIBERTAD - PUERTO DOMINGO MARTINEZ DE IRALA', lat: -25.91390612, lon: -54.62207745, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO WANDA - PUERTO ITA VERA', lat: -25.96490185, lon: -54.60695362, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO MADO - PUERTO LOMAS VALENTINAS', lat: -26.22820609, lon: -54.63156703, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO VICTORIA - CAPITAN URBINA', lat: -26.33312433, lon: -54.6658753, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO PINARES - CARLOS ANTONIO LOPEZ', lat: -26.43750559, lon: -54.70083153, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO ELDORADO - PUERTO MAYOR JULIO OTAÑO', lat: -26.40459545, lon: -54.69696444, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO PIRAY - PUERTO 7 DE AGOSTO', lat: -26.47173584, lon: -54.73076642, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO MONTECARLO - PUERTO APE AIME', lat: -26.56029899, lon: -54.80772818, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO PARANAY - COLONIA ALBORADA', lat: -26.67164174, lon: -54.81752226, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO GARUHAPE - PUERTO 3 DE MAYO', lat: -26.78845869, lon: -54.96735249, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO RICO - PUERTO TRIUNFO', lat: -26.78949509, lon: -55.02519377, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO LEONI - PUERTO TRIUNFO', lat: -26.92479206, lon: -55.13766616, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO OASIS - CAPITAN MEZA', lat: -26.93966948, lon: -55.24542094, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO MANI - PUERTO BELLA VISTA SUR', lat: -27.10279614, lon: -55.51903347, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO SAN IGNACIO - PUERTO PARAISO', lat: -27.26755313, lon: -55.57283413, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO SANTA ANA - PUERTO SAMUHU', lat: -27.33683703, lon: -55.59317708, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO CANDELARIA - CAMPICHUELO', lat: -27.44564297, lon: -55.74702185, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'POSADAS - ENCARNACION', lat: -27.37019, lon: -55.86397, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO POSADAS - PUERTO PACU CUA', lat: -27.36969848, lon: -55.86427138, prov: 'MISIONES', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO COLONIA CANO - PUERTO PILAR', lat: -26.86318976, lon: -58.32151481, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO FORMOSA - PUERTO ALBERDI', lat: -26.18159788, lon: -58.15910432, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO PILCOMAYO - PUERTO ITA ENRAMADA', lat: -25.36983485, lon: -57.64815295, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'CLORINDA - PUERTO JOSE A. FALCON', lat: -25.26428082, lon: -57.72441284, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PASARELA LA FRATERNIDAD', lat: -25.2860306, lon: -57.7089698, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'COLONIA GENERAL BELGRANO- GENERAL BRUGUEZ', lat: -24.74828, lon: -58.83307, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'ISLETA - PARAJE ROJAS SILVA', lat: -24.01269, lon: -60.03716, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PASO EL REMANSO - LA VERDE', lat: -23.95349, lon: -60.48912, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PASO LAMADRID - MISION SAN LEONARDO', lat: -23.88657, lon: -60.71573, prov: 'FORMOSA', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO LAS PALMAS - PUERTO HUMAITA', lat: -27.08224612, lon: -58.55625945, prov: 'CHACO', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO BERMEJO - PUERTO PILAR', lat: -26.88760471, lon: -58.38015963, prov: 'CHACO', pais: 'PARAGUAY' },
+  { nombre: 'MISION LA PAZ - POZO HONDO', lat: -22.37823403, lon: -62.51860616, prov: 'SALTA', pais: 'PARAGUAY' },
+  { nombre: 'PUERTO GUAZU GUAZUCITO - CARMELO', lat: -34.011888, lon: -58.36684615, prov: 'BUENOS AIRES', pais: 'URUGUAY' },
+  { nombre: 'PUERTO MARTIN GARCIA - CARMELO', lat: -34.19003, lon: -58.25714, prov: 'BUENOS AIRES', pais: 'URUGUAY' },
+  { nombre: 'PUERTO PARANACITO - NUEVA PALMIRA', lat: -33.86591276, lon: -58.42916307, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO BOCA DEL GUALEGUAYCHU - FRAY BENTOS', lat: -33.10895612, lon: -58.32489501, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'GUALEGUAYCHU - FRAY BENTOS', lat: -33.10033, lon: -58.24844, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO CONCEPCION DEL URUGUAY - PAYSANDU', lat: -32.4507952, lon: -58.20207996, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'COLON - PAYSANDU', lat: -32.26474, lon: -58.0995, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO COLON - PUERTO PAYSANDU', lat: -32.31205677, lon: -58.10467415, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO CONCORDIA - SALTO', lat: -31.3886171, lon: -57.97945775, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO LUIS - CONSTITUCION', lat: -31.17250025, lon: -57.91331095, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'CONCORDIA - SALTO', lat: -31.27494921, lon: -57.93812348, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO FEDERACION - VILLA CONSTITUCION', lat: -31.05617251, lon: -57.86535381, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'PUERTO MONTE CASEROS - BELLA UNION', lat: -30.2570158, lon: -57.61562664, prov: 'CORRIENTES', pais: 'URUGUAY' },
+  { nombre: 'PUERTO SANTA ELOISA - BELEN', lat: -30.77460904, lon: -57.80183783, prov: 'ENTRE RIOS', pais: 'URUGUAY' },
+  { nombre: 'MINAS ÑUBLE', lat: -36.88336, lon: -71.13286, prov: 'NEUQUEN', pais: 'CHILE' },
+  { nombre: 'LAS DAMAS', lat: -34.88469004, lon: -70.29110898, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'LAS LEÑAS', lat: -34.45177145, lon: -70.06439841, prov: 'MENDOZA', pais: 'CHILE' },
+  { nombre: 'ESCOMBRERA CERRO AMARILLO', lat: -31.69329312, lon: -70.49535672, prov: 'SAN JUAN', pais: 'CHILE' },
 ];
 
 // Calcula distancia en metros entre dos puntos GPS (fórmula de Haversine)
@@ -607,6 +700,74 @@ function autoFillPasoFromGPS(lat, lon) {
 
 // ======== LOCATION TRACKING ========
 window.autoFillPasoFromGPS = autoFillPasoFromGPS;
+
+// ── Verificar estado del paso (abierto/cerrado) ──────────────
+// Busca el paso en argentina.gob.ar y muestra su estado actual.
+// No hay API pública estructurada — se hace scraping liviano del HTML.
+async function verificarEstadoPaso(nombrePaso) {
+  if (!nombrePaso || !navigator.onLine) return null;
+  try {
+    const query = encodeURIComponent(nombrePaso.split(' - ')[0].split(' (')[0].trim());
+    const url = `https://www.argentina.gob.ar/seguridad/pasosinternacionales?search_api_fulltext=${query}`;
+    const res = await fetch(url, { mode: 'cors' }).catch(() => null);
+    if (!res || !res.ok) return null;
+    const html = await res.text();
+    // Buscar palabras clave de estado en el HTML resultante
+    const lower = html.toLowerCase();
+    if (lower.includes('habilitado') && !lower.includes('no habilitado')) return { estado: 'abierto', fuente: 'argentina.gob.ar' };
+    if (lower.includes('cerrado') || lower.includes('no habilitado') || lower.includes('clausurado')) return { estado: 'cerrado', fuente: 'argentina.gob.ar' };
+    if (lower.includes('intermitente')) return { estado: 'intermitente', fuente: 'argentina.gob.ar' };
+    return null; // no se pudo determinar
+  } catch(e) {
+    console.warn('Error verificando estado del paso:', e.message);
+    return null;
+  }
+}
+window.verificarEstadoPaso = verificarEstadoPaso;
+
+// Busca un paso por nombre en PASOS_COORDS (para mostrar provincia/país en viajes)
+function buscarPasoPorNombre(nombre) {
+  if (!nombre) return null;
+  const n = nombre.trim().toUpperCase();
+  return PASOS_COORDS.find(p => p.nombre.toUpperCase() === n) ||
+         PASOS_COORDS.find(p => p.nombre.toUpperCase().includes(n) || n.includes(p.nombre.toUpperCase()));
+}
+window.buscarPasoPorNombre = buscarPasoPorNombre;
+
+// Se dispara al salir del campo "Destino" en Iniciar Viaje — verifica si el paso
+// nombrado está habilitado, cerrado o intermitente según argentina.gob.ar
+async function checkEstadoPasoDestino() {
+  const input = document.getElementById('inp-viaje-destino');
+  const display = document.getElementById('estado-paso-destino');
+  if (!input || !display) return;
+  const destino = input.value.trim();
+  if (!destino) { display.style.display = 'none'; return; }
+
+  display.style.display = 'block';
+  display.style.background = 'var(--bg3)';
+  display.style.color = 'var(--text3)';
+  display.textContent = '⏳ Verificando estado del paso...';
+
+  const estado = await verificarEstadoPaso(destino);
+  if (!estado) {
+    display.style.display = 'none';
+    return;
+  }
+  if (estado.estado === 'abierto') {
+    display.style.background = 'rgba(0,212,170,.12)';
+    display.style.color = 'var(--accent)';
+    display.textContent = '✅ Paso habilitado (según argentina.gob.ar)';
+  } else if (estado.estado === 'cerrado') {
+    display.style.background = 'rgba(238,85,51,.12)';
+    display.style.color = '#e53';
+    display.textContent = '⛔ Paso cerrado o no habilitado — verificar antes de viajar';
+  } else if (estado.estado === 'intermitente') {
+    display.style.background = 'rgba(255,184,0,.12)';
+    display.style.color = '#ffb800';
+    display.textContent = '⚠️ Paso con tránsito intermitente — verificar condiciones';
+  }
+}
+window.checkEstadoPasoDestino = checkEstadoPasoDestino;
 function requestLocation() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(pos => {
@@ -2108,7 +2269,8 @@ function showIniciarViaje() {
     </div>
     <div class="form-group">
       <label>Destino / descripción del viaje</label>
-      <input type="text" id="inp-viaje-destino" placeholder="Ej: Jama, Clorinda, Paso de los Libres..." maxlength="100">
+      <input type="text" id="inp-viaje-destino" placeholder="Ej: Jama, Clorinda, Paso de los Libres..." maxlength="100" onblur="checkEstadoPasoDestino()">
+      <div id="estado-paso-destino" style="display:none;margin-top:6px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
     </div>
     <div class="form-group">
       <label>Vehículo (patente)</label>
@@ -4889,7 +5051,7 @@ window.syncAllReports = syncAllReports;
 // ======== GOOGLE SHEETS EXPORT ========
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v209'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v210'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
