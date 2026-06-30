@@ -702,8 +702,9 @@ function autoFillPasoFromGPS(lat, lon) {
 window.autoFillPasoFromGPS = autoFillPasoFromGPS;
 
 // ── Verificar estado del paso (abierto/cerrado) ──────────────
-// Busca el paso en argentina.gob.ar y muestra su estado actual.
-// No hay API pública estructurada — se hace scraping liviano del HTML.
+// Consulta alertas vigentes desde:
+// argentina.gob.ar/jefatura/comision-nacional-de-fronteras/alertas-de-pasos-internacionales
+// Respuesta: { hayAlerta, alertaMasReciente: { fecha, titulo, descripcion, url }, alertas[], fuente }
 async function verificarEstadoPaso(nombrePaso) {
   if (!nombrePaso || !navigator.onLine) return null;
   try {
@@ -711,7 +712,7 @@ async function verificarEstadoPaso(nombrePaso) {
     const res = await fetch(`${PASOS_PROXY_URL}?nombre=${encodeURIComponent(nombre)}`).catch(() => null);
     if (!res || !res.ok) return null;
     const data = await res.json();
-    return data; // { alertaGeneral, pasoDeLaAlerta, esElMismoPaso, fuente }
+    return data; // { hayAlerta, alertaMasReciente, alertas[], fuente }
   } catch(e) {
     console.warn('Error verificando estado del paso:', e.message);
     return null;
@@ -729,7 +730,7 @@ function buscarPasoPorNombre(nombre) {
 window.buscarPasoPorNombre = buscarPasoPorNombre;
 
 // Se dispara al salir del campo "Destino" en Iniciar Viaje — verifica si el paso
-// nombrado está habilitado, cerrado o intermitente según argentina.gob.ar
+// nombrado tiene alertas vigentes según argentina.gob.ar (Comisión Nacional de Fronteras).
 async function checkEstadoPasoDestino() {
   const input = document.getElementById('inp-viaje-destino');
   const display = document.getElementById('estado-paso-destino');
@@ -741,39 +742,36 @@ async function checkEstadoPasoDestino() {
   display.style.background = 'var(--bg3)';
   display.style.color = 'var(--text3)';
   display.style.padding = '8px 12px';
-  display.textContent = '⏳ Buscando información del paso...';
+  display.style.cursor = 'default';
+  display.onclick = null;
+  display.textContent = '⏳ Buscando alertas del paso...';
 
   const data = await verificarEstadoPaso(destino);
-  const url = getUrlPasoArgentinaGobAr(destino);
-  const link = `<a href="${url}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
-    🔗 Ver estado de "${escHtml(destino)}" en argentina.gob.ar
+  const urlFuente = (data && data.alertaMasReciente && data.alertaMasReciente.url)
+    ? data.alertaMasReciente.url
+    : getUrlPasoArgentinaGobAr(destino);
+  const urlListado = 'https://www.argentina.gob.ar/jefatura/comision-nacional-de-fronteras/alertas-de-pasos-internacionales';
+  const link = `<a href="${urlListado}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
+    🔗 Ver todas las alertas de pasos en argentina.gob.ar
   </a>`;
 
-  // Caso 1: hay una alerta vigente Y corresponde al paso que el técnico buscó
-  if (data && data.alertaGeneral && data.esElMismoPaso) {
+  // Caso 1: hay una alerta vigente para el paso buscado
+  if (data && data.hayAlerta && data.alertaMasReciente) {
+    const a = data.alertaMasReciente;
+    const mensaje = [a.fecha, a.titulo, a.descripcion].filter(Boolean).join('\n\n');
     display.style.background = 'rgba(255,184,0,.12)';
     display.style.color = '#ffb800';
     display.style.padding = '8px 12px';
     display.style.cursor = 'pointer';
-    display.innerHTML = `<div style="font-weight:600">⚠️ Hay una alerta vigente para este paso — tocá para ver</div>`;
-    display.onclick = () => mostrarModalEstadoPaso(data.alertaGeneral, url);
-    mostrarModalEstadoPaso(data.alertaGeneral, url);
-    return;
-  }
-
-  // Caso 2: hay una alerta vigente pero es de OTRO paso — avisar sin confundir
-  if (data && data.alertaGeneral && data.pasoDeLaAlerta && !data.esElMismoPaso) {
-    display.style.background = 'var(--bg3)';
-    display.style.padding = '0';
     display.innerHTML = `
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border)">
-        ℹ️ Hay una alerta vigente para <strong>${escHtml(data.pasoDeLaAlerta)}</strong> (no para ${escHtml(destino)})
-      </div>
-      ${link}`;
+      <div style="font-weight:600">⚠️ ${escHtml(a.titulo)}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:.8">${escHtml(a.fecha)} — Tocá para ver el detalle</div>`;
+    display.onclick = () => mostrarModalEstadoPaso(mensaje, urlFuente);
+    mostrarModalEstadoPaso(mensaje, urlFuente);
     return;
   }
 
-  // Caso 3: no hay alerta destacada en el sitio — solo ofrecer el link manual
+  // Caso 2: no hay alertas para este paso — solo ofrecer el link al listado general
   display.style.background = 'var(--bg3)';
   display.style.padding = '0';
   display.innerHTML = link;
@@ -5117,7 +5115,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v215'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v216'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
