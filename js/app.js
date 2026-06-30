@@ -741,27 +741,61 @@ async function checkEstadoPasoDestino() {
   display.style.display = 'block';
   display.style.background = 'var(--bg3)';
   display.style.color = 'var(--text3)';
+  display.style.padding = '8px 12px';
   display.textContent = '⏳ Verificando estado del paso...';
 
-  const estado = await verificarEstadoPaso(destino);
-  if (!estado) {
-    display.style.display = 'none';
+  const resultado = await verificarEstadoPaso(destino);
+  const url = getUrlPasoArgentinaGobAr(destino);
+
+  if (!resultado || !resultado.estado || resultado.estado === 'sin_alertas') {
+    // No se encontró alerta específica — mostrar link para verificación manual
+    display.style.background = 'var(--bg3)';
+    display.style.padding = '0';
+    display.innerHTML = `<a href="${url}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
+      🔗 Ver estado de "${escHtml(destino)}" en argentina.gob.ar
+    </a>`;
     return;
   }
-  if (estado.estado === 'abierto') {
-    display.style.background = 'rgba(0,212,170,.12)';
-    display.style.color = 'var(--accent)';
-    display.textContent = '✅ Paso habilitado (según argentina.gob.ar)';
-  } else if (estado.estado === 'cerrado') {
-    display.style.background = 'rgba(238,85,51,.12)';
-    display.style.color = '#e53';
-    display.textContent = '⛔ Paso cerrado o no habilitado — verificar antes de viajar';
-  } else if (estado.estado === 'intermitente') {
-    display.style.background = 'rgba(255,184,0,.12)';
-    display.style.color = '#ffb800';
-    display.textContent = '⚠️ Paso con tránsito intermitente — verificar condiciones';
-  }
+
+  const colores = {
+    abierto:      { bg: 'rgba(0,212,170,.12)',  color: 'var(--accent)', icon: '✅', titulo: 'Paso habilitado' },
+    intermitente: { bg: 'rgba(255,184,0,.12)',  color: '#ffb800',       icon: '⚠️', titulo: 'Tránsito intermitente' },
+    cerrado:      { bg: 'rgba(238,85,51,.12)',  color: '#e53',          icon: '⛔', titulo: 'Paso cerrado' },
+  };
+  const c = colores[resultado.estado] || colores.intermitente;
+
+  // Resumen corto en el campo inline
+  display.style.background = c.bg;
+  display.style.color = c.color;
+  display.style.padding = '8px 12px';
+  display.style.cursor = 'pointer';
+  display.innerHTML = `<div style="font-weight:600">${c.icon} ${c.titulo} — tocá para ver detalle</div>`;
+  display.onclick = () => mostrarModalEstadoPaso(destino, resultado, url, c);
+
+  // Si el mensaje es largo, mostrar directamente el modal con el detalle completo
+  mostrarModalEstadoPaso(destino, resultado, url, c);
 }
+
+// Modal con el detalle completo del estado del paso — mismo patrón que el
+// aviso de ticket de Jira al cerrar informe sin número.
+function mostrarModalEstadoPaso(destino, resultado, url, c) {
+  if (document.getElementById('modal-estado-paso')) return; // evitar duplicados
+  const modal = document.createElement('div');
+  modal.id = 'modal-estado-paso';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+    <div style="font-size:28px;margin-bottom:10px;text-align:center">${c.icon}</div>
+    <div style="font-size:16px;font-weight:700;color:${c.color};margin-bottom:10px;text-align:center">${c.titulo}</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;text-align:center;line-height:1.5;max-height:200px;overflow-y:auto">${escHtml(resultado.mensaje||'')}</div>
+    <div style="display:flex;gap:10px">
+      <button id="modal-estado-paso-cerrar" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Cerrar</button>
+      <a href="${url}" target="_blank" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Ver en sitio oficial</a>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('modal-estado-paso-cerrar').onclick = () => modal.remove();
+}
+window.mostrarModalEstadoPaso = mostrarModalEstadoPaso;
 window.checkEstadoPasoDestino = checkEstadoPasoDestino;
 function requestLocation() {
   if (!navigator.geolocation) return;
@@ -5045,9 +5079,42 @@ window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
 const PASOS_PROXY_URL = 'https://scancheck-pasos-proxy.elopapa.workers.dev';
+
+// Mapeo nombre del paso -> ID de la página de detalle en argentina.gob.ar
+// (URL: /seguridad/pasosinternacionales/detalle/ruta/{id}/{slug})
+// Este ID es propio del sitio y NO coincide con el gid del IGN — se completa
+// de a poco a medida que se van confirmando los IDs de cada paso.
+// Formato: 'NOMBRE EN PASOS_COORDS': { id: NUMERO, slug: 'Slug-Con-Guiones' }
+const PASOS_DETALLE_IDS = {
+  'SICO': { id: 20, slug: 'Sico' },
+  'SAN FRANCISCO': { id: 25, slug: 'San-Francisco' },
+  'CARIRRIÑE': { id: 41, slug: 'Carirri%C3%B1e' },
+  'ICALMA': { id: 38, slug: 'Icalma' },
+  'HUA HUM': { id: 39, slug: 'Hua-Hum' },
+  'MAMUIL MALAL': { id: 40, slug: 'Mamuil-Malal' },
+  'PAMPA ALTA': { id: 54, slug: 'Pampa-Alta' },
+  'COYHAIQUE': { id: 55, slug: 'Coyhaique' },
+  'INTEGRACION AUSTRAL': { id: 68, slug: 'Integraci%C3%B3n-Austral' },
+  'LOS AZULES': { id: 83, slug: 'Los-Azules' },
+  'ROBALLOS': { id: 59, slug: 'Roballos' },
+  // Agregar más a medida que se confirmen
+};
+
+// Construye la URL de la página de detalle del paso si tenemos el ID mapeado,
+// sino devuelve la URL de búsqueda general (el técnico filtra manualmente).
+function getUrlPasoArgentinaGobAr(nombrePaso) {
+  if (!nombrePaso) return 'https://www.argentina.gob.ar/seguridad/pasosinternacionales';
+  const nombre = nombrePaso.split(' - ')[0].split(' (')[0].trim().toUpperCase();
+  const match = PASOS_DETALLE_IDS[nombre];
+  if (match) {
+    return `https://www.argentina.gob.ar/seguridad/pasosinternacionales/detalle/ruta/${match.id}/${match.slug}`;
+  }
+  return `https://www.argentina.gob.ar/seguridad/pasosinternacionales?search_api_fulltext=${encodeURIComponent(nombre)}`;
+}
+window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v211'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v214'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
