@@ -762,6 +762,19 @@ async function checkEstadoPasoDestino() {
 
   const urlDetalle = data.urlDetalle || urlListado;
 
+  // Caso 0: sin datos confiables — gris con link al sitio oficial
+  if (data.sinDatos) {
+    display.style.background = 'var(--bg3)';
+    display.style.color = 'var(--text3)';
+    display.style.padding = '8px 12px';
+    display.style.cursor = 'pointer';
+    display.onclick = () => mostrarModalEstadoPaso(data, urlDetalle);
+    display.innerHTML = `
+      <div style="font-weight:600">❓ ${escHtml(data.nombreOficial)} — Estado no disponible</div>
+      <div style="font-size:11px;margin-top:2px;opacity:.7">Verificar en el sitio oficial — tocá para ver</div>`;
+    return;
+  }
+
   // Caso 1: CERRADO o corte de vialidad — alerta roja
   if (!data.abierto || data.cortadoVialidad) {
     display.style.background = 'rgba(239,68,68,.12)';
@@ -813,13 +826,18 @@ function mostrarModalEstadoPaso(data, url) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
 
   const abierto = data.abierto;
-  const estadoColor = abierto ? '#22c55e' : '#ef4444';
-  const estadoIcon = abierto ? '✅' : '🚫';
+  const estadoColor = data.sinDatos ? 'var(--text3)' : (abierto ? '#22c55e' : '#ef4444');
+  const estadoIcon = data.sinDatos ? '❓' : (abierto ? '✅' : '🚫');
+  const estadoTexto = data.sinDatos ? 'Sin datos — verificar en sitio oficial' : data.estado;
   const filas = [];
 
   if (data.estado)
     filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">ESTADO</span><br>
-      <strong style="color:${estadoColor}">${estadoIcon} ${escHtml(data.estado)}</strong></div>`);
+      <strong style="color:${estadoColor}">${estadoIcon} ${escHtml(estadoTexto)}</strong></div>`);
+  if (data.motivo)
+    filas.push(`<div style="margin-bottom:8px;padding:8px;background:rgba(239,68,68,.08);border-radius:8px;border-left:3px solid #ef4444">
+      <span style="opacity:.6;font-size:11px">MOTIVO</span><br>
+      ${escHtml(data.motivo)}</div>`);
   if (data.estadoVialidad && data.cortadoVialidad)
     filas.push(`<div style="margin-bottom:8px;padding:8px;background:rgba(255,184,0,.1);border-radius:8px;border-left:3px solid #ffb800">
       <span style="opacity:.6;font-size:11px">VIALIDAD NACIONAL</span><br>
