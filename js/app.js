@@ -702,9 +702,10 @@ function autoFillPasoFromGPS(lat, lon) {
 window.autoFillPasoFromGPS = autoFillPasoFromGPS;
 
 // ── Verificar estado del paso (abierto/cerrado) ──────────────
-// Consulta alertas vigentes desde:
-// argentina.gob.ar/jefatura/comision-nacional-de-fronteras/alertas-de-pasos-internacionales
-// Respuesta: { hayAlerta, alertaMasReciente: { fecha, titulo, descripcion, url }, alertas[], fuente }
+// Consulta el endpoint /listado de argentina.gob.ar con estado en tiempo real.
+// Respuesta: { encontrado, nombreOficial, estado, abierto, estadoVialidad,
+//              cortadoVialidad, horario, provincia, pais, actualizacion,
+//              urlDetalle, fuente }
 async function verificarEstadoPaso(nombrePaso) {
   if (!nombrePaso || !navigator.onLine) return null;
   try {
@@ -729,8 +730,8 @@ function buscarPasoPorNombre(nombre) {
 }
 window.buscarPasoPorNombre = buscarPasoPorNombre;
 
-// Se dispara al salir del campo "Destino" en Iniciar Viaje — verifica si el paso
-// nombrado tiene alertas vigentes según argentina.gob.ar (Comisión Nacional de Fronteras).
+// Se dispara al salir del campo "Destino" en Iniciar Viaje — consulta el estado
+// en tiempo real del paso desde argentina.gob.ar/seguridad/pasosinternacionales/listado
 async function checkEstadoPasoDestino() {
   const input = document.getElementById('inp-viaje-destino');
   const display = document.getElementById('estado-paso-destino');
@@ -744,53 +745,103 @@ async function checkEstadoPasoDestino() {
   display.style.padding = '8px 12px';
   display.style.cursor = 'default';
   display.onclick = null;
-  display.textContent = '⏳ Buscando alertas del paso...';
+  display.textContent = '⏳ Consultando estado del paso...';
 
   const data = await verificarEstadoPaso(destino);
-  const urlFuente = (data && data.alertaMasReciente && data.alertaMasReciente.url)
-    ? data.alertaMasReciente.url
-    : getUrlPasoArgentinaGobAr(destino);
-  const urlListado = 'https://www.argentina.gob.ar/jefatura/comision-nacional-de-fronteras/alertas-de-pasos-internacionales';
-  const link = `<a href="${urlListado}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
-    🔗 Ver todas las alertas de pasos en argentina.gob.ar
-  </a>`;
+  const urlListado = 'https://www.argentina.gob.ar/seguridad/pasosinternacionales';
 
-  // Caso 1: hay una alerta vigente para el paso buscado
-  if (data && data.hayAlerta && data.alertaMasReciente) {
-    const a = data.alertaMasReciente;
-    const mensaje = [a.fecha, a.titulo, a.descripcion].filter(Boolean).join('\n\n');
+  // Paso no encontrado en el listado oficial
+  if (!data || !data.encontrado) {
+    display.style.background = 'var(--bg3)';
+    display.style.padding = '0';
+    display.innerHTML = `<a href="${urlListado}" target="_blank"
+      style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
+      🔗 Ver estado de pasos en argentina.gob.ar</a>`;
+    return;
+  }
+
+  const urlDetalle = data.urlDetalle || urlListado;
+
+  // Caso 1: CERRADO o corte de vialidad — alerta roja
+  if (!data.abierto || data.cortadoVialidad) {
+    display.style.background = 'rgba(239,68,68,.12)';
+    display.style.color = '#ef4444';
+    display.style.padding = '8px 12px';
+    display.style.cursor = 'pointer';
+    display.innerHTML = `
+      <div style="font-weight:700">🚫 ${escHtml(data.nombreOficial)} — ${escHtml(data.estado)}</div>
+      ${data.cortadoVialidad ? `<div style="font-size:11px;margin-top:2px">⚠️ Vialidad: ${escHtml(data.estadoVialidad)}</div>` : ''}
+      ${data.horario ? `<div style="font-size:11px;margin-top:2px">🕐 ${escHtml(data.horario)}</div>` : ''}
+      <div style="font-size:11px;margin-top:2px;opacity:.7">Tocá para ver más</div>`;
+    display.onclick = () => mostrarModalEstadoPaso(data, urlDetalle);
+    mostrarModalEstadoPaso(data, urlDetalle);
+    return;
+  }
+
+  // Caso 2: ABIERTO pero con corte de vialidad — alerta amarilla
+  if (data.abierto && data.cortadoVialidad) {
     display.style.background = 'rgba(255,184,0,.12)';
     display.style.color = '#ffb800';
     display.style.padding = '8px 12px';
     display.style.cursor = 'pointer';
     display.innerHTML = `
-      <div style="font-weight:600">⚠️ ${escHtml(a.titulo)}</div>
-      <div style="font-size:11px;margin-top:4px;opacity:.8">${escHtml(a.fecha)} — Tocá para ver el detalle</div>`;
-    display.onclick = () => mostrarModalEstadoPaso(mensaje, urlFuente);
-    mostrarModalEstadoPaso(mensaje, urlFuente);
+      <div style="font-weight:600">⚠️ ${escHtml(data.nombreOficial)} — Abierto con restricciones</div>
+      <div style="font-size:11px;margin-top:2px">🚧 Vialidad: ${escHtml(data.estadoVialidad)}</div>
+      ${data.horario ? `<div style="font-size:11px;margin-top:2px">🕐 ${escHtml(data.horario)}</div>` : ''}`;
+    display.onclick = () => mostrarModalEstadoPaso(data, urlDetalle);
     return;
   }
 
-  // Caso 2: no hay alertas para este paso — solo ofrecer el link al listado general
-  display.style.background = 'var(--bg3)';
-  display.style.padding = '0';
-  display.innerHTML = link;
+  // Caso 3: ABIERTO y sin problemas — verde
+  display.style.background = 'rgba(34,197,94,.08)';
+  display.style.color = 'var(--text2)';
+  display.style.padding = '8px 12px';
+  display.style.cursor = 'pointer';
+  display.onclick = () => mostrarModalEstadoPaso(data, urlDetalle);
+  display.innerHTML = `
+    <div style="font-weight:600;color:#22c55e">✅ ${escHtml(data.nombreOficial)} — Abierto</div>
+    ${data.horario ? `<div style="font-size:11px;margin-top:2px">🕐 ${escHtml(data.horario)}</div>` : ''}
+    <div style="font-size:11px;margin-top:2px;opacity:.6">Tocá para ver más</div>`;
 }
 
-// Modal con el detalle completo de la alerta vigente — mismo patrón que el
-// aviso de ticket de Jira al cerrar informe sin número.
-function mostrarModalEstadoPaso(mensaje, url) {
-  if (document.getElementById('modal-estado-paso')) return; // evitar duplicados
+// Modal con el detalle completo del paso — estado, horario, vialidad y link al sitio oficial.
+function mostrarModalEstadoPaso(data, url) {
+  if (document.getElementById('modal-estado-paso')) return;
   const modal = document.createElement('div');
   modal.id = 'modal-estado-paso';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
-    <div style="font-size:28px;margin-bottom:10px;text-align:center">⚠️</div>
-    <div style="font-size:16px;font-weight:700;color:#ffb800;margin-bottom:10px;text-align:center">Alerta vigente</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;text-align:center;line-height:1.5;max-height:200px;overflow-y:auto">${escHtml(mensaje||'')}</div>
-    <div style="display:flex;gap:10px">
+
+  const abierto = data.abierto;
+  const estadoColor = abierto ? '#22c55e' : '#ef4444';
+  const estadoIcon = abierto ? '✅' : '🚫';
+  const filas = [];
+
+  if (data.estado)
+    filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">ESTADO</span><br>
+      <strong style="color:${estadoColor}">${estadoIcon} ${escHtml(data.estado)}</strong></div>`);
+  if (data.estadoVialidad && data.cortadoVialidad)
+    filas.push(`<div style="margin-bottom:8px;padding:8px;background:rgba(255,184,0,.1);border-radius:8px;border-left:3px solid #ffb800">
+      <span style="opacity:.6;font-size:11px">VIALIDAD NACIONAL</span><br>
+      <strong>⚠️ ${escHtml(data.estadoVialidad)}</strong></div>`);
+  if (data.horario)
+    filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">HORARIO</span><br>
+      <strong>🕐 ${escHtml(data.horario)}</strong></div>`);
+  if (data.provincia || data.pais)
+    filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">UBICACIÓN</span><br>
+      <strong>${escHtml([data.provincia, data.pais].filter(Boolean).join(' → '))}</strong></div>`);
+  if (data.actualizacion)
+    filas.push(`<div style="margin-bottom:4px"><span style="opacity:.6;font-size:10px">Actualizado: ${escHtml(data.actualizacion)}</span></div>`);
+
+  modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;text-align:center">
+      🛂 ${escHtml(data.nombreOficial || data.nombreBuscado || 'Paso fronterizo')}
+    </div>
+    <div style="font-size:13px;color:var(--text2);max-height:280px;overflow-y:auto">
+      ${filas.length ? filas.join('') : '<p style="opacity:.6;text-align:center">Sin información disponible</p>'}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
       <button id="modal-estado-paso-cerrar" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Cerrar</button>
-      <a href="${url}" target="_blank" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Ver en sitio oficial</a>
+      <a href="${url}" target="_blank" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Ver más</a>
     </div>
   </div>`;
   document.body.appendChild(modal);
