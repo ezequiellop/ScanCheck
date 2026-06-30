@@ -711,8 +711,7 @@ async function verificarEstadoPaso(nombrePaso) {
     const res = await fetch(`${PASOS_PROXY_URL}?nombre=${encodeURIComponent(nombre)}`).catch(() => null);
     if (!res || !res.ok) return null;
     const data = await res.json();
-    if (!data.estado) return null;
-    return { estado: data.estado, fuente: data.fuente || 'argentina.gob.ar' };
+    return data; // { alertaGeneral, pasoDeLaAlerta, esElMismoPaso, fuente }
   } catch(e) {
     console.warn('Error verificando estado del paso:', e.message);
     return null;
@@ -742,51 +741,55 @@ async function checkEstadoPasoDestino() {
   display.style.background = 'var(--bg3)';
   display.style.color = 'var(--text3)';
   display.style.padding = '8px 12px';
-  display.textContent = '⏳ Verificando estado del paso...';
+  display.textContent = '⏳ Buscando información del paso...';
 
-  const resultado = await verificarEstadoPaso(destino);
+  const data = await verificarEstadoPaso(destino);
   const url = getUrlPasoArgentinaGobAr(destino);
+  const link = `<a href="${url}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
+    🔗 Ver estado de "${escHtml(destino)}" en argentina.gob.ar
+  </a>`;
 
-  if (!resultado || !resultado.estado || resultado.estado === 'sin_alertas') {
-    // No se encontró alerta específica — mostrar link para verificación manual
-    display.style.background = 'var(--bg3)';
-    display.style.padding = '0';
-    display.innerHTML = `<a href="${url}" target="_blank" style="display:block;padding:8px 12px;color:var(--accent);text-decoration:none;font-size:12px">
-      🔗 Ver estado de "${escHtml(destino)}" en argentina.gob.ar
-    </a>`;
+  // Caso 1: hay una alerta vigente Y corresponde al paso que el técnico buscó
+  if (data && data.alertaGeneral && data.esElMismoPaso) {
+    display.style.background = 'rgba(255,184,0,.12)';
+    display.style.color = '#ffb800';
+    display.style.padding = '8px 12px';
+    display.style.cursor = 'pointer';
+    display.innerHTML = `<div style="font-weight:600">⚠️ Hay una alerta vigente para este paso — tocá para ver</div>`;
+    display.onclick = () => mostrarModalEstadoPaso(data.alertaGeneral, url);
+    mostrarModalEstadoPaso(data.alertaGeneral, url);
     return;
   }
 
-  const colores = {
-    abierto:      { bg: 'rgba(0,212,170,.12)',  color: 'var(--accent)', icon: '✅', titulo: 'Paso habilitado' },
-    intermitente: { bg: 'rgba(255,184,0,.12)',  color: '#ffb800',       icon: '⚠️', titulo: 'Tránsito intermitente' },
-    cerrado:      { bg: 'rgba(238,85,51,.12)',  color: '#e53',          icon: '⛔', titulo: 'Paso cerrado' },
-  };
-  const c = colores[resultado.estado] || colores.intermitente;
+  // Caso 2: hay una alerta vigente pero es de OTRO paso — avisar sin confundir
+  if (data && data.alertaGeneral && data.pasoDeLaAlerta && !data.esElMismoPaso) {
+    display.style.background = 'var(--bg3)';
+    display.style.padding = '0';
+    display.innerHTML = `
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border)">
+        ℹ️ Hay una alerta vigente para <strong>${escHtml(data.pasoDeLaAlerta)}</strong> (no para ${escHtml(destino)})
+      </div>
+      ${link}`;
+    return;
+  }
 
-  // Resumen corto en el campo inline
-  display.style.background = c.bg;
-  display.style.color = c.color;
-  display.style.padding = '8px 12px';
-  display.style.cursor = 'pointer';
-  display.innerHTML = `<div style="font-weight:600">${c.icon} ${c.titulo} — tocá para ver detalle</div>`;
-  display.onclick = () => mostrarModalEstadoPaso(destino, resultado, url, c);
-
-  // Si el mensaje es largo, mostrar directamente el modal con el detalle completo
-  mostrarModalEstadoPaso(destino, resultado, url, c);
+  // Caso 3: no hay alerta destacada en el sitio — solo ofrecer el link manual
+  display.style.background = 'var(--bg3)';
+  display.style.padding = '0';
+  display.innerHTML = link;
 }
 
-// Modal con el detalle completo del estado del paso — mismo patrón que el
+// Modal con el detalle completo de la alerta vigente — mismo patrón que el
 // aviso de ticket de Jira al cerrar informe sin número.
-function mostrarModalEstadoPaso(destino, resultado, url, c) {
+function mostrarModalEstadoPaso(mensaje, url) {
   if (document.getElementById('modal-estado-paso')) return; // evitar duplicados
   const modal = document.createElement('div');
   modal.id = 'modal-estado-paso';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
-    <div style="font-size:28px;margin-bottom:10px;text-align:center">${c.icon}</div>
-    <div style="font-size:16px;font-weight:700;color:${c.color};margin-bottom:10px;text-align:center">${c.titulo}</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;text-align:center;line-height:1.5;max-height:200px;overflow-y:auto">${escHtml(resultado.mensaje||'')}</div>
+    <div style="font-size:28px;margin-bottom:10px;text-align:center">⚠️</div>
+    <div style="font-size:16px;font-weight:700;color:#ffb800;margin-bottom:10px;text-align:center">Alerta vigente</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;text-align:center;line-height:1.5;max-height:200px;overflow-y:auto">${escHtml(mensaje||'')}</div>
     <div style="display:flex;gap:10px">
       <button id="modal-estado-paso-cerrar" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;font-weight:600;cursor:pointer">Cerrar</button>
       <a href="${url}" target="_blank" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Ver en sitio oficial</a>
@@ -5114,7 +5117,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v214'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v215'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
