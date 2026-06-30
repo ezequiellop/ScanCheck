@@ -707,17 +707,12 @@ window.autoFillPasoFromGPS = autoFillPasoFromGPS;
 async function verificarEstadoPaso(nombrePaso) {
   if (!nombrePaso || !navigator.onLine) return null;
   try {
-    const query = encodeURIComponent(nombrePaso.split(' - ')[0].split(' (')[0].trim());
-    const url = `https://www.argentina.gob.ar/seguridad/pasosinternacionales?search_api_fulltext=${query}`;
-    const res = await fetch(url, { mode: 'cors' }).catch(() => null);
+    const nombre = nombrePaso.split(' - ')[0].split(' (')[0].trim();
+    const res = await fetch(`${PASOS_PROXY_URL}?nombre=${encodeURIComponent(nombre)}`).catch(() => null);
     if (!res || !res.ok) return null;
-    const html = await res.text();
-    // Buscar palabras clave de estado en el HTML resultante
-    const lower = html.toLowerCase();
-    if (lower.includes('habilitado') && !lower.includes('no habilitado')) return { estado: 'abierto', fuente: 'argentina.gob.ar' };
-    if (lower.includes('cerrado') || lower.includes('no habilitado') || lower.includes('clausurado')) return { estado: 'cerrado', fuente: 'argentina.gob.ar' };
-    if (lower.includes('intermitente')) return { estado: 'intermitente', fuente: 'argentina.gob.ar' };
-    return null; // no se pudo determinar
+    const data = await res.json();
+    if (!data.estado) return null;
+    return { estado: data.estado, fuente: data.fuente || 'argentina.gob.ar' };
   } catch(e) {
     console.warn('Error verificando estado del paso:', e.message);
     return null;
@@ -5049,9 +5044,10 @@ async function syncAllReports() {
 window.syncAllReports = syncAllReports;
 
 // ======== GOOGLE SHEETS EXPORT ========
+const PASOS_PROXY_URL = 'https://scancheck-pasos-proxy.elopapa.workers.dev';
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '25.06.2026-v210'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '25.06.2026-v211'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
