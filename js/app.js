@@ -801,6 +801,7 @@ async function checkEstadoPasoDestino() {
   display.innerHTML = `
     <div style="font-weight:600;color:#22c55e">✅ ${escHtml(data.nombreOficial)} — Abierto</div>
     ${data.horario ? `<div style="font-size:11px;margin-top:2px">🕐 ${escHtml(data.horario)}</div>` : ''}
+    ${data.telefono ? `<div style="font-size:11px;margin-top:2px">📞 ${escHtml(data.telefono)}</div>` : ''}
     <div style="font-size:11px;margin-top:2px;opacity:.6">Tocá para ver más</div>`;
 }
 
@@ -826,6 +827,9 @@ function mostrarModalEstadoPaso(data, url) {
   if (data.horario)
     filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">HORARIO</span><br>
       <strong>🕐 ${escHtml(data.horario)}</strong></div>`);
+  if (data.telefono)
+    filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">CONTACTO</span><br>
+      <a href="tel:${escHtml(data.telefono)}" style="color:var(--accent);font-weight:600;text-decoration:none">📞 ${escHtml(data.telefono)}</a></div>`);
   if (data.provincia || data.pais)
     filas.push(`<div style="margin-bottom:8px"><span style="opacity:.6;font-size:11px">UBICACIÓN</span><br>
       <strong>${escHtml([data.provincia, data.pais].filter(Boolean).join(' → '))}</strong></div>`);
