@@ -2407,8 +2407,8 @@ function renderViajes() {
   }).join('');
 }
 
-function showIniciarViaje() {
-  if (viajeAbierto) { showToast('Ya tenés un viaje en curso — registrá la llegada primero','error'); return; }
+// Muestra el formulario de inicio de viaje, con destino precargado si se indica
+function _mostrarFormIniciarViaje(destinoPrecargado = '') {
   const el = document.getElementById('modal-viaje-content');
   el.innerHTML = `
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🚗 Iniciar viaje</div>
@@ -2418,7 +2418,7 @@ function showIniciarViaje() {
     </div>
     <div class="form-group">
       <label>Destino / descripción del viaje</label>
-      <input type="text" id="inp-viaje-destino" placeholder="Ej: Jama, Clorinda, Paso de los Libres..." maxlength="100" onblur="checkEstadoPasoDestino()">
+      <input type="text" id="inp-viaje-destino" placeholder="Ej: Jama, Clorinda, Paso de los Libres..." maxlength="100" onblur="checkEstadoPasoDestino()" value="${escHtml(destinoPrecargado)}">
       <div id="estado-paso-destino" style="display:none;margin-top:6px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
     </div>
     <div class="form-group">
@@ -2429,7 +2429,7 @@ function showIniciarViaje() {
       <label>Foto del odómetro de salida <span style="color:var(--text3);font-size:11px">(recomendado)</span></label>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="file" id="inp-foto-odometro-salida" accept="image/*" capture="environment" style="display:none" onchange="previewFotoOdometro(this,'preview-odo-salida')">
-        <button type="button" onclick="document.getElementById('inp-foto-odometro-salida').click()" 
+        <button type="button" onclick="document.getElementById('inp-foto-odometro-salida').click()"
           style="padding:8px 14px;border-radius:8px;border:1px dashed var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;cursor:pointer">
           📷 Sacar foto
         </button>
@@ -2441,7 +2441,95 @@ function showIniciarViaje() {
       <button class="btn-primary" style="flex:1" onclick="guardarInicioViaje()">Iniciar viaje</button>
     </div>`;
   document.getElementById('modal-viaje').classList.remove('hidden');
+  // Si hay destino precargado, disparar el chequeo del paso
+  if (destinoPrecargado) setTimeout(() => checkEstadoPasoDestino(), 300);
 }
+window._mostrarFormIniciarViaje = _mostrarFormIniciarViaje;
+
+function showIniciarViaje() {
+  if (viajeAbierto) { showToast('Ya tenés un viaje en curso — registrá la llegada primero','error'); return; }
+
+  // Buscar viajes programados activos para hoy
+  const hoy = new Date().toISOString().split('T')[0];
+  const programadosHoy = localViajes.filter(v =>
+    v.tipo === 'programacion' && !v.eliminado &&
+    (v.estado === 'programado' || v.estado === 'en curso') &&
+    v.fechaInicio && v.fechaInicio <= hoy && v.fechaFin && v.fechaFin >= hoy
+  );
+
+  if (programadosHoy.length === 0) {
+    // No hay viaje programado para hoy — abrir formulario directo
+    _mostrarFormIniciarViaje();
+    return;
+  }
+
+  // Hay uno o más viajes programados activos hoy — mostrar selector
+  _mostrarSelectorViajesProgramados(programadosHoy);
+}
+
+// Muestra popup para que el técnico elija si vincula un viaje programado al tramo
+function _mostrarSelectorViajesProgramados(programados) {
+  const el = document.getElementById('modal-viaje-content');
+  const fmtF = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
+
+  const items = programados.map((v, i) => {
+    const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ') || '—';
+    const estado = v.estado === 'en curso' ? '<span style="color:#f59e0b;font-size:10px;font-weight:600">● EN CURSO</span>' : '<span style="color:#3b82f6;font-size:10px;font-weight:600">● PROGRAMADO</span>';
+    return `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.proyecto||'Sin proyecto')}</div>
+        ${estado}
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:2px">📅 ${fmtF(v.fechaInicio)} – ${fmtF(v.fechaFin)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">📍 ${escHtml(paradas)}</div>
+      <button onclick="_pvIniciarDesdeSelector('${v.fbId||v.id}')"
+        style="width:100%;padding:9px;border-radius:8px;border:none;background:var(--accent);color:#0a1628;font-size:13px;font-weight:700;cursor:pointer">
+        🚀 Iniciar este viaje
+      </button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">🗓️ Viaje programado activo</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Tenés ${programados.length === 1 ? 'un viaje programado' : programados.length + ' viajes programados'} para hoy. ¿Querés iniciar alguno?</div>
+    ${items}
+    <button onclick="_mostrarFormIniciarViaje()" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;margin-top:4px">
+      Iniciar viaje sin vincular a programación
+    </button>
+    <button onclick="closeModal('modal-viaje')" style="width:100%;padding:10px;border-radius:10px;border:none;background:transparent;color:var(--text3);font-size:13px;cursor:pointer;margin-top:4px">
+      Cancelar
+    </button>`;
+  document.getElementById('modal-viaje').classList.remove('hidden');
+}
+window._mostrarSelectorViajesProgramados = _mostrarSelectorViajesProgramados;
+
+// El técnico elige iniciar un viaje programado específico
+async function _pvIniciarDesdeSelector(id) {
+  const viaje = localViajes.find(v => (v.fbId === id || v.id === id));
+  if (!viaje) { _mostrarFormIniciarViaje(); return; }
+
+  // Cambiar estado a "en curso" si todavía es "programado"
+  if (viaje.estado === 'programado') {
+    await pvCambiarEstado(id, 'en curso');
+  }
+
+  // Precargar destino con la primera parada del itinerario
+  const primeraParada = (viaje.paradas||[]).find(p => p.ciudad?.trim());
+  const destino = primeraParada
+    ? primeraParada.ciudad + (primeraParada.provincia ? ', ' + primeraParada.provincia : '')
+    : viaje.proyecto || '';
+
+  _mostrarFormIniciarViaje(destino);
+}
+window._pvIniciarDesdeSelector = _pvIniciarDesdeSelector;
+
+// Iniciado desde el botón 🚀 en la lista de viajes programados:
+// cambia estado + abre directamente el formulario de inicio de viaje
+async function _pvIniciarDesdeListado(id) {
+  if (viajeAbierto) { showToast('Ya tenés un viaje en curso — registrá la llegada primero','error'); return; }
+  await _pvIniciarDesdeSelector(id);
+}
+window._pvIniciarDesdeListado = _pvIniciarDesdeListado;
 
 async function guardarInicioViaje() {
   const kmSalida = parseInt(document.getElementById('inp-km-salida')?.value);
@@ -2739,6 +2827,7 @@ function showProgramarViaje() {
     kmEstimados: '',
     responsableArea: '',
     observaciones: '',
+    ciudadOrigen: currentUser?.ciudad || '',
     viajeros: [{ nombre: '', apellido: '', dni: '', empresa: 'Danaide' }],
     paradas: [{ ciudad: '', provincia: '', noches: '', fecha: '' }],
     servicios: { vehiculoPropio: false, alquilerAuto: false, vuelo: false, hospedaje: false, cochera: false },
@@ -2813,6 +2902,10 @@ function _pvPaso1HTML() {
     <div class="form-group">
       <label>Km estimados <span style="color:var(--text3);font-size:11px">(para combustible)</span></label>
       <input type="number" id="pv-km" placeholder="Ej: 2000" min="0" value="${_pv.kmEstimados}">
+    </div>
+    <div class="form-group">
+      <label>Ciudad de origen <span style="color:var(--text3);font-size:11px">(punto de partida)</span></label>
+      <input type="text" id="pv-ciudad-origen" placeholder="Ej: La Plata" maxlength="60" value="${escHtml(_pv.ciudadOrigen||'')}" oninput="_pv.ciudadOrigen=this.value;window._pv=_pv">
     </div>
     <div class="form-group">
       <label>Responsable de área <span style="color:var(--text3);font-size:11px">(va en copia del mail)</span></label>
@@ -2942,6 +3035,7 @@ function _pvGuardarPaso1() {
   _pv.fechaFin            = document.getElementById('pv-fecha-fin')?.value || _pv.fechaFin;
   _pv.kmEstimados         = document.getElementById('pv-km')?.value || _pv.kmEstimados;
   _pv.responsableArea     = document.getElementById('pv-responsable')?.value.trim() || _pv.responsableArea;
+  _pv.ciudadOrigen        = document.getElementById('pv-ciudad-origen')?.value.trim() || _pv.ciudadOrigen || '';
   _pv.motivoModificacion  = document.getElementById('pv-motivo')?.value.trim() || _pv.motivoModificacion || '';
   window._pv = _pv;
 }
@@ -2992,15 +3086,25 @@ window._pvAnterior = _pvAnterior;
 function _pvGenerarUrlMaps() {
   _pvGuardarPaso3();
   const paradas = _pv.paradas.filter(p => p.ciudad.trim());
-  if (paradas.length < 2) { showToast('Agregá al menos 2 paradas para generar el recorrido', 'error'); return; }
-  const origen = encodeURIComponent(paradas[0].ciudad + (paradas[0].provincia ? ', ' + paradas[0].provincia : '') + ', Argentina');
-  const destino = encodeURIComponent(paradas[paradas.length - 1].ciudad + (paradas[paradas.length-1].provincia ? ', ' + paradas[paradas.length-1].provincia : '') + ', Argentina');
-  const waypoints = paradas.slice(1, -1).map(p => encodeURIComponent(p.ciudad + (p.provincia ? ', '+p.provincia : '') + ', Argentina')).join('|');
-  const url = `https://www.google.com/maps/dir/${origen}/${waypoints ? waypoints+'/' : ''}${destino}`;
+  // Necesitamos al menos origen + 1 parada
+  if (paradas.length < 1) { showToast('Agregá al menos una parada de destino', 'error'); return; }
+
+  // Origen: ciudad del técnico (guardada en currentUser) o La Plata como default
+  const ciudadOrigen = _pv.ciudadOrigen || currentUser?.ciudad || 'La Plata, Buenos Aires';
+  const origenEnc = encodeURIComponent(ciudadOrigen + ', Argentina');
+
+  // Cada parada va como segmento separado en la URL (no con |)
+  // Formato correcto: /maps/dir/origen/parada1/parada2/destino
+  const segmentos = paradas.map(p => {
+    const lugar = p.ciudad + (p.provincia ? ', ' + p.provincia : '') + ', Argentina';
+    return encodeURIComponent(lugar);
+  });
+
+  const url = `https://www.google.com/maps/dir/${origenEnc}/${segmentos.join('/')}`;
   _pv.urlRecorrido = url;
   const inp = document.getElementById('pv-url-recorrido');
   if (inp) inp.value = url;
-  showToast('Recorrido generado — podés editarlo', 'success');
+  showToast('Recorrido generado desde ' + ciudadOrigen + ' — podés editarlo', 'success');
 }
 window._pvGenerarUrlMaps = _pvGenerarUrlMaps;
 
@@ -3176,13 +3280,20 @@ function _pvGenerarPDF(paradasValidas, version=1) {
   if (_pv.servicios.vuelo) srvLabels.push('Vuelo');
   if (_pv.servicios.vehiculoPropio) srvLabels.push('Vehículo propio');
 
+  // Solo mostrar paradas con hospedaje en el bloque de servicios
+  const paradasConHotel = paradasValidas.filter(p => p.noches && parseInt(p.noches) > 0);
+
   if (srvLabels.length > 0) {
     linea(srvLabels.join(' · ') + ':', true);
-    paradasValidas.forEach(p => {
-      const nochesStr = p.noches ? ` — ${p.noches} noche${p.noches>1?'s':''}` : '';
-      const fechaStr = p.fecha ? ` ${fmtFecha(p.fecha)}` : '';
-      linea(`${p.ciudad}${p.provincia ? ', '+p.provincia : ''}${nochesStr}${fechaStr}`, false, 4);
-    });
+    if ((_pv.servicios.hospedaje || _pv.servicios.cochera) && paradasConHotel.length > 0) {
+      paradasConHotel.forEach(p => {
+        const nochesStr = ` — ${p.noches} noche${parseInt(p.noches)>1?'s':''}`;
+        const fechaStr = p.fecha ? ` ${fmtFecha(p.fecha)}` : '';
+        linea(`${p.ciudad}${p.provincia ? ', '+p.provincia : ''}${nochesStr}${fechaStr}`, false, 4);
+      });
+    } else if (!_pv.servicios.hospedaje && !_pv.servicios.cochera) {
+      // Sin hospedaje, no listar paradas en este bloque
+    }
     espacio();
   }
 
@@ -3307,7 +3418,7 @@ function renderViajesProgramados() {
     // Botones según estado
     let botonesEstado = '';
     if (estado === 'programado') {
-      botonesEstado = `<button onclick="pvCambiarEstado('${v.fbId}','en curso')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer">🚀 Iniciar</button>`;
+      botonesEstado = `<button onclick="_pvIniciarDesdeListado('${v.fbId||v.id}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer">🚀 Iniciar</button>`;
     } else if (estado === 'en curso') {
       botonesEstado = `<button onclick="pvCambiarEstado('${v.fbId}','completado')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:#22c55e;font-size:12px;font-weight:600;cursor:pointer">✅ Completar</button>`;
     }
@@ -3346,17 +3457,25 @@ async function pvCambiarEstado(fbId, nuevoEstado) {
   _pvPersistirLocal();
   renderViajesProgramados();
   showToast(`Viaje marcado como ${nuevoEstado}`, 'success');
+
   // Sincronizar con Firestore si hay conexión
-  if (fbId && fbId.startsWith('pv_')) {
-    // Todavía no tiene fbId real, encolar
+  if (fbId && !fbId.startsWith('pv_')) {
+    if (navigator.onLine) {
+      try { await fbUpdateViaje(fbId, { estado: nuevoEstado, ultimaModificacion: ahora }); }
+      catch(e) { queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora }); }
+    } else {
+      queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora });
+    }
+  } else if (fbId?.startsWith('pv_')) {
     queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora });
-    return;
   }
-  if (navigator.onLine && fbId) {
-    try { await fbUpdateViaje(fbId, { estado: nuevoEstado, ultimaModificacion: ahora }); }
-    catch(e) { queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora }); }
-  } else {
-    queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora });
+
+  // Al pasar a "en curso": redirigir a la sección viajes y abrir iniciar viaje
+  if (nuevoEstado === 'en curso') {
+    const viaje = localViajes[idx];
+    showPage('viajes');
+    // Pequeña pausa para que la página cargue antes de abrir el modal
+    setTimeout(() => showIniciarViaje(viaje), 400);
   }
 }
 window.pvCambiarEstado = pvCambiarEstado;
@@ -3402,6 +3521,7 @@ function pvEditarViaje(fbId) {
     franjaHorariaIda: viaje.franjaHorariaIda || '',
     franjaHorariaVuelta: viaje.franjaHorariaVuelta || '',
     urlRecorrido: viaje.urlRecorrido || '',
+    ciudadOrigen: viaje.ciudadOrigen || '',
   };
 
   document.getElementById('modal-programar-viaje').classList.remove('hidden');
@@ -6018,7 +6138,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v220'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v222'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
