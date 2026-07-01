@@ -2671,6 +2671,486 @@ async function showReporteService() {
 }
 window.showReporteService = showReporteService;
 
+// ══════════════════════════════════════════════════════════════
+// ── PROGRAMAR VIAJE ───────────────────────────────────────────
+// Wizard de 3 pasos para programar un viaje operativo según la
+// Política de Viajes Operativos de Danaide.
+// Genera un PDF con el formato del Anexo I del procedimiento.
+// ══════════════════════════════════════════════════════════════
+
+// Estado del wizard (se resetea al abrir)
+let _pv = {};
+
+function showProgramarViaje() {
+  // Resetear estado
+  _pv = {
+    paso: 1,
+    proyecto: '',
+    centroCosto: '',
+    fechaInicio: '',
+    fechaFin: '',
+    kmEstimados: '',
+    responsableArea: '',
+    observaciones: '',
+    viajeros: [{ nombre: '', apellido: '', dni: '', empresa: 'Danaide' }],
+    paradas: [{ ciudad: '', provincia: '', noches: '', fecha: '' }],
+    servicios: { vehiculoPropio: false, alquilerAuto: false, vuelo: false, hospedaje: false, cochera: false },
+    franjaHorariaIda: '',
+    franjaHorariaVuelta: '',
+    urlRecorrido: '',
+  };
+  document.getElementById('modal-programar-viaje').classList.remove('hidden');
+  _pvRenderPaso();
+}
+window.showProgramarViaje = showProgramarViaje;
+
+function _pvRenderPaso() {
+  const el = document.getElementById('modal-programar-viaje-content');
+  if (!el) return;
+  const pasos = ['Datos generales', 'Viajeros', 'Itinerario'];
+  const indicadores = pasos.map((p, i) => {
+    const n = i + 1;
+    const activo = n === _pv.paso ? `background:var(--accent);color:#0a1628` : n < _pv.paso ? `background:rgba(0,212,170,.3);color:var(--accent)` : `background:var(--bg3);color:var(--text3)`;
+    return `<div style="display:flex;align-items:center;gap:6px;flex:1;${n < pasos.length ? 'margin-right:4px' : ''}">
+      <div style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;${activo}">${n < _pv.paso ? '✓' : n}</div>
+      <div style="font-size:11px;color:${n === _pv.paso ? 'var(--text)' : 'var(--text3)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p}</div>
+      ${n < pasos.length ? '<div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>' : ''}
+    </div>`;
+  }).join('');
+
+  let contenido = '';
+  if (_pv.paso === 1) contenido = _pvPaso1HTML();
+  if (_pv.paso === 2) contenido = _pvPaso2HTML();
+  if (_pv.paso === 3) contenido = _pvPaso3HTML();
+
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🗓️ Programar viaje</div>
+    <div style="display:flex;align-items:center;margin-bottom:20px">${indicadores}</div>
+    ${contenido}
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn-secondary" style="flex:1" onclick="${_pv.paso === 1 ? "closeModal('modal-programar-viaje')" : '_pvAnterior()'}">
+        ${_pv.paso === 1 ? 'Cancelar' : '← Anterior'}
+      </button>
+      <button class="btn-primary" style="flex:1" onclick="${_pv.paso === 3 ? '_pvGenerar()' : '_pvSiguiente()'}">
+        ${_pv.paso === 3 ? '📄 Generar PDF' : 'Siguiente →'}
+      </button>
+    </div>`;
+}
+
+function _pvPaso1HTML() {
+  return `
+    <div class="form-group">
+      <label>Proyecto *</label>
+      <input type="text" id="pv-proyecto" placeholder="Ej: Proyecto Escáneres DNM" maxlength="80" value="${escHtml(_pv.proyecto)}">
+    </div>
+    <div class="form-group">
+      <label>Centro de costo *</label>
+      <input type="text" id="pv-centro-costo" placeholder="Ej: Operaciones" maxlength="60" value="${escHtml(_pv.centroCosto)}">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Fecha inicio *</label>
+        <input type="date" id="pv-fecha-inicio" value="${_pv.fechaInicio}">
+      </div>
+      <div class="form-group">
+        <label>Fecha fin *</label>
+        <input type="date" id="pv-fecha-fin" value="${_pv.fechaFin}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Km estimados <span style="color:var(--text3);font-size:11px">(para combustible)</span></label>
+      <input type="number" id="pv-km" placeholder="Ej: 2000" min="0" value="${_pv.kmEstimados}">
+    </div>
+    <div class="form-group">
+      <label>Responsable de área <span style="color:var(--text3);font-size:11px">(va en copia del mail)</span></label>
+      <input type="text" id="pv-responsable" placeholder="Ej: Ezequiel Lopez" maxlength="60" value="${escHtml(_pv.responsableArea)}">
+    </div>`;
+}
+
+function _pvPaso2HTML() {
+  const rows = _pv.viajeros.map((v, i) => `
+    <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:10px;position:relative">
+      ${i > 0 ? `<button onclick="_pvEliminarViajero(${i})" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:rgba(238,85,51,.6);font-size:16px;cursor:pointer">×</button>` : ''}
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">VIAJERO ${i + 1}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <input type="text" placeholder="Nombre *" maxlength="40" value="${escHtml(v.nombre)}" oninput="_pv.viajeros[${i}].nombre=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+        <input type="text" placeholder="Apellido *" maxlength="40" value="${escHtml(v.apellido)}" oninput="_pv.viajeros[${i}].apellido=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input type="text" placeholder="DNI *" maxlength="12" value="${escHtml(v.dni)}" oninput="_pv.viajeros[${i}].dni=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+        <select oninput="_pv.viajeros[${i}].empresa=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+          <option value="Danaide" ${v.empresa==='Danaide'?'selected':''}>Danaide</option>
+          <option value="Vialink" ${v.empresa==='Vialink'?'selected':''}>Vialink</option>
+          <option value="Otra" ${v.empresa==='Otra'?'selected':''}>Otra</option>
+        </select>
+      </div>
+    </div>`).join('');
+
+  return `${rows}
+    <button class="btn-ghost" style="width:100%;margin-top:4px" onclick="_pvAgregarViajero()">+ Agregar viajero</button>`;
+}
+
+function _pvPaso3HTML() {
+  const checkBox = (id, label, checked) =>
+    `<label style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;border:1px solid var(--border);cursor:pointer;margin-bottom:8px">
+      <input type="checkbox" id="pv-srv-${id}" ${checked ? 'checked' : ''} onchange="_pv.servicios.${id}=this.checked;_pvActualizarVuelo()">
+      <span style="font-size:13px">${label}</span>
+    </label>`;
+
+  const paradasHTML = _pv.paradas.map((p, i) => `
+    <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:8px;position:relative">
+      ${i > 0 ? `<button onclick="_pvEliminarParada(${i})" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:rgba(238,85,51,.6);font-size:16px;cursor:pointer">×</button>` : ''}
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">PARADA ${i + 1}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <input type="text" placeholder="Ciudad *" maxlength="40" value="${escHtml(p.ciudad)}" oninput="_pv.paradas[${i}].ciudad=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+        <input type="text" placeholder="Provincia" maxlength="30" value="${escHtml(p.provincia)}" oninput="_pv.paradas[${i}].provincia=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input type="date" value="${p.fecha}" oninput="_pv.paradas[${i}].fecha=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+        <input type="number" placeholder="Noches" min="0" max="30" value="${p.noches}" oninput="_pv.paradas[${i}].noches=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px">
+      </div>
+    </div>`).join('');
+
+  const franjaOpts = ['', 'De madrugada (00:00–06:00)', 'De mañana (06:00–12:00)', 'De tarde (12:00–19:00)', 'De noche (19:00–00:00)'];
+  const franjaSelect = (id, val) => `<select id="${id}" onchange="_pv.${id.replace('pv-','').replace(/-/g,'_')}=this.value" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;width:100%">
+    ${franjaOpts.map(o => `<option value="${o}" ${val===o?'selected':''}>${o||'— Seleccionar franja —'}</option>`).join('')}
+  </select>`;
+
+  return `
+    <div style="font-size:13px;font-weight:600;color:var(--text3);margin-bottom:8px">SERVICIOS REQUERIDOS</div>
+    ${checkBox('vehiculoPropio','🚗 Vehículo propio',_pv.servicios.vehiculoPropio)}
+    ${checkBox('alquilerAuto','🔑 Alquiler de auto',_pv.servicios.alquilerAuto)}
+    ${checkBox('vuelo','✈️ Vuelo',_pv.servicios.vuelo)}
+    ${checkBox('hospedaje','🏨 Hospedaje',_pv.servicios.hospedaje)}
+    ${checkBox('cochera','🅿️ Cochera',_pv.servicios.cochera)}
+
+    <div id="pv-vuelo-franjas" style="display:${_pv.servicios.vuelo?'block':'none'};background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">FRANJA HORARIA DE VUELO</div>
+      <div style="margin-bottom:8px"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Salida</label>${franjaSelect('pv-franjaHorariaIda',_pv.franjaHorariaIda)}</div>
+      <div><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Regreso</label>${franjaSelect('pv-franjaHorariaVuelta',_pv.franjaHorariaVuelta)}</div>
+    </div>
+
+    <div style="font-size:13px;font-weight:600;color:var(--text3);margin:16px 0 8px">PARADAS DEL RECORRIDO</div>
+    ${paradasHTML}
+    <button class="btn-ghost" style="width:100%;margin-bottom:16px" onclick="_pvAgregarParada()">+ Agregar parada</button>
+
+    <div class="form-group">
+      <label>Link del recorrido <span style="color:var(--text3);font-size:11px">(Google Maps u otro)</span></label>
+      <div style="display:flex;gap:8px">
+        <input type="url" id="pv-url-recorrido" placeholder="https://maps.app.goo.gl/..." value="${escHtml(_pv.urlRecorrido)}" style="flex:1">
+        <button class="btn-ghost" onclick="_pvGenerarUrlMaps()" style="flex-shrink:0;font-size:12px;padding:8px 10px">🗺️ Generar</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Observaciones</label>
+      <textarea id="pv-observaciones" rows="3" placeholder="Ej: Incluir combustible teniendo en cuenta 2000 km aproximadamente." maxlength="400" style="resize:vertical">${escHtml(_pv.observaciones)}</textarea>
+    </div>`;
+}
+
+function _pvActualizarVuelo() {
+  const el = document.getElementById('pv-vuelo-franjas');
+  if (el) el.style.display = _pv.servicios.vuelo ? 'block' : 'none';
+}
+
+function _pvAgregarViajero() {
+  _pvGuardarPaso2();
+  _pv.viajeros.push({ nombre: '', apellido: '', dni: '', empresa: 'Danaide' });
+  _pvRenderPaso();
+}
+window._pvAgregarViajero = _pvAgregarViajero;
+
+function _pvEliminarViajero(i) {
+  _pvGuardarPaso2();
+  _pv.viajeros.splice(i, 1);
+  _pvRenderPaso();
+}
+window._pvEliminarViajero = _pvEliminarViajero;
+
+function _pvAgregarParada() {
+  _pvGuardarPaso3();
+  _pv.paradas.push({ ciudad: '', provincia: '', noches: '', fecha: '' });
+  _pvRenderPaso();
+}
+window._pvAgregarParada = _pvAgregarParada;
+
+function _pvEliminarParada(i) {
+  _pvGuardarPaso3();
+  _pv.paradas.splice(i, 1);
+  _pvRenderPaso();
+}
+window._pvEliminarParada = _pvEliminarParada;
+
+function _pvGuardarPaso1() {
+  _pv.proyecto       = document.getElementById('pv-proyecto')?.value.trim() || _pv.proyecto;
+  _pv.centroCosto    = document.getElementById('pv-centro-costo')?.value.trim() || _pv.centroCosto;
+  _pv.fechaInicio    = document.getElementById('pv-fecha-inicio')?.value || _pv.fechaInicio;
+  _pv.fechaFin       = document.getElementById('pv-fecha-fin')?.value || _pv.fechaFin;
+  _pv.kmEstimados    = document.getElementById('pv-km')?.value || _pv.kmEstimados;
+  _pv.responsableArea= document.getElementById('pv-responsable')?.value.trim() || _pv.responsableArea;
+}
+
+function _pvGuardarPaso2() {
+  // Los viajeros se guardan inline con oninput, nada extra que hacer
+}
+
+function _pvGuardarPaso3() {
+  _pv.urlRecorrido   = document.getElementById('pv-url-recorrido')?.value.trim() || _pv.urlRecorrido;
+  _pv.observaciones  = document.getElementById('pv-observaciones')?.value.trim() || _pv.observaciones;
+  _pv.franjaHorariaIda    = document.getElementById('pv-franjaHorariaIda')?.value || _pv.franjaHorariaIda;
+  _pv.franjaHorariaVuelta = document.getElementById('pv-franjaHorariaVuelta')?.value || _pv.franjaHorariaVuelta;
+}
+
+function _pvSiguiente() {
+  if (_pv.paso === 1) {
+    _pvGuardarPaso1();
+    if (!_pv.proyecto || !_pv.centroCosto || !_pv.fechaInicio || !_pv.fechaFin) {
+      showToast('Completá proyecto, centro de costo y fechas', 'error'); return;
+    }
+    if (_pv.fechaFin < _pv.fechaInicio) {
+      showToast('La fecha de fin no puede ser anterior al inicio', 'error'); return;
+    }
+  }
+  if (_pv.paso === 2) {
+    _pvGuardarPaso2();
+    const invalido = _pv.viajeros.find(v => !v.nombre.trim() || !v.apellido.trim() || !v.dni.trim());
+    if (invalido) { showToast('Completá nombre, apellido y DNI de cada viajero', 'error'); return; }
+  }
+  _pv.paso++;
+  _pvRenderPaso();
+}
+window._pvSiguiente = _pvSiguiente;
+
+function _pvAnterior() {
+  if (_pv.paso === 2) _pvGuardarPaso2();
+  if (_pv.paso === 3) _pvGuardarPaso3();
+  _pv.paso--;
+  _pvRenderPaso();
+}
+window._pvAnterior = _pvAnterior;
+
+function _pvGenerarUrlMaps() {
+  _pvGuardarPaso3();
+  const paradas = _pv.paradas.filter(p => p.ciudad.trim());
+  if (paradas.length < 2) { showToast('Agregá al menos 2 paradas para generar el recorrido', 'error'); return; }
+  const origen = encodeURIComponent(paradas[0].ciudad + (paradas[0].provincia ? ', ' + paradas[0].provincia : '') + ', Argentina');
+  const destino = encodeURIComponent(paradas[paradas.length - 1].ciudad + (paradas[paradas.length-1].provincia ? ', ' + paradas[paradas.length-1].provincia : '') + ', Argentina');
+  const waypoints = paradas.slice(1, -1).map(p => encodeURIComponent(p.ciudad + (p.provincia ? ', '+p.provincia : '') + ', Argentina')).join('|');
+  const url = `https://www.google.com/maps/dir/${origen}/${waypoints ? waypoints+'/' : ''}${destino}`;
+  _pv.urlRecorrido = url;
+  const inp = document.getElementById('pv-url-recorrido');
+  if (inp) inp.value = url;
+  showToast('Recorrido generado — podés editarlo', 'success');
+}
+window._pvGenerarUrlMaps = _pvGenerarUrlMaps;
+
+async function _pvGenerar() {
+  _pvGuardarPaso3();
+
+  // Validar paradas
+  const paradasValidas = _pv.paradas.filter(p => p.ciudad.trim());
+  if (paradasValidas.length === 0) { showToast('Agregá al menos una parada', 'error'); return; }
+
+  showToast('Generando PDF...', 'success');
+
+  try {
+    // Guardar en Firestore como registro
+    const registro = {
+      tipo: 'programacion',
+      userId: currentUser.id,
+      userName: currentUser.nombre || currentUser.email,
+      proyecto: _pv.proyecto,
+      centroCosto: _pv.centroCosto,
+      fechaInicio: _pv.fechaInicio,
+      fechaFin: _pv.fechaFin,
+      kmEstimados: _pv.kmEstimados,
+      responsableArea: _pv.responsableArea,
+      viajeros: _pv.viajeros,
+      paradas: paradasValidas,
+      servicios: _pv.servicios,
+      franjaHorariaIda: _pv.franjaHorariaIda,
+      franjaHorariaVuelta: _pv.franjaHorariaVuelta,
+      urlRecorrido: _pv.urlRecorrido,
+      observaciones: _pv.observaciones,
+      fechaCreacion: new Date().toISOString(),
+      estado: 'programado',
+    };
+    try { await fbSaveViaje(registro); } catch(e) { console.warn('No se pudo guardar en Firestore:', e.message); }
+
+    // Generar PDF
+    _pvGenerarPDF(paradasValidas);
+    closeModal('modal-programar-viaje');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+window._pvGenerar = _pvGenerar;
+
+function _pvGenerarPDF(paradasValidas) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  const M = 20; // margen izquierdo
+  const W = 170; // ancho útil
+  let y = 20;
+
+  const fmtFecha = iso => {
+    if (!iso) return '—';
+    const [yy, mm, dd] = iso.split('-');
+    return `${dd}/${mm}/${yy}`;
+  };
+
+  // ── Logo / Header ──
+  try {
+    doc.addImage(DANAIDE_LOGO, 'JPEG', M, y, 30, 12);
+  } catch(e) {}
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text('Danaide Enterprise', 170, y + 4, { align: 'right' });
+  doc.text('www.danaide.com.ar', 170, y + 8, { align: 'right' });
+  y += 18;
+
+  // ── Línea separadora ──
+  doc.setDrawColor(0, 212, 170);
+  doc.setLineWidth(0.8);
+  doc.line(M, y, M + W, y);
+  y += 8;
+
+  // ── Título ──
+  doc.setFontSize(14);
+  doc.setTextColor(15, 32, 39);
+  doc.setFont(undefined, 'bold');
+  doc.text(`Solicitud de Viaje — ${_pv.proyecto}`, M, y);
+  y += 7;
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(100);
+  doc.text(`Generado el ${new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })} por ${currentUser.nombre || currentUser.email}`, M, y);
+  y += 10;
+
+  // ── Cuerpo tipo mail ──
+  doc.setFontSize(10);
+  doc.setTextColor(30);
+  doc.setFont(undefined, 'normal');
+
+  const linea = (txt, bold=false, indent=0) => {
+    doc.setFont(undefined, bold ? 'bold' : 'normal');
+    const lines = doc.splitTextToSize(txt, W - indent);
+    doc.text(lines, M + indent, y);
+    y += lines.length * 5.5;
+  };
+
+  const espacio = (mm=4) => { y += mm; };
+
+  linea('Buenos días, dejo el itinerario para gestionar hospedajes y viáticos.');
+  espacio();
+
+  // Servicios requeridos
+  const srvLabels = [];
+  if (_pv.servicios.hospedaje && _pv.servicios.cochera) srvLabels.push('Hospedaje con cochera');
+  else if (_pv.servicios.hospedaje) srvLabels.push('Hospedaje');
+  if (_pv.servicios.alquilerAuto) srvLabels.push('Alquiler de auto');
+  if (_pv.servicios.vuelo) srvLabels.push('Vuelo');
+  if (_pv.servicios.vehiculoPropio) srvLabels.push('Vehículo propio');
+
+  if (srvLabels.length > 0) {
+    linea(srvLabels.join(' · ') + ':', true);
+    paradasValidas.forEach(p => {
+      const nochesStr = p.noches ? ` — ${p.noches} noche${p.noches>1?'s':''}` : '';
+      const fechaStr = p.fecha ? ` ${fmtFecha(p.fecha)}` : '';
+      linea(`${p.ciudad}${p.provincia ? ', '+p.provincia : ''}${nochesStr}${fechaStr}`, false, 4);
+    });
+    espacio();
+  }
+
+  // Viáticos
+  linea('Viáticos', true);
+  linea(`Inicio: ${fmtFecha(_pv.fechaInicio)}`, false, 4);
+  linea(`Finaliza: ${fmtFecha(_pv.fechaFin)}`, false, 4);
+  espacio();
+
+  // Viajeros
+  linea(`Cant. de personas: ${_pv.viajeros.length}`, true);
+  _pv.viajeros.forEach(v => {
+    linea(`${v.nombre} ${v.apellido} (${v.empresa}) DNI ${v.dni}`, false, 4);
+  });
+  espacio();
+
+  // Vuelo
+  if (_pv.servicios.vuelo && (_pv.franjaHorariaIda || _pv.franjaHorariaVuelta)) {
+    linea('Preferencia de vuelo', true);
+    if (_pv.franjaHorariaIda) linea(`Salida: ${_pv.franjaHorariaIda}`, false, 4);
+    if (_pv.franjaHorariaVuelta) linea(`Regreso: ${_pv.franjaHorariaVuelta}`, false, 4);
+    espacio();
+  }
+
+  // Recorrido
+  if (_pv.urlRecorrido) {
+    linea('Recorrido a realizar', true);
+    doc.setTextColor(0, 112, 240);
+    const urlLines = doc.splitTextToSize(_pv.urlRecorrido, W - 4);
+    doc.text(urlLines, M + 4, y);
+    doc.link(M + 4, y - 4, W - 4, urlLines.length * 5.5, { url: _pv.urlRecorrido });
+    y += urlLines.length * 5.5;
+    doc.setTextColor(30);
+    espacio();
+  }
+
+  // Km estimados
+  if (_pv.kmEstimados) {
+    linea(`Incluir combustible teniendo en cuenta ${Number(_pv.kmEstimados).toLocaleString('es-AR')} km aproximadamente.`);
+    espacio();
+  }
+
+  // Observaciones
+  if (_pv.observaciones) {
+    linea(_pv.observaciones);
+    espacio();
+  }
+
+  // Proyecto / Centro de costo
+  linea(`Proyecto: ${_pv.proyecto}`, false);
+  linea(`Centro de costo: ${_pv.centroCosto}`, false);
+  espacio(6);
+
+  // Aviso CC
+  if (_pv.responsableArea) {
+    doc.setDrawColor(220);
+    doc.setLineWidth(0.3);
+    doc.line(M, y, M + W, y);
+    y += 5;
+    doc.setFontSize(8.5);
+    doc.setTextColor(120);
+    doc.setFont(undefined, 'bold');
+    doc.text(`⚠ Recordá incluir en copia a: ${_pv.responsableArea}`, M, y);
+    y += 4;
+    doc.setFont(undefined, 'normal');
+    doc.text('para verificación y autorización del viaje (requerido por política interna).', M, y);
+    y += 8;
+  }
+
+  // Anticipación
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text('Las solicitudes deben enviarse con mínimo 48 hs hábiles de anticipación y dentro del horario de pagos (11:00–14:00 hs).', M, y, { maxWidth: W });
+
+  // Footer
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(160);
+    doc.text(`ScanCheck — Danaide Enterprise · Página ${i} de ${totalPages}`, M + W / 2, 290, { align: 'center' });
+  }
+
+  const fecha = new Date().toISOString().split('T')[0];
+  const nombreArchivo = `Solicitud_Viaje_${_pv.proyecto.replace(/\s+/g,'-')}_${fecha}.pdf`;
+  doc.save(nombreArchivo);
+  showToast('✓ PDF descargado', 'success');
+}
+window._pvGenerarPDF = _pvGenerarPDF;
+// ── FIN PROGRAMAR VIAJE ───────────────────────────────────────
+
 async function calcularReporteService() {
   const fechaService = document.getElementById('inp-service-fecha')?.value;
   const kmService = parseInt(document.getElementById('inp-service-km')?.value);
@@ -5188,7 +5668,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v216'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v217'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
