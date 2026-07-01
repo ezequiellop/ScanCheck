@@ -318,6 +318,10 @@
               <label class="checklist-item"><input type="checkbox" id="chk-update-librerias"><span>Actualización de Librerías</span></label>
               <label class="checklist-item"><input type="checkbox" id="chk-autoinicio-doc-auth"><span>Inicio Auto AssureID Document Authentication</span></label>
               <label class="checklist-item"><input type="checkbox" id="chk-autoinicio-sentinel"><span>Inicio Auto AssureID Sentinel Rest API</span></label>
+              <label class="checklist-item"><input type="checkbox" id="chk-camara-web" onchange="document.getElementById('chk-camara-web-detalle').style.display=this.checked?'block':'none'"><span>El puesto cuenta con cámara web (sacar foto de la instalación; si no tiene, foto del puesto para evaluar)</span></label>
+              <div id="chk-camara-web-detalle" style="display:none;padding:6px 0 4px 28px">
+                <input type="text" id="chk-camara-web-marca" placeholder="Marca y modelo (ej: Logitech C920)" maxlength="80" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+              </div>
             </div>
           </div>
         </div>
