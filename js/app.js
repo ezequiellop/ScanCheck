@@ -2349,8 +2349,11 @@ async function loadViajes() {
 // Persiste los viajes programados en localStorage para disponibilidad offline
 function _pvPersistirLocal() {
   try {
-    const programados = localViajes.filter(v => v.tipo === 'programacion' && !v.eliminado);
-    localStorage.setItem('scancheck_viajes_programados_'+currentUser.id, JSON.stringify(programados));
+    // Solo guardamos activos (programado + en curso) — completados viven en Firestore
+    const activos = localViajes.filter(v =>
+      v.tipo === 'programacion' && !v.eliminado && v.estado !== 'completado'
+    );
+    localStorage.setItem('scancheck_viajes_programados_'+currentUser.id, JSON.stringify(activos));
   } catch(e) {}
 }
 
@@ -2409,6 +2412,8 @@ function renderViajes() {
 
 // Muestra el formulario de inicio de viaje, con destino precargado si se indica
 function _mostrarFormIniciarViaje(destinoPrecargado = '') {
+  // Si se llama sin destino precargado, limpiar el viaje vinculado
+  if (!destinoPrecargado) window._pvViajeVinculadoId = null;
   const el = document.getElementById('modal-viaje-content');
   el.innerHTML = `
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🚗 Iniciar viaje</div>
@@ -2503,15 +2508,15 @@ function _mostrarSelectorViajesProgramados(programados) {
 }
 window._mostrarSelectorViajesProgramados = _mostrarSelectorViajesProgramados;
 
-// El técnico elige iniciar un viaje programado específico
-async function _pvIniciarDesdeSelector(id) {
+// El técnico elige iniciar un viaje programado específico.
+// NO cambia el estado aquí — el cambio ocurre solo cuando confirma el inicio del viaje.
+// Guardamos el fbId del viaje vinculado para usarlo en guardarInicioViaje().
+function _pvIniciarDesdeSelector(id) {
   const viaje = localViajes.find(v => (v.fbId === id || v.id === id));
   if (!viaje) { _mostrarFormIniciarViaje(); return; }
 
-  // Cambiar estado a "en curso" si todavía es "programado"
-  if (viaje.estado === 'programado') {
-    await pvCambiarEstado(id, 'en curso');
-  }
+  // Guardar referencia al viaje programado vinculado (sin cambiar estado todavía)
+  window._pvViajeVinculadoId = id;
 
   // Precargar destino con la primera parada del itinerario
   const primeraParada = (viaje.paradas||[]).find(p => p.ciudad?.trim());
@@ -2598,9 +2603,18 @@ async function guardarInicioViaje() {
   localViajes.unshift(viaje);
   viajeAbierto = viaje;
   try { localStorage.setItem('scancheck_viaje_abierto_'+currentUser.id, JSON.stringify(viaje)); } catch(e) {}
+
+  // Si hay un viaje programado vinculado, cambiar su estado a "en curso" ahora
+  // (el técnico confirmó el inicio del tramo, recién ahora actualizamos)
+  if (window._pvViajeVinculadoId) {
+    pvCambiarEstado(window._pvViajeVinculadoId, 'en curso').catch(e => console.warn('Error actualizando estado viaje programado:', e));
+    window._pvViajeVinculadoId = null;
+  }
+
   closeModal('modal-viaje');
   renderViajeAbiertoBanner();
   renderViajes();
+  renderViajesProgramados();
 
   if (navigator.onLine) {
     try {
@@ -3393,60 +3407,142 @@ function renderViajesProgramados() {
   const el = document.getElementById('viajes-programados-list');
   if (!el) return;
 
-  const programados = localViajes.filter(v =>
-    v.tipo === 'programacion' && !v.eliminado
-  ).sort((a, b) => (b.fechaCreacion||'').localeCompare(a.fechaCreacion||''));
+  const fmtF = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+  const estadoCfg = {
+    programado: { color:'#3b82f6', bg:'rgba(59,130,246,.12)', label:'Programado', icon:'🗓️' },
+    'en curso':  { color:'#f59e0b', bg:'rgba(245,158,11,.12)', label:'En curso',  icon:'🚀' },
+    completado:  { color:'#22c55e', bg:'rgba(34,197,94,.12)',  label:'Completado', icon:'✅' },
+  };
 
-  if (programados.length === 0) {
-    el.innerHTML = '<div class="empty-state"><p>Sin viajes programados</p></div>';
-    return;
-  }
-
-  el.innerHTML = programados.map(v => {
+  const mkCard = v => {
     const estado = v.estado || 'programado';
-    const estadoConfig = {
-      programado: { color: '#3b82f6', bg: 'rgba(59,130,246,.12)', label: 'Programado', icon: '🗓️' },
-      'en curso':  { color: '#f59e0b', bg: 'rgba(245,158,11,.12)', label: 'En curso',  icon: '🚀' },
-      completado:  { color: '#22c55e', bg: 'rgba(34,197,94,.12)',  label: 'Completado', icon: '✅' },
-    };
-    const cfg = estadoConfig[estado] || estadoConfig.programado;
-    const fmtFecha = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
-    const version = v.version || 1;
-    const viajeros = (v.viajeros||[]).map(p => `${p.nombre} ${p.apellido}`).join(', ') || '—';
-    const paradas = (v.paradas||[]).map(p => p.ciudad).filter(Boolean).join(' → ') || '—';
-
-    // Botones según estado
-    let botonesEstado = '';
-    if (estado === 'programado') {
-      botonesEstado = `<button onclick="_pvIniciarDesdeListado('${v.fbId||v.id}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer">🚀 Iniciar</button>`;
-    } else if (estado === 'en curso') {
-      botonesEstado = `<button onclick="pvCambiarEstado('${v.fbId}','completado')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:#22c55e;font-size:12px;font-weight:600;cursor:pointer">✅ Completar</button>`;
-    }
-
+    const cfg = estadoCfg[estado] || estadoCfg.programado;
+    const id = v.fbId || v.id;
+    const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ') || '—';
+    const viajeros = (v.viajeros||[]).map(p=>`${p.nombre} ${p.apellido}`).join(', ') || '—';
+    let botEstado = '';
+    if (estado === 'programado')
+      botEstado = `<button onclick="_pvIniciarDesdeListado('${id}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer">🚀 Iniciar</button>`;
+    else if (estado === 'en curso')
+      botEstado = `<button onclick="pvCompletarViajeProg('${id}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:#22c55e;font-size:12px;font-weight:600;cursor:pointer">✅ Completar</button>`;
+    const botElim = `<button onclick="pvEliminarProgramado('${id}')" style="width:34px;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.08);color:#e55;font-size:13px;cursor:pointer;flex-shrink:0">🗑</button>`;
+    const botEdit = estado !== 'completado' ? `<button onclick="pvEditarViaje('${id}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">✏️ Reprogramar</button>` : '';
     return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(v.proyecto||'Sin proyecto')}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(v.centroCosto||'—')} · ${fmtFecha(v.fechaInicio)} – ${fmtFecha(v.fechaFin)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(v.centroCosto||'—')} · ${fmtF(v.fechaInicio)} – ${fmtF(v.fechaFin)}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;padding-left:8px">
           <div style="background:${cfg.bg};color:${cfg.color};border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600">${cfg.icon} ${cfg.label}</div>
-          <div style="font-size:10px;color:var(--text3)">v${version}</div>
+          <div style="font-size:10px;color:var(--text3)">v${v.version||1}</div>
         </div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📍 ${escHtml(paradas)}</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">👤 ${escHtml(viajeros)}</div>
-      <div style="display:flex;gap:8px">
-        ${estado !== 'completado' ? `<button onclick="pvEditarViaje('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">✏️ Reprogramar</button>` : ''}
-        ${botonesEstado}
-        <button onclick="pvEliminarProgramado('${v.fbId}')" style="width:34px;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.08);color:#e55;font-size:13px;cursor:pointer;flex-shrink:0">🗑</button>
-      </div>
+      <div style="display:flex;gap:8px">${botEdit}${botEstado}${botElim}</div>
     </div>`;
-  }).join('');
+  };
+
+  // Activos en memoria (programado + en curso)
+  const activos = localViajes
+    .filter(v => v.tipo === 'programacion' && !v.eliminado && v.estado !== 'completado')
+    .sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+
+  const htmlActivos = activos.length > 0
+    ? activos.map(mkCard).join('')
+    : '<div class="empty-state" style="margin-bottom:8px"><p>Sin viajes activos</p></div>';
+
+  // Completados: se cargan on-demand desde Firestore para no ocupar localStorage
+  const secCompletados = `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px;display:flex;justify-content:space-between;align-items:center">
+    <span>Completados</span>
+    <button id="btn-ver-completados" onclick="pvCargarCompletados()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">Ver</button>
+  </div>
+  <div id="viajes-completados-list"><div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div></div>`;
+
+  el.innerHTML = htmlActivos + secCompletados;
 }
 window.renderViajesProgramados = renderViajesProgramados;
 
+// Completa un viaje programado: cambia estado en Firestore y lo saca de localViajes
+async function pvCompletarViajeProg(id) {
+  const ahora = new Date().toISOString();
+  // Actualizar en Firestore
+  const v = localViajes.find(v => v.fbId === id || v.id === id);
+  if (!v) return;
+  if (navigator.onLine && (v.fbId && !v.fbId.startsWith('pv_'))) {
+    try { await fbUpdateViaje(v.fbId, { estado: 'completado', ultimaModificacion: ahora }); }
+    catch(e) { showToast('Error al completar: ' + e.message, 'error'); return; }
+  }
+  // Sacar de localViajes (ya está en Firestore, no ocupa más localStorage)
+  const idx = localViajes.findIndex(v => v.fbId === id || v.id === id);
+  if (idx !== -1) localViajes.splice(idx, 1);
+  _pvPersistirLocal();
+  renderViajesProgramados();
+  showToast('✅ Viaje completado y archivado', 'success');
+}
+window.pvCompletarViajeProg = pvCompletarViajeProg;
+
+// Carga los viajes completados desde Firestore on-demand (no se guardan en localStorage)
+async function pvCargarCompletados() {
+  const el = document.getElementById('viajes-completados-list');
+  const btn = document.getElementById('btn-ver-completados');
+  if (!el) return;
+
+  // Toggle: si ya están cargados, ocultar
+  if (el.dataset.cargado === '1') {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div>';
+    el.dataset.cargado = '0';
+    if (btn) btn.textContent = 'Ver';
+    return;
+  }
+
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Cargando...</div>';
+  if (btn) btn.textContent = 'Ocultar';
+
+  if (!navigator.onLine) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px">Sin conexión — los completados se sincronizan en línea</div>';
+    if (btn) btn.textContent = 'Ver';
+    return;
+  }
+
+  try {
+    const todos = await fbGetMyViajes(currentUser.id);
+    const completados = todos.filter(v =>
+      v.tipo === 'programacion' && !v.eliminado && v.estado === 'completado'
+    ).sort((a,b) => (b.ultimaModificacion||b.fechaFin||'').localeCompare(a.ultimaModificacion||a.fechaFin||''));
+
+    if (completados.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Sin viajes completados</div>';
+      el.dataset.cargado = '1';
+      return;
+    }
+
+    const fmtF = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    el.innerHTML = completados.map(v => {
+      const id = v.fbId || v.id;
+      const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ') || '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);opacity:.85">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.proyecto||'—')}</div>
+          <div style="color:#22c55e;font-size:10px;font-weight:600">✅ Completado</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">${fmtF(v.fechaInicio)} – ${fmtF(v.fechaFin)} · v${v.version||1}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">📍 ${escHtml(paradas)}</div>
+        <button onclick="pvEliminarProgramado('${id}')" style="width:100%;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.06);color:#e55;font-size:12px;font-weight:600;cursor:pointer">🗑 Eliminar</button>
+      </div>`;
+    }).join('');
+    el.dataset.cargado = '1';
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#e55;text-align:center;padding:8px">Error: ${escHtml(e.message)}</div>`;
+    if (btn) btn.textContent = 'Ver';
+  }
+}
+window.pvCargarCompletados = pvCargarCompletados;
+
 async function pvCambiarEstado(fbId, nuevoEstado) {
+  // 'completado' tiene su propio flujo en pvCompletarViajeProg
+  if (nuevoEstado === 'completado') { await pvCompletarViajeProg(fbId); return; }
   // Actualizar en memoria siempre
   const idx = localViajes.findIndex(v => v.fbId === fbId || v.id === fbId);
   const ahora = new Date().toISOString();
@@ -6138,7 +6234,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v222'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v224'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
