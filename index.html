@@ -426,6 +426,9 @@
       <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showIniciarViaje()">🚗 Iniciar nuevo viaje</button>
       <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showProgramarViaje()">🗓️ Programar viaje</button>
       <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showReporteService()">🔧 Reporte para Service</button>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 0 8px">Viajes programados</div>
+      <div id="viajes-programados-list"><div class="empty-state"><p>Sin viajes programados</p></div></div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:16px 0 8px">Historial de km</div>
       <div id="viajes-list"><div class="empty-state"><p>Sin viajes registrados</p></div></div>
     </div>
 
@@ -438,7 +441,8 @@
         <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
         <button class="sup-tab" onclick="supTab('export',this)">Exportar</button>
         <button class="sup-tab" onclick="supTab('storage',this)">Storage</button>
-        <button class="sup-tab" onclick="supTab('viajes',this)">Viajes</button>
+        <button class="sup-tab" onclick="supTab('viajes',this)">Viajes km</button>
+        <button class="sup-tab" onclick="supTab('programados',this)">Programados</button>
       </div>
       <div id="sup-informes" class="sup-panel">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
@@ -469,6 +473,14 @@
           </div>
         </div>
         <div id="sup-viajes-content"><div class="empty-state"><p>Tocá Actualizar para cargar</p></div></div>
+      </div>
+
+      <div id="sup-programados" class="sup-panel hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:700;color:var(--text)">🗓️ Viajes Programados</div>
+          <button class="btn-ghost small" onclick="loadSupProgramados()">↻ Actualizar</button>
+        </div>
+        <div id="sup-programados-content"><div class="empty-state"><p>Tocá Actualizar para cargar</p></div></div>
       </div>
 
       <div id="sup-export" class="sup-panel hidden">
