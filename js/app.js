@@ -1122,7 +1122,7 @@ function resetNewScanForm() {
   ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
   { const el=document.getElementById('inp-scanner-estado'); if(el) el.classList.add('select-placeholder'); }
   const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
-  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias','chk-autoinicio-doc-auth','chk-autoinicio-sentinel',
+  ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias','chk-autoinicio-doc-auth','chk-autoinicio-sentinel','chk-camara-web',
    'chki-fuente-conectada','chki-usb3','chki-drivers-desko','chki-librerias-desko','chki-aplicativos-desko','chki-assureid-librerias','chki-autoinicio-doc-auth','chki-autoinicio-sentinel','chki-settings-sensitivity','chki-prueba-revealid','chki-prueba-sicam',
    'falla-alimentacion','falla-cristal','falla-usb','falla-mrz','falla-chip','falla-sensor','falla-irrojo','falla-mecanica','falla-intermitente','falla-dano-fisico','falla-obsolescencia','falla-otro-check',
    'rep-fuente','rep-cristal','rep-usb','rep-software','rep-esponja','rep-otro-check'
@@ -1554,7 +1554,9 @@ async function saveScan() {
     updateAssureId:  document.getElementById('chk-update-assureid').checked,
     updateLibrerias: document.getElementById('chk-update-librerias').checked,
     autoInicioDocAuth:  document.getElementById('chk-autoinicio-doc-auth').checked,
-    autoInicioSentinel: document.getElementById('chk-autoinicio-sentinel').checked
+    autoInicioSentinel: document.getElementById('chk-autoinicio-sentinel').checked,
+    camaraWeb:          document.getElementById('chk-camara-web').checked,
+    camaraWebMarca:     document.getElementById('chk-camara-web').checked ? (document.getElementById('chk-camara-web-marca')?.value.trim() || '') : ''
   };
 
   // Checklist de instalación (equipo nuevo) — solo relevante cuando opTypeReal es instalacion_*
@@ -1948,12 +1950,20 @@ function editScan(id) {
         updateAssureId:     'chk-update-assureid',
         updateLibrerias:    'chk-update-librerias',
         autoInicioDocAuth:  'chk-autoinicio-doc-auth',
-        autoInicioSentinel: 'chk-autoinicio-sentinel'
+        autoInicioSentinel: 'chk-autoinicio-sentinel',
+        camaraWeb:          'chk-camara-web'
       };
       Object.entries(chkMap).forEach(([key, elId]) => {
         const el = document.getElementById(elId);
         if (el) el.checked = !!scan.checklist[key];
       });
+      // Restaurar marca/modelo de cámara si aplica
+      if (scan.checklist.camaraWeb) {
+        const det = document.getElementById('chk-camara-web-detalle');
+        const marca = document.getElementById('chk-camara-web-marca');
+        if (det) det.style.display = 'block';
+        if (marca) marca.value = scan.checklist.camaraWebMarca || '';
+      }
     }
     if (scan.checklistInstalacion) {
       const chkiMap = {
@@ -2000,7 +2010,8 @@ const CHECKLIST_LABELS = {
   updateAssureId:  'Actualización de AssureID',
   updateLibrerias: 'Actualización de Librerías',
   autoInicioDocAuth:  'Inicio Auto AssureID Document Authentication',
-  autoInicioSentinel: 'Inicio Auto AssureID Sentinel Rest API'
+  autoInicioSentinel: 'Inicio Auto AssureID Sentinel Rest API',
+  camaraWeb:          'Puesto con cámara web (foto de instalación)'
 };
 
 const CHECKLIST_INSTALACION_LABELS = {
@@ -6266,7 +6277,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v226'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v228'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -6488,7 +6499,8 @@ function buildExportRows(allScans) {
     'Serie Retira', 'Serie Nueva', 'Falla Detectada (Acta)',
     'Equipo Retirado (Contrato Anterior) Marca', 'Equipo Retirado (Contrato Anterior) Serie',
     'Ticket Jira',
-    'Check Vidrio', 'Check Cable USB', 'Check Fuente', 'Check Limpieza'
+    'Check Vidrio', 'Check Cable USB', 'Check Fuente', 'Check Limpieza',
+    'Cámara Web', 'Cámara Web Marca/Modelo'
   ];
   console.log(`Export: ${allScans.length} registros → ${deduplicated.length} tras deduplicar`);
   const rows = deduplicated.map(s => {
@@ -6532,7 +6544,9 @@ function buildExportRows(allScans) {
       ck.vidrio ? 'OK' : '',
       ck.cableUsb ? 'OK' : '',
       ck.fuente ? 'OK' : '',
-      ck.limpieza ? 'OK' : ''
+      ck.limpieza ? 'OK' : '',
+      ck.camaraWeb ? 'Sí' : 'No',
+      ck.camaraWeb ? (ck.camaraWebMarca || '') : ''
     ];
   });
   return [headers, ...rows];
