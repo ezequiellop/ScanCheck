@@ -69,13 +69,12 @@ async function processSyncQueue() {
         const ri = localReports.findIndex(r=>r.id===item.id);
         if (ri>=0) localReports[ri].fbId = fbId;
       } else if (item.type === 'viaje') {
-        // Sincronizar viaje que no llegó a Firestore por falta de conexión
+        // Sincronizar viaje de km que no llegó a Firestore por falta de conexión
         const fbId = await fbSaveViaje(item.data);
         const vi = localViajes.findIndex(v => v.id === item.data.id);
         if (vi !== -1) {
           localViajes[vi].fbId = fbId;
           if (viajeAbierto?.id === item.data.id) viajeAbierto.fbId = fbId;
-          // Actualizar localStorage con el fbId
           try {
             const stored = localStorage.getItem('scancheck_viaje_abierto_'+item.data.userId);
             if (stored) {
@@ -86,7 +85,37 @@ async function processSyncQueue() {
             }
           } catch(e) {}
         }
-        console.log('✓ Viaje sincronizado a Firestore (offline→online):', fbId);
+        console.log('✓ Viaje km sincronizado a Firestore:', fbId);
+      } else if (item.type === 'programacion') {
+        // Sincronizar viaje programado nuevo
+        const fbId = await fbSaveViaje(item.data);
+        const vi = localViajes.findIndex(v => v.id === item.data.id);
+        if (vi !== -1) {
+          localViajes[vi].fbId = fbId;
+          try {
+            const stored = localStorage.getItem('scancheck_viajes_programados_'+item.data.userId);
+            if (stored) {
+              const arr = JSON.parse(stored);
+              const pi = arr.findIndex(v => v.id === item.data.id);
+              if (pi !== -1) { arr[pi].fbId = fbId; localStorage.setItem('scancheck_viajes_programados_'+item.data.userId, JSON.stringify(arr)); }
+            }
+          } catch(e) {}
+        }
+        console.log('✓ Viaje programado sincronizado a Firestore:', fbId);
+      } else if (item.type === 'programacion_update') {
+        // Sincronizar actualización de viaje programado
+        const { fbId, id, ...datos } = item.data;
+        if (fbId && !fbId.startsWith('pv_')) {
+          await fbUpdateViaje(fbId, datos);
+          console.log('✓ Reprogramación sincronizada a Firestore:', fbId);
+        }
+      } else if (item.type === 'programacion_estado') {
+        // Sincronizar cambio de estado de viaje programado
+        const { fbId, id, ...datos } = item.data;
+        if (fbId && !fbId.startsWith('pv_')) {
+          await fbUpdateViaje(fbId, datos);
+          console.log('✓ Estado de viaje programado sincronizado:', fbId, datos.estado);
+        }
       }
     } catch(e) {
       console.warn('Sync queue item failed:', item.type, item.id, e.message);
@@ -2282,20 +2311,20 @@ async function loadViajes() {
     const todos = await fbGetMyViajes(currentUser.id);
     localViajes = todos.filter(v => !v.eliminado);
     viajeAbierto = localViajes.find(v => v.estado === 'abierto') || null;
-    // Si Firestore no tiene viaje abierto pero sí hay uno en localStorage
-    // (por ejemplo si la app se recargó antes de sincronizar), restaurarlo
+    // Si Firestore no tiene viaje abierto pero sí hay uno en localStorage restaurarlo
     if (!viajeAbierto) {
       try {
         const stored = localStorage.getItem('scancheck_viaje_abierto_'+currentUser.id);
         if (stored) {
           const v = JSON.parse(stored);
-          // Solo restaurar si tiene menos de 7 días (viaje muy viejo probablemente es basura)
           const age = Date.now() - new Date(v.fechaSalida).getTime();
           if (age < 7*24*60*60*1000) viajeAbierto = v;
           else localStorage.removeItem('scancheck_viaje_abierto_'+currentUser.id);
         }
       } catch(e) {}
     }
+    // Persistir viajes programados en localStorage para acceso offline
+    _pvPersistirLocal();
   } catch(e) {
     localViajes = [];
     // Si Firestore falla, intentar con localStorage
@@ -2303,9 +2332,26 @@ async function loadViajes() {
       const stored = localStorage.getItem('scancheck_viaje_abierto_'+currentUser.id);
       if (stored) viajeAbierto = JSON.parse(stored);
     } catch(e2) {}
+    // Restaurar viajes programados desde localStorage
+    try {
+      const stored = localStorage.getItem('scancheck_viajes_programados_'+currentUser.id);
+      if (stored) {
+        const programados = JSON.parse(stored);
+        localViajes = [...localViajes, ...programados];
+      }
+    } catch(e2) {}
   }
   renderViajes();
+  renderViajesProgramados();
   renderViajeAbiertoBanner();
+}
+
+// Persiste los viajes programados en localStorage para disponibilidad offline
+function _pvPersistirLocal() {
+  try {
+    const programados = localViajes.filter(v => v.tipo === 'programacion' && !v.eliminado);
+    localStorage.setItem('scancheck_viajes_programados_'+currentUser.id, JSON.stringify(programados));
+  } catch(e) {}
 }
 
 function renderViajeAbiertoBanner() {
@@ -2739,7 +2785,13 @@ function _pvRenderPaso() {
 }
 
 function _pvPaso1HTML() {
-  return `
+  const motivoHTML = _pv.fbId ? `
+    <div class="form-group">
+      <label>Motivo de la modificación *</label>
+      <textarea id="pv-motivo" rows="2" placeholder="Ej: Condiciones climáticas adversas en el paso, demoras por fallas en máquinas..." maxlength="200" style="resize:vertical">${escHtml(_pv.motivoModificacion||'')}</textarea>
+    </div>` : '';
+  const versionBadge = _pv.fbId ? `<div style="display:inline-block;background:rgba(0,212,170,.15);color:var(--accent);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;margin-bottom:12px">Versión ${(_pv.version||1)+1} — Reprogramación</div>` : '';
+  return `${versionBadge}${motivoHTML}
     <div class="form-group">
       <label>Proyecto *</label>
       <input type="text" id="pv-proyecto" placeholder="Ej: Proyecto Escáneres DNM" maxlength="80" value="${escHtml(_pv.proyecto)}">
@@ -2884,12 +2936,14 @@ function _pvEliminarParada(i) {
 window._pvEliminarParada = _pvEliminarParada;
 
 function _pvGuardarPaso1() {
-  _pv.proyecto       = document.getElementById('pv-proyecto')?.value.trim() || _pv.proyecto;
-  _pv.centroCosto    = document.getElementById('pv-centro-costo')?.value.trim() || _pv.centroCosto;
-  _pv.fechaInicio    = document.getElementById('pv-fecha-inicio')?.value || _pv.fechaInicio;
-  _pv.fechaFin       = document.getElementById('pv-fecha-fin')?.value || _pv.fechaFin;
-  _pv.kmEstimados    = document.getElementById('pv-km')?.value || _pv.kmEstimados;
-  _pv.responsableArea= document.getElementById('pv-responsable')?.value.trim() || _pv.responsableArea;
+  _pv.proyecto            = document.getElementById('pv-proyecto')?.value.trim() || _pv.proyecto;
+  _pv.centroCosto         = document.getElementById('pv-centro-costo')?.value.trim() || _pv.centroCosto;
+  _pv.fechaInicio         = document.getElementById('pv-fecha-inicio')?.value || _pv.fechaInicio;
+  _pv.fechaFin            = document.getElementById('pv-fecha-fin')?.value || _pv.fechaFin;
+  _pv.kmEstimados         = document.getElementById('pv-km')?.value || _pv.kmEstimados;
+  _pv.responsableArea     = document.getElementById('pv-responsable')?.value.trim() || _pv.responsableArea;
+  _pv.motivoModificacion  = document.getElementById('pv-motivo')?.value.trim() || _pv.motivoModificacion || '';
+  window._pv = _pv;
 }
 
 function _pvGuardarPaso2() {
@@ -2911,6 +2965,9 @@ function _pvSiguiente() {
     }
     if (_pv.fechaFin < _pv.fechaInicio) {
       showToast('La fecha de fin no puede ser anterior al inicio', 'error'); return;
+    }
+    if (_pv.fbId && !_pv.motivoModificacion) {
+      showToast('Ingresá el motivo de la modificación', 'error'); return;
     }
   }
   if (_pv.paso === 2) {
@@ -2957,39 +3014,88 @@ async function _pvGenerar() {
   showToast('Generando PDF...', 'success');
 
   try {
-    // Guardar en Firestore como registro
-    const registro = {
-      tipo: 'programacion',
-      userId: currentUser.id,
-      userName: currentUser.nombre || currentUser.email,
-      proyecto: _pv.proyecto,
-      centroCosto: _pv.centroCosto,
-      fechaInicio: _pv.fechaInicio,
-      fechaFin: _pv.fechaFin,
-      kmEstimados: _pv.kmEstimados,
-      responsableArea: _pv.responsableArea,
-      viajeros: _pv.viajeros,
-      paradas: paradasValidas,
-      servicios: _pv.servicios,
-      franjaHorariaIda: _pv.franjaHorariaIda,
-      franjaHorariaVuelta: _pv.franjaHorariaVuelta,
-      urlRecorrido: _pv.urlRecorrido,
-      observaciones: _pv.observaciones,
-      fechaCreacion: new Date().toISOString(),
-      estado: 'programado',
-    };
-    try { await fbSaveViaje(registro); } catch(e) { console.warn('No se pudo guardar en Firestore:', e.message); }
+    const ahora = new Date().toISOString();
 
-    // Generar PDF
-    _pvGenerarPDF(paradasValidas);
+    if (_pv.fbId) {
+      // ── Modificación de viaje existente ──────────────────────
+      const versionAnterior = _pv.version || 1;
+      const nuevaVersion = versionAnterior + 1;
+      const historial = _pv.historialVersiones || [];
+      historial.push({ version: versionAnterior, fecha: ahora, motivo: _pv.motivoModificacion || '' });
+      const actualizado = {
+        proyecto: _pv.proyecto, centroCosto: _pv.centroCosto,
+        fechaInicio: _pv.fechaInicio, fechaFin: _pv.fechaFin,
+        kmEstimados: _pv.kmEstimados, responsableArea: _pv.responsableArea,
+        viajeros: _pv.viajeros, paradas: paradasValidas, servicios: _pv.servicios,
+        franjaHorariaIda: _pv.franjaHorariaIda, franjaHorariaVuelta: _pv.franjaHorariaVuelta,
+        urlRecorrido: _pv.urlRecorrido, observaciones: _pv.observaciones,
+        version: nuevaVersion, historialVersiones: historial,
+        ultimaModificacion: ahora, motivoModificacion: _pv.motivoModificacion || '',
+      };
+      // Actualizar en memoria siempre
+      const idx = localViajes.findIndex(v => v.fbId === _pv.fbId);
+      if (idx !== -1) localViajes[idx] = { ...localViajes[idx], ...actualizado };
+      // Persistir offline
+      _pvPersistirLocal();
+      if (navigator.onLine) {
+        try { await fbUpdateViaje(_pv.fbId, actualizado); }
+        catch(e) {
+          // Si falla online, encolar para reintentar
+          queueAdd('programacion_update', { id: _pv.fbId, fbId: _pv.fbId, ...actualizado });
+          showToast('Sin conexión — se sincronizará al reconectar', '');
+        }
+      } else {
+        queueAdd('programacion_update', { id: _pv.fbId, fbId: _pv.fbId, ...actualizado });
+        showToast('Sin conexión — se sincronizará al reconectar', '');
+      }
+      _pvGenerarPDF(paradasValidas, nuevaVersion);
+    } else {
+      // ── Viaje nuevo ──────────────────────────────────────────
+      const localId = 'pv_' + Date.now();
+      const registro = {
+        id: localId,
+        tipo: 'programacion',
+        userId: currentUser.id,
+        userName: currentUser.nombre || currentUser.email,
+        proyecto: _pv.proyecto, centroCosto: _pv.centroCosto,
+        fechaInicio: _pv.fechaInicio, fechaFin: _pv.fechaFin,
+        kmEstimados: _pv.kmEstimados, responsableArea: _pv.responsableArea,
+        viajeros: _pv.viajeros, paradas: paradasValidas, servicios: _pv.servicios,
+        franjaHorariaIda: _pv.franjaHorariaIda, franjaHorariaVuelta: _pv.franjaHorariaVuelta,
+        urlRecorrido: _pv.urlRecorrido, observaciones: _pv.observaciones,
+        fechaCreacion: ahora, estado: 'programado', version: 1, historialVersiones: [],
+      };
+      // Guardar en memoria siempre
+      localViajes.push(registro);
+      _pvPersistirLocal();
+      if (navigator.onLine) {
+        try {
+          const fbId = await fbSaveViaje(registro);
+          registro.fbId = fbId;
+          const idx = localViajes.findIndex(v => v.id === localId);
+          if (idx !== -1) localViajes[idx].fbId = fbId;
+          _pvPersistirLocal();
+        } catch(e) {
+          queueAdd('programacion', registro);
+          showToast('Sin conexión — se sincronizará al reconectar', '');
+        }
+      } else {
+        queueAdd('programacion', registro);
+        showToast('Sin conexión — se sincronizará al reconectar', '');
+      }
+      _pvGenerarPDF(paradasValidas, 1);
+    }
+
     closeModal('modal-programar-viaje');
+    renderViajes();
+    renderViajesProgramados();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
 }
 window._pvGenerar = _pvGenerar;
 
-function _pvGenerarPDF(paradasValidas) {
+function _pvGenerarPDF(paradasValidas, version=1) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
@@ -3009,9 +3115,23 @@ function _pvGenerarPDF(paradasValidas) {
   } catch(e) {}
   doc.setFontSize(9);
   doc.setTextColor(100);
-  doc.text('Danaide Enterprise', 170, y + 4, { align: 'right' });
+  doc.text(`Danaide Enterprise · v${version}`, 170, y + 4, { align: 'right' });
   doc.text('www.danaide.com.ar', 170, y + 8, { align: 'right' });
   y += 18;
+
+  // ── Banner de reprogramación si aplica ──
+  if (version > 1 && _pv.motivoModificacion) {
+    doc.setFillColor(255, 243, 205);
+    doc.roundedRect(M, y, W, 12, 2, 2, 'F');
+    doc.setFontSize(8.5);
+    doc.setTextColor(120, 80, 0);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Reprogramación v${version}:`, M + 3, y + 5);
+    doc.setFont(undefined, 'normal');
+    const motivoLines = doc.splitTextToSize(_pv.motivoModificacion, W - 40);
+    doc.text(motivoLines, M + 35, y + 5);
+    y += 16;
+  }
 
   // ── Línea separadora ──
   doc.setDrawColor(0, 212, 170);
@@ -3147,12 +3267,149 @@ function _pvGenerarPDF(paradasValidas) {
   }
 
   const fecha = new Date().toISOString().split('T')[0];
-  const nombreArchivo = `Solicitud_Viaje_${_pv.proyecto.replace(/\s+/g,'-')}_${fecha}.pdf`;
+  const nombreArchivo = `Solicitud_Viaje_${_pv.proyecto.replace(/\s+/g,'-')}_v${version}_${fecha}.pdf`;
   doc.save(nombreArchivo);
   showToast('✓ PDF descargado', 'success');
 }
 window._pvGenerarPDF = _pvGenerarPDF;
 // ── FIN PROGRAMAR VIAJE ───────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// ── VIAJES PROGRAMADOS — Lista y gestión ─────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function renderViajesProgramados() {
+  const el = document.getElementById('viajes-programados-list');
+  if (!el) return;
+
+  const programados = localViajes.filter(v =>
+    v.tipo === 'programacion' && !v.eliminado
+  ).sort((a, b) => (b.fechaCreacion||'').localeCompare(a.fechaCreacion||''));
+
+  if (programados.length === 0) {
+    el.innerHTML = '<div class="empty-state"><p>Sin viajes programados</p></div>';
+    return;
+  }
+
+  el.innerHTML = programados.map(v => {
+    const estado = v.estado || 'programado';
+    const estadoConfig = {
+      programado: { color: '#3b82f6', bg: 'rgba(59,130,246,.12)', label: 'Programado', icon: '🗓️' },
+      'en curso':  { color: '#f59e0b', bg: 'rgba(245,158,11,.12)', label: 'En curso',  icon: '🚀' },
+      completado:  { color: '#22c55e', bg: 'rgba(34,197,94,.12)',  label: 'Completado', icon: '✅' },
+    };
+    const cfg = estadoConfig[estado] || estadoConfig.programado;
+    const fmtFecha = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    const version = v.version || 1;
+    const viajeros = (v.viajeros||[]).map(p => `${p.nombre} ${p.apellido}`).join(', ') || '—';
+    const paradas = (v.paradas||[]).map(p => p.ciudad).filter(Boolean).join(' → ') || '—';
+
+    // Botones según estado
+    let botonesEstado = '';
+    if (estado === 'programado') {
+      botonesEstado = `<button onclick="pvCambiarEstado('${v.fbId}','en curso')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer">🚀 Iniciar</button>`;
+    } else if (estado === 'en curso') {
+      botonesEstado = `<button onclick="pvCambiarEstado('${v.fbId}','completado')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:#22c55e;font-size:12px;font-weight:600;cursor:pointer">✅ Completar</button>`;
+    }
+
+    return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(v.proyecto||'Sin proyecto')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(v.centroCosto||'—')} · ${fmtFecha(v.fechaInicio)} – ${fmtFecha(v.fechaFin)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;padding-left:8px">
+          <div style="background:${cfg.bg};color:${cfg.color};border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600">${cfg.icon} ${cfg.label}</div>
+          <div style="font-size:10px;color:var(--text3)">v${version}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📍 ${escHtml(paradas)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">👤 ${escHtml(viajeros)}</div>
+      <div style="display:flex;gap:8px">
+        ${estado !== 'completado' ? `<button onclick="pvEditarViaje('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">✏️ Reprogramar</button>` : ''}
+        ${botonesEstado}
+        <button onclick="pvEliminarProgramado('${v.fbId}')" style="width:34px;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.08);color:#e55;font-size:13px;cursor:pointer;flex-shrink:0">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.renderViajesProgramados = renderViajesProgramados;
+
+async function pvCambiarEstado(fbId, nuevoEstado) {
+  // Actualizar en memoria siempre
+  const idx = localViajes.findIndex(v => v.fbId === fbId || v.id === fbId);
+  const ahora = new Date().toISOString();
+  if (idx !== -1) {
+    localViajes[idx].estado = nuevoEstado;
+    localViajes[idx].ultimaModificacion = ahora;
+  }
+  _pvPersistirLocal();
+  renderViajesProgramados();
+  showToast(`Viaje marcado como ${nuevoEstado}`, 'success');
+  // Sincronizar con Firestore si hay conexión
+  if (fbId && fbId.startsWith('pv_')) {
+    // Todavía no tiene fbId real, encolar
+    queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora });
+    return;
+  }
+  if (navigator.onLine && fbId) {
+    try { await fbUpdateViaje(fbId, { estado: nuevoEstado, ultimaModificacion: ahora }); }
+    catch(e) { queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora }); }
+  } else {
+    queueAdd('programacion_estado', { id: fbId, fbId, estado: nuevoEstado, ultimaModificacion: ahora });
+  }
+}
+window.pvCambiarEstado = pvCambiarEstado;
+
+async function pvEliminarProgramado(fbId) {
+  if (!confirm('¿Eliminar este viaje programado? Va a la papelera del supervisor.')) return;
+  // Quitar de memoria y localStorage (desaparece de la vista del técnico)
+  const idx = localViajes.findIndex(v => v.fbId === fbId || v.id === fbId);
+  if (idx !== -1) localViajes.splice(idx, 1);
+  _pvPersistirLocal();
+  renderViajesProgramados();
+  showToast('Viaje enviado a la papelera', 'success');
+  // Soft-delete en Firestore (mismo patrón que el resto)
+  if (!fbId || fbId.startsWith('pv_')) return; // sin fbId real, no hay nada en Firestore
+  if (navigator.onLine) {
+    try { await fbSoftDeleteViaje(fbId, currentUser?.id); }
+    catch(e) { console.warn('Error en soft-delete Firestore:', e.message); }
+  }
+}
+window.pvEliminarProgramado = pvEliminarProgramado;
+
+function pvEditarViaje(fbId) {
+  const viaje = localViajes.find(v => v.fbId === fbId);
+  if (!viaje) { showToast('Viaje no encontrado', 'error'); return; }
+
+  // Cargar datos del viaje en el estado del wizard
+  window._pv = _pv = {
+    paso: 1,
+    fbId: viaje.fbId,
+    version: viaje.version || 1,
+    historialVersiones: viaje.historialVersiones || [],
+    motivoModificacion: '',
+    proyecto: viaje.proyecto || '',
+    centroCosto: viaje.centroCosto || '',
+    fechaInicio: viaje.fechaInicio || '',
+    fechaFin: viaje.fechaFin || '',
+    kmEstimados: viaje.kmEstimados || '',
+    responsableArea: viaje.responsableArea || '',
+    observaciones: viaje.observaciones || '',
+    viajeros: JSON.parse(JSON.stringify(viaje.viajeros || [{ nombre:'', apellido:'', dni:'', empresa:'Danaide' }])),
+    paradas: JSON.parse(JSON.stringify(viaje.paradas || [{ ciudad:'', provincia:'', noches:'', fecha:'' }])),
+    servicios: { ...{ vehiculoPropio:false, alquilerAuto:false, vuelo:false, hospedaje:false, cochera:false }, ...(viaje.servicios||{}) },
+    franjaHorariaIda: viaje.franjaHorariaIda || '',
+    franjaHorariaVuelta: viaje.franjaHorariaVuelta || '',
+    urlRecorrido: viaje.urlRecorrido || '',
+  };
+
+  document.getElementById('modal-programar-viaje').classList.remove('hidden');
+  _pvRenderPaso();
+}
+window.pvEditarViaje = pvEditarViaje;
+
+// ── FIN VIAJES PROGRAMADOS ────────────────────────────────────
 
 async function calcularReporteService() {
   const fechaService = document.getElementById('inp-service-fecha')?.value;
@@ -3412,9 +3669,15 @@ async function showPapeleraViajes() {
       el.innerHTML = '<div class="empty-state"><p>La papelera está vacía</p></div>';
       return;
     }
-    el.innerHTML = deleted.map(v => {
-      const fecha = new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'});
-      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);position:relative"><button onclick="eliminarViaje('${v.fbId}')" title="Eliminar viaje" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:rgba(238,85,51,.5);font-size:16px;cursor:pointer;padding:2px;line-height:1">🗑</button>
+
+    // Separar viajes de km de viajes programados
+    const viajesKm = deleted.filter(v => v.tipo !== 'programacion');
+    const programados = deleted.filter(v => v.tipo === 'programacion');
+
+    const htmlKm = viajesKm.map(v => {
+      const fecha = v.fechaSalida ? new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'2-digit'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">VIAJE KM</div>
         <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.userName||'—')} — ${escHtml(v.destinoLabel||'Sin destino')}</div>
         <div style="font-size:11px;color:var(--text3)">${fecha} · ${(v.kmRecorridos||0).toLocaleString()} km</div>
         <div style="display:flex;gap:8px;margin-top:8px">
@@ -3423,11 +3686,50 @@ async function showPapeleraViajes() {
         </div>
       </div>`;
     }).join('');
+
+    const htmlProg = programados.map(v => {
+      const fmtF = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ') || '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;color:#3b82f6;margin-bottom:4px">VIAJE PROGRAMADO · v${v.version||1}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.proyecto||'Sin proyecto')}</div>
+        <div style="font-size:11px;color:var(--text3)">${escHtml(v.userName||'—')} · ${fmtF(v.fechaInicio)} – ${fmtF(v.fechaFin)}</div>
+        <div style="font-size:11px;color:var(--text3)">📍 ${escHtml(paradas)}</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="restaurarViajeProgr('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent);color:#0a1628;font-size:12px;font-weight:600;cursor:pointer">↩ Restaurar</button>
+          <button onclick="borrarViajeDefinitivo('${v.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:#e53;color:#fff;font-size:12px;font-weight:600;cursor:pointer">✕ Borrar definitivamente</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const secKm = viajesKm.length > 0 ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:4px 0 8px">Viajes de km (${viajesKm.length})</div>
+      ${htmlKm}` : '';
+    const secProg = programados.length > 0 ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px">Viajes programados (${programados.length})</div>
+      ${htmlProg}` : '';
+
+    el.innerHTML = secKm + secProg;
   } catch(e) {
     el.innerHTML = `<div style="text-align:center;padding:20px;color:#e53">Error: ${e.message}</div>`;
   }
 }
 window.showPapeleraViajes = showPapeleraViajes;
+
+async function restaurarViajeProgr(fbId) {
+  try {
+    await fbRestoreViaje(fbId);
+    // Recargar en localViajes para que reaparezca en la vista del técnico
+    const todos = await fbGetMyViajes(currentUser.id);
+    localViajes = todos.filter(v => !v.eliminado);
+    _pvPersistirLocal();
+    renderViajesProgramados();
+    showToast('Viaje programado restaurado', 'success');
+    showPapeleraViajes();
+    loadSupProgramados();
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+window.restaurarViajeProgr = restaurarViajeProgr;
 
 async function restaurarViaje(fbId) {
   try {
@@ -5127,7 +5429,7 @@ window.eliminarRegistroDefinitivo = eliminarRegistroDefinitivo;
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','versiones','mapa','export','storage','viajes'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','tecnicos','versiones','mapa','export','storage','viajes','programados'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
@@ -5139,8 +5441,53 @@ function supTab(tab, btn) {
   if (tab==='versiones' && versionesObjetivo?.cambioDetectado) {
     fbMarcarVersionesVistas().catch(e => console.warn('Error marcando versiones vistas:', e));
   }
+  if (tab==='programados') loadSupProgramados();
 }
 window.supTab = supTab;
+
+// ── Supervisor: Viajes Programados ───────────────────────────
+async function loadSupProgramados() {
+  const el = document.getElementById('sup-programados-content');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-state"><p>Cargando...</p></div>';
+  try {
+    const todos = await fbGetAllViajes();
+    const programados = todos.filter(v => v.tipo === 'programacion' && !v.eliminado)
+      .sort((a,b) => (b.fechaCreacion||'').localeCompare(a.fechaCreacion||''));
+    if (programados.length === 0) {
+      el.innerHTML = '<div class="empty-state"><p>Sin viajes programados</p></div>';
+      return;
+    }
+    const estadoConfig = {
+      programado: { color:'#3b82f6', label:'Programado', icon:'🗓️' },
+      'en curso':  { color:'#f59e0b', label:'En curso',  icon:'🚀' },
+      completado:  { color:'#22c55e', label:'Completado', icon:'✅' },
+    };
+    const fmtFecha = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    el.innerHTML = programados.map(v => {
+      const cfg = estadoConfig[v.estado||'programado'] || estadoConfig.programado;
+      const viajeros = (v.viajeros||[]).map(p=>`${p.nombre} ${p.apellido} (${p.empresa})`).join(', ')||'—';
+      const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ')||'—';
+      const historial = (v.historialVersiones||[]).map(h=>
+        `<div style="font-size:10px;color:var(--text3);padding:2px 0">v${h.version} → ${fmtFecha(h.fecha)}: ${escHtml(h.motivo||'Sin motivo')}</div>`
+      ).join('');
+      return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.proyecto||'—')}</div>
+          <div style="color:${cfg.color};font-size:11px;font-weight:600">${cfg.icon} ${cfg.label} · v${v.version||1}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">👤 ${escHtml(v.userName||'—')} · ${escHtml(v.centroCosto||'—')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">📅 ${fmtFecha(v.fechaInicio)} – ${fmtFecha(v.fechaFin)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">📍 ${escHtml(paradas)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">👥 ${escHtml(viajeros)}</div>
+        ${historial ? `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px"><div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:2px">HISTORIAL DE VERSIONES</div>${historial}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+}
+window.loadSupProgramados = loadSupProgramados;
 
 // ── Monitor de Storage R2 ────────────────────────────────────
 async function loadStorageStats() {
@@ -5671,7 +6018,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v217'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v220'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
