@@ -3907,7 +3907,7 @@ async function showPapeleraViajes() {
     }).join('');
 
     const htmlProg = programados.map(v => {
-      const fmtF = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      const fmtF = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
       const paradas = (v.paradas||[]).map(p=>p.ciudad).filter(Boolean).join(' → ') || '—';
       return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
         <div style="font-size:10px;font-weight:700;color:#3b82f6;margin-bottom:4px">VIAJE PROGRAMADO · v${v.version||1}</div>
@@ -5682,7 +5682,7 @@ async function loadSupProgramados() {
       'en curso':  { color:'#f59e0b', label:'En curso',  icon:'🚀' },
       completado:  { color:'#22c55e', label:'Completado', icon:'✅' },
     };
-    const fmtFecha = iso => iso ? new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    const fmtFecha = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
     el.innerHTML = programados.map(v => {
       const cfg = estadoConfig[v.estado||'programado'] || estadoConfig.programado;
       const viajeros = (v.viajeros||[]).map(p=>`${p.nombre} ${p.apellido} (${p.empresa})`).join(', ')||'—';
@@ -5690,6 +5690,7 @@ async function loadSupProgramados() {
       const historial = (v.historialVersiones||[]).map(h=>
         `<div style="font-size:10px;color:var(--text3);padding:2px 0">v${h.version} → ${fmtFecha(h.fecha)}: ${escHtml(h.motivo||'Sin motivo')}</div>`
       ).join('');
+      const id = v.fbId || v.id;
       return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(v.proyecto||'—')}</div>
@@ -5698,8 +5699,9 @@ async function loadSupProgramados() {
         <div style="font-size:11px;color:var(--text3);margin-bottom:2px">👤 ${escHtml(v.userName||'—')} · ${escHtml(v.centroCosto||'—')}</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:2px">📅 ${fmtFecha(v.fechaInicio)} – ${fmtFecha(v.fechaFin)}</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:2px">📍 ${escHtml(paradas)}</div>
-        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">👥 ${escHtml(viajeros)}</div>
-        ${historial ? `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px"><div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:2px">HISTORIAL DE VERSIONES</div>${historial}</div>` : ''}
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">👥 ${escHtml(viajeros)}</div>
+        ${historial ? `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px;margin-bottom:8px"><div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:2px">HISTORIAL DE VERSIONES</div>${historial}</div>` : ''}
+        <button onclick="supEditarViajeProg('${id}')" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">✏️ Editar y generar informe</button>
       </div>`;
     }).join('');
   } catch(e) {
@@ -5707,6 +5709,33 @@ async function loadSupProgramados() {
   }
 }
 window.loadSupProgramados = loadSupProgramados;
+
+// Supervisor edita un viaje programado: lo carga en localViajes si no está
+// y abre el wizard de reprogramación igual que hace el técnico
+async function supEditarViajeProg(fbId) {
+  // Buscar en localViajes primero
+  let viaje = localViajes.find(v => v.fbId === fbId || v.id === fbId);
+
+  // Si no está en memoria (completado o de otro técnico), cargarlo desde Firestore
+  if (!viaje && navigator.onLine) {
+    try {
+      const todos = await fbGetAllViajes();
+      viaje = todos.find(v => v.fbId === fbId);
+      if (viaje && !localViajes.find(v => v.fbId === fbId)) {
+        localViajes.push(viaje); // agregar temporalmente a memoria
+      }
+    } catch(e) { showToast('Error al cargar viaje: ' + e.message, 'error'); return; }
+  }
+
+  if (!viaje) { showToast('No se pudo cargar el viaje', 'error'); return; }
+
+  // Usar la misma función que usa el técnico
+  pvEditarViaje(fbId);
+
+  // Asegurarse de que el modal esté visible (el supervisor puede estar en otra sección)
+  document.getElementById('modal-programar-viaje')?.classList.remove('hidden');
+}
+window.supEditarViajeProg = supEditarViajeProg;
 
 // ── Monitor de Storage R2 ────────────────────────────────────
 async function loadStorageStats() {
@@ -6237,7 +6266,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v225'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v226'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
