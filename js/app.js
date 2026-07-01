@@ -3177,7 +3177,10 @@ async function _pvGenerar() {
         userName: currentUser.nombre || currentUser.email,
         proyecto: _pv.proyecto, centroCosto: _pv.centroCosto,
         fechaInicio: _pv.fechaInicio, fechaFin: _pv.fechaFin,
+        // fechaSalida = fechaInicio para compatibilidad con índice de Firestore
+        fechaSalida: _pv.fechaInicio ? _pv.fechaInicio + 'T00:00:00.000Z' : ahora,
         kmEstimados: _pv.kmEstimados, responsableArea: _pv.responsableArea,
+        ciudadOrigen: _pv.ciudadOrigen || '',
         viajeros: _pv.viajeros, paradas: paradasValidas, servicios: _pv.servicios,
         franjaHorariaIda: _pv.franjaHorariaIda, franjaHorariaVuelta: _pv.franjaHorariaVuelta,
         urlRecorrido: _pv.urlRecorrido, observaciones: _pv.observaciones,
@@ -6234,7 +6237,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v224'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '30.06.2026-v225'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';

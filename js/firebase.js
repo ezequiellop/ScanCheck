@@ -305,15 +305,29 @@ export async function fbUpdateViaje(fbId, fields) {
 }
 
 export async function fbGetMyViajes(userId) {
-  const q = query(collection(db, "viajes"), where("userId","==",userId), orderBy("fechaSalida","desc"));
+  // Traer todos los viajes del usuario sin ordenar por campo que puede no existir
+  // (viajes de km tienen fechaSalida, programados tienen fechaCreacion)
+  const q = query(collection(db, "viajes"), where("userId","==",userId));
   const snap = await getDocsFromServer(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const docs = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  // Ordenar en memoria: viajes de km por fechaSalida, programados por fechaCreacion
+  return docs.sort((a, b) => {
+    const fa = a.fechaSalida || a.fechaCreacion || '';
+    const fb2 = b.fechaSalida || b.fechaCreacion || '';
+    return fb2.localeCompare(fa);
+  });
 }
 
 export async function fbGetAllViajes() {
-  const q = query(collection(db, "viajes"), orderBy("fechaSalida","desc"));
+  // Sin orderBy para que incluya tanto viajes de km como programados
+  const q = query(collection(db, "viajes"));
   const snap = await getDocsFromServer(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  const docs = snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+  return docs.sort((a, b) => {
+    const fa = a.fechaSalida || a.fechaCreacion || '';
+    const fb2 = b.fechaSalida || b.fechaCreacion || '';
+    return fb2.localeCompare(fa);
+  });
 }
 
 export async function fbSoftDeleteViaje(fbId, deletedByUserId) {
