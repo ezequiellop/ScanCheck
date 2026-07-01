@@ -2680,10 +2680,11 @@ window.showReporteService = showReporteService;
 
 // Estado del wizard (se resetea al abrir)
 let _pv = {};
+window._pv = _pv;
 
 function showProgramarViaje() {
   // Resetear estado
-  _pv = {
+  _pv = window._pv = {
     paso: 1,
     proyecto: '',
     centroCosto: '',
@@ -2848,6 +2849,7 @@ function _pvPaso3HTML() {
     </div>`;
 }
 
+window._pvActualizarVuelo = _pvActualizarVuelo;
 function _pvActualizarVuelo() {
   const el = document.getElementById('pv-vuelo-franjas');
   if (el) el.style.display = _pv.servicios.vuelo ? 'block' : 'none';
@@ -2920,6 +2922,7 @@ function _pvSiguiente() {
   _pvRenderPaso();
 }
 window._pvSiguiente = _pvSiguiente;
+window._pvRenderPaso = _pvRenderPaso;
 
 function _pvAnterior() {
   if (_pv.paso === 2) _pvGuardarPaso2();
