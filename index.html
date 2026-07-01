@@ -424,6 +424,7 @@
     <div id="page-viajes" class="page">
       <div id="viaje-abierto-banner"></div>
       <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showIniciarViaje()">🚗 Iniciar nuevo viaje</button>
+      <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showProgramarViaje()">🗓️ Programar viaje</button>
       <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showReporteService()">🔧 Reporte para Service</button>
       <div id="viajes-list"><div class="empty-state"><p>Sin viajes registrados</p></div></div>
     </div>
@@ -557,6 +558,15 @@
     <div class="modal-handle"></div>
     <div id="modal-jira-content"></div>
     <button class="btn-ghost" onclick="closeModal('modal-jira')" style="width:100%;margin-top:8px">Cerrar</button>
+  </div>
+</div>
+
+<!-- ── MODAL: PROGRAMAR VIAJE ── -->
+<div id="modal-programar-viaje" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-programar-viaje')"></div>
+  <div class="modal-sheet" style="max-height:92vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+    <div id="modal-programar-viaje-content"></div>
   </div>
 </div>
 
