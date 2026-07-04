@@ -1,1 +1,2 @@
-# ScanCheck
+# ScanCheck.
+
