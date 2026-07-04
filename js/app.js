@@ -7,7 +7,8 @@ import {
   fbGetAllUsers, fbGetVersionesObjetivo, fbWatchVersionesObjetivo, fbMarcarVersionesVistas, fbUpdateScan, fbReplaceScan,
   fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes,
   fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes,
-  fbSaveServiceData, fbGetServiceData
+  fbSaveServiceData, fbGetServiceData,
+  fbSaveServiceReport, fbGetMyServiceReports, fbGetAllServiceReports
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -2354,6 +2355,7 @@ async function loadViajes() {
   }
   renderViajes();
   renderViajesProgramados();
+  renderServiceReports();
   renderViajeAbiertoBanner();
 }
 
@@ -2385,7 +2387,7 @@ function renderViajeAbiertoBanner() {
 function renderViajes() {
   const el = document.getElementById('viajes-list');
   if (!el) return;
-  const cerrados = localViajes.filter(v => v.estado === 'cerrado');
+  const cerrados = localViajes.filter(v => v.estado === 'cerrado' && !v.serviceReportId);
   if (cerrados.length === 0) { el.innerHTML = '<div class="empty-state"><p>Sin viajes cerrados</p></div>'; return; }
   // Agrupar por mes
   const byMes = {};
@@ -2807,13 +2809,9 @@ async function showReporteService() {
       <label>Vehículo (marca, modelo, patente)</label>
       <input type="text" id="inp-service-vehiculo" placeholder="Ej: Renault Kangoo - AB 123 CD" value="${saved.vehiculo||''}">
     </div>
-    <div id="service-preview" style="display:none;background:var(--bg3);border-radius:10px;padding:12px;margin:12px 0"></div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-service')">Cancelar</button>
       <button class="btn-primary" style="flex:1" onclick="calcularReporteService()">Calcular</button>
-    </div>
-    <div id="service-pdf-btn" style="display:none;margin-top:10px">
-      <button class="btn-primary" style="width:100%;background:var(--accent2)" onclick="generarPDFService()">📄 Descargar PDF</button>
     </div>
   `;
 
@@ -3673,10 +3671,32 @@ async function calcularReporteService() {
   const kmTotales = kmActual - kmService;
   const pct = kmTotales > 0 ? Math.round(kmLaborales/kmTotales*100) : 0;
 
-  const preview = document.getElementById('service-preview');
-  preview.style.display = 'block';
-  preview.innerHTML = `
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">Resumen del período</div>
+  // Guardar datos calculados para la vista 2 y el guardado final
+  window._serviceData = { fechaService, kmService, kmActual, kmTotales, kmLaborales, pct, titular, vehiculo, viajesLaboral, fechaCorte, esPrimerReporte };
+
+  // ── VISTA 2: resumen con campos bloqueados, flecha atrás y botón Guardar ──
+  const el = document.getElementById('modal-service-content');
+  const fmtF = f => f ? new Date(f+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+  const campoRO = (label, valor) => `
+    <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--text3)">${label}</span>
+      <span style="font-size:12px;font-weight:600;color:var(--text)">${escHtml(String(valor||'—'))}</span>
+    </div>`;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button onclick="volverFormService()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;cursor:pointer;padding:4px 12px">←</button>
+      <div style="font-size:16px;font-weight:700;color:var(--text)">🔧 Resumen del reporte</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:12px">
+      ${campoRO('Fecha último service', fmtF(fechaService))}
+      ${campoRO('Km en el service', kmService.toLocaleString() + ' km')}
+      ${campoRO('Km actuales', kmActual.toLocaleString() + ' km')}
+      ${campoRO('Titular', titular)}
+      ${campoRO('Vehículo', vehiculo)}
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--accent)">${kmTotales.toLocaleString()}</div>
@@ -3692,26 +3712,108 @@ async function calcularReporteService() {
       </div>
       <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--text)">${viajesLaboral.length}</div>
-        <div style="font-size:10px;color:var(--text3)">Viajes registrados</div>
+        <div style="font-size:10px;color:var(--text3)">Tramos incluidos</div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text3)">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">
       ${esPrimerReporte
         ? 'Período: desde ' + new Date(fechaService+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ' → hoy'
         : 'Período: desde el último reporte generado (' + new Date(fechaCorte).toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'}) + ') → hoy'
       }
     </div>
-    ${viajesLaboral.length === 0 ? '<div style="margin-top:8px;padding:8px;background:rgba(238,85,51,.1);border-radius:8px;font-size:12px;color:#e53;text-align:center">No hay viajes nuevos desde el último reporte generado</div>' : ''}
-  `;
-
-  // Guardar para el PDF
-  window._serviceData = { fechaService, kmService, kmActual, kmTotales, kmLaborales, pct, titular, vehiculo, viajesLaboral, fechaCorte };
-  document.getElementById('service-pdf-btn').style.display = 'block';
+    ${viajesLaboral.length === 0 ? '<div style="margin-bottom:12px;padding:8px;background:rgba(238,85,51,.1);border-radius:8px;font-size:12px;color:#e53;text-align:center">No hay tramos nuevos desde el último reporte — no se puede guardar</div>' : ''}
+    <div style="display:flex;gap:10px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-service')">Cancelar</button>
+      <button class="btn-primary" style="flex:1;${viajesLaboral.length===0?'opacity:.4;pointer-events:none':''}" onclick="guardarReporteService()">💾 Guardar</button>
+    </div>`;
 }
 window.calcularReporteService = calcularReporteService;
 
-async function generarPDFService() {
+// Flecha atrás: vuelve a la vista 1 con los campos precargados para corregir
+function volverFormService() {
+  showReporteService();
+}
+window.volverFormService = volverFormService;
+
+// Guarda el reporte de service: crea el documento en Firestore con el snapshot
+// de tramos, los marca como reportados (desaparecen del historial) y descarga el PDF.
+async function guardarReporteService() {
   const d = window._serviceData;
+  if (!d || !d.viajesLaboral || d.viajesLaboral.length === 0) return;
+
+  if (!navigator.onLine) {
+    showToast('Necesitás conexión para guardar el reporte de service', 'error');
+    return;
+  }
+
+  showToast('Guardando reporte...', '');
+  try {
+    const ahora = new Date().toISOString();
+    // Snapshot liviano de los tramos (sin fotos base64)
+    const snapshot = d.viajesLaboral.map(v => ({
+      fbId: v.fbId || v.id || '',
+      destinoLabel: v.destinoLabel || '',
+      fechaSalida: v.fechaSalida || '',
+      fechaLlegada: v.fechaLlegada || '',
+      kmSalida: v.kmSalida || 0,
+      kmLlegada: v.kmLlegada || 0,
+      kmRecorridos: v.kmRecorridos || 0,
+      distanciaGPS: v.distanciaGPS || null,
+      vehiculo: v.vehiculo || '',
+    }));
+
+    const reporte = {
+      userId: currentUser.id,
+      userName: currentUser.name || currentUser.email,
+      fechaGeneracion: ahora,
+      fechaService: d.fechaService,
+      kmService: d.kmService,
+      kmActual: d.kmActual,
+      kmTotales: d.kmTotales,
+      kmLaborales: d.kmLaborales,
+      pct: d.pct,
+      titular: d.titular || '',
+      vehiculo: d.vehiculo || '',
+      fechaCorteAnterior: d.fechaCorte || null,
+      viajesSnapshot: snapshot,
+      cantidadTramos: snapshot.length,
+    };
+
+    const reportId = await fbSaveServiceReport(reporte);
+    reporte.fbId = reportId;
+
+    // Marcar cada tramo con el ID del reporte (desaparecen del historial activo)
+    for (const v of d.viajesLaboral) {
+      if (v.fbId) {
+        try { await fbUpdateViaje(v.fbId, { serviceReportId: reportId }); } catch(e) {}
+      }
+      const idx = localViajes.findIndex(x => x.fbId === v.fbId);
+      if (idx !== -1) localViajes[idx].serviceReportId = reportId;
+    }
+
+    // Actualizar fechaCorte (compatibilidad con la lógica de períodos)
+    try {
+      const stored = JSON.parse(localStorage.getItem('scancheck_service_'+currentUser.id)||'{}');
+      const updated = { ...stored, fechaCorte: ahora };
+      await fbSaveServiceData(currentUser.id, updated);
+      localStorage.setItem('scancheck_service_'+currentUser.id, JSON.stringify(updated));
+    } catch(e) {}
+
+    // Descargar el PDF automáticamente
+    generarPDFService(d);
+
+    closeModal('modal-service');
+    renderViajes();
+    renderServiceReports();
+    showToast('✓ Reporte guardado — ' + snapshot.length + ' tramos agrupados', 'success');
+  } catch(e) {
+    showToast('Error al guardar: ' + e.message, 'error');
+  }
+}
+window.guardarReporteService = guardarReporteService;
+
+async function generarPDFService(dataParam) {
+  const d = dataParam || window._serviceData;
   if (!d) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
@@ -3779,7 +3881,7 @@ async function generarPDFService() {
   doc.text('Km rec.', W-M-4, y+5, {align:'right'});
   y += 7;
 
-  d.viajesLaboral.forEach((v,i) => {
+  (d.viajesLaboral || d.viajesSnapshot || []).forEach((v,i) => {
     if (y > 265) { doc.addPage(); y = 20; }
     const bg = i%2===0 ? [20,40,55] : [15,32,39];
     doc.setFillColor(...bg); doc.rect(M, y, CW, 6, 'F');
@@ -3810,16 +3912,138 @@ async function generarPDFService() {
   doc.text(notaLines, M, y);
 
   doc.save(`Reporte_Service_${(d.titular||currentUser?.name||'Tecnico').replace(/\s+/g,'_')}_${new Date().toISOString().substring(0,10)}.pdf`);
-  // Guardar fecha de corte — los viajes anteriores a este momento no entran en el próximo reporte
-  try {
-    const stored = JSON.parse(localStorage.getItem('scancheck_service_'+currentUser.id)||'{}');
-    const updated = { ...stored, fechaCorte: new Date().toISOString() };
-    await fbSaveServiceData(currentUser.id, updated);
-    localStorage.setItem('scancheck_service_'+currentUser.id, JSON.stringify(updated));
-  } catch(e) {}
-  showToast('✓ PDF generado — próximo reporte solo incluirá viajes nuevos', 'success');
 }
 window.generarPDFService = generarPDFService;
+
+// ── REPORTES DE SERVICE GUARDADOS ─────────────────────────────
+// Renderiza el encabezado de la sección; la lista se carga on-demand
+// desde Firestore para no ocupar memoria en celulares de gama baja.
+function renderServiceReports() {
+  const el = document.getElementById('service-reports-list');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px;display:flex;justify-content:space-between;align-items:center">
+      <span>Reportes de service</span>
+      <button id="btn-ver-service-reports" onclick="cargarServiceReports()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">Ver</button>
+    </div>
+    <div id="service-reports-content"><div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div></div>`;
+}
+window.renderServiceReports = renderServiceReports;
+
+async function cargarServiceReports() {
+  const el = document.getElementById('service-reports-content');
+  const btn = document.getElementById('btn-ver-service-reports');
+  if (!el) return;
+
+  if (el.dataset.cargado === '1') {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div>';
+    el.dataset.cargado = '0';
+    if (btn) btn.textContent = 'Ver';
+    return;
+  }
+
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Cargando...</div>';
+  if (btn) btn.textContent = 'Ocultar';
+
+  if (!navigator.onLine) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px">Sin conexión — los reportes se cargan en línea</div>';
+    if (btn) btn.textContent = 'Ver';
+    return;
+  }
+
+  try {
+    const reportes = await fbGetMyServiceReports(currentUser.id);
+    if (reportes.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Sin reportes de service guardados</div>';
+      el.dataset.cargado = '1';
+      return;
+    }
+    // Guardar en window para re-descarga de PDF y expandir tramos
+    window._serviceReportsCache = {};
+    el.innerHTML = reportes.map(r => {
+      window._serviceReportsCache[r.fbId] = r;
+      const fecha = r.fechaGeneracion ? new Date(r.fechaGeneracion).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">🔧 Reporte ${fecha}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--accent2)">${(r.kmLaborales||0).toLocaleString()} km lab.</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">${escHtml(r.vehiculo||'—')} · ${r.pct||0}% uso laboral · ${r.cantidadTramos||0} tramos</div>
+        <div id="sr-tramos-${r.fbId}" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="toggleTramosServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">👁 Ver tramos</button>
+          <button onclick="descargarPDFServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent2);color:#fff;font-size:12px;font-weight:600;cursor:pointer">📄 PDF</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.dataset.cargado = '1';
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#e55;text-align:center;padding:8px">Error: ${escHtml(e.message)}</div>`;
+    if (btn) btn.textContent = 'Ver';
+  }
+}
+window.cargarServiceReports = cargarServiceReports;
+
+function toggleTramosServiceReport(fbId) {
+  const div = document.getElementById('sr-tramos-'+fbId);
+  const r = window._serviceReportsCache?.[fbId];
+  if (!div || !r) return;
+  if (div.style.display === 'none') {
+    div.innerHTML = (r.viajesSnapshot||[]).map(v => {
+      const f = v.fechaSalida ? new Date(v.fechaSalida).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
+      return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px">
+        <span style="color:var(--text3)">${f} · ${escHtml(v.destinoLabel||'—')}</span>
+        <span style="color:var(--text2);font-weight:600">${(v.kmRecorridos||0).toLocaleString()} km</span>
+      </div>`;
+    }).join('') || '<div style="font-size:11px;color:var(--text3)">Sin tramos</div>';
+    div.style.display = 'block';
+  } else {
+    div.style.display = 'none';
+  }
+}
+window.toggleTramosServiceReport = toggleTramosServiceReport;
+
+function descargarPDFServiceReport(fbId) {
+  const r = window._serviceReportsCache?.[fbId];
+  if (!r) return;
+  generarPDFService(r);
+}
+window.descargarPDFServiceReport = descargarPDFServiceReport;
+
+// ── Supervisor: reportes de service de todos los técnicos ──
+async function loadSupServiceReports() {
+  const el = document.getElementById('sup-viajes-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando reportes de service...</div>';
+  try {
+    const reportes = await fbGetAllServiceReports();
+    if (reportes.length === 0) {
+      el.innerHTML = '<div class="empty-state"><p>Sin reportes de service</p></div>';
+      return;
+    }
+    window._serviceReportsCache = window._serviceReportsCache || {};
+    el.innerHTML = reportes.map(r => {
+      window._serviceReportsCache[r.fbId] = r;
+      const fecha = r.fechaGeneracion ? new Date(r.fechaGeneracion).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(r.userName||'—')}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--accent2)">${(r.kmLaborales||0).toLocaleString()} km lab.</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Generado: ${fecha} · ${escHtml(r.vehiculo||'—')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Km totales: ${(r.kmTotales||0).toLocaleString()} · ${r.pct||0}% uso laboral · ${r.cantidadTramos||0} tramos</div>
+        <div id="sr-tramos-${r.fbId}" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="toggleTramosServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">👁 Ver tramos</button>
+          <button onclick="descargarPDFServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent2);color:#fff;font-size:12px;font-weight:600;cursor:pointer">📄 PDF</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+}
+window.loadSupServiceReports = loadSupServiceReports;
 
 // ── VIAJES SUPERVISOR ─────────────────────────────────────────
 async function loadSupViajes() {
@@ -6277,7 +6501,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '30.06.2026-v228'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '01.07.2026-v229'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';

@@ -356,6 +356,26 @@ export async function fbGetDeletedViajes() {
   return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
+// ── Reportes de Service (agrupan tramos de viajes ya calculados) ──
+export async function fbSaveServiceReport(report) {
+  const ref = await addDoc(collection(db, "serviceReports"), report);
+  return ref.id;
+}
+
+export async function fbGetMyServiceReports(userId) {
+  const q = query(collection(db, "serviceReports"), where("userId","==",userId));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .sort((a,b) => (b.fechaGeneracion||'').localeCompare(a.fechaGeneracion||''));
+}
+
+export async function fbGetAllServiceReports() {
+  const q = query(collection(db, "serviceReports"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .sort((a,b) => (b.fechaGeneracion||'').localeCompare(a.fechaGeneracion||''));
+}
+
 export async function fbSaveServiceData(userId, data) {
   await updateDoc(doc(db, "users", userId), { serviceData: data });
 }
