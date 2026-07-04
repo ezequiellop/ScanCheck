@@ -380,30 +380,6 @@ export async function fbGetAllServiceReports() {
 
 export async function fbSoftDeleteServiceReport(fbId, deletedByUserId) {
   await updateDoc(doc(db, "serviceReports", fbId), {
-    eliminado: true, deletedAt: new Date().toISOString(), deletedBy: deletedByUserId || null
-  });
-}
-
-export async function fbRestoreServiceReport(fbId) {
-  await updateDoc(doc(db, "serviceReports", fbId), {
-    eliminado: false, deletedAt: null, deletedBy: null
-  });
-}
-
-export async function fbHardDeleteServiceReport(fbId) {
-  await deleteDoc(doc(db, "serviceReports", fbId));
-}
-
-export async function fbGetDeletedServiceReports() {
-  const q = query(collection(db, "serviceReports"));
-  const snap = await getDocsFromServer(q);
-  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
-    .filter(r => r.eliminado)
-    .sort((a,b) => (b.deletedAt||'').localeCompare(a.deletedAt||''));
-}
-
-export async function fbSoftDeleteServiceReport(fbId, deletedByUserId) {
-  await updateDoc(doc(db, "serviceReports", fbId), {
     eliminado: true,
     eliminadoEn: serverTimestamp(),
     eliminadoPor: deletedByUserId || null
