@@ -8,7 +8,8 @@ import {
   fbSaveViaje, fbUpdateViaje, fbGetMyViajes, fbGetAllViajes,
   fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes,
   fbSaveServiceData, fbGetServiceData,
-  fbSaveServiceReport, fbGetMyServiceReports, fbGetAllServiceReports
+  fbSaveServiceReport, fbGetMyServiceReports, fbGetAllServiceReports,
+  fbSoftDeleteServiceReport, fbRestoreServiceReport, fbHardDeleteServiceReport, fbGetDeletedServiceReports
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -3952,7 +3953,7 @@ async function cargarServiceReports() {
   }
 
   try {
-    const reportes = await fbGetMyServiceReports(currentUser.id);
+    const reportes = (await fbGetMyServiceReports(currentUser.id)).filter(r => !r.eliminado);
     if (reportes.length === 0) {
       el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Sin reportes de service guardados</div>';
       el.dataset.cargado = '1';
@@ -3973,6 +3974,7 @@ async function cargarServiceReports() {
         <div style="display:flex;gap:8px;margin-top:8px">
           <button onclick="toggleTramosServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">👁 Ver tramos</button>
           <button onclick="descargarPDFServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent2);color:#fff;font-size:12px;font-weight:600;cursor:pointer">📄 PDF</button>
+          <button onclick="eliminarServiceReport('${r.fbId}')" style="width:34px;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.08);color:#e55;font-size:13px;cursor:pointer;flex-shrink:0">🗑</button>
         </div>
       </div>`;
     }).join('');
@@ -3983,6 +3985,75 @@ async function cargarServiceReports() {
   }
 }
 window.cargarServiceReports = cargarServiceReports;
+
+// Elimina un reporte de service (soft-delete → papelera del supervisor).
+// Los tramos agrupados vuelven al historial de km para poder recalcularse.
+async function eliminarServiceReport(fbId) {
+  if (!confirm('¿Eliminar este reporte? Los tramos vuelven al historial de km y el reporte va a la papelera del supervisor.')) return;
+  if (!navigator.onLine) { showToast('Necesitás conexión para eliminar el reporte', 'error'); return; }
+  try {
+    const r = window._serviceReportsCache?.[fbId];
+    await fbSoftDeleteServiceReport(fbId, currentUser?.id);
+    // Liberar los tramos: quitar serviceReportId para que vuelvan al historial
+    const tramos = r?.viajesSnapshot || [];
+    for (const t of tramos) {
+      if (t.fbId) {
+        try { await fbUpdateViaje(t.fbId, { serviceReportId: null }); } catch(e) {}
+        const idx = localViajes.findIndex(v => v.fbId === t.fbId);
+        if (idx !== -1) localViajes[idx].serviceReportId = null;
+      }
+    }
+    renderViajes();
+    // Refrescar lista de reportes
+    const content = document.getElementById('service-reports-content');
+    if (content) { content.dataset.cargado = '0'; cargarServiceReports(); }
+    showToast('✓ Reporte eliminado — ' + tramos.length + ' tramos vuelven al historial', 'success');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+window.eliminarServiceReport = eliminarServiceReport;
+
+// ── Papelera de reportes de service (supervisor) ──
+async function restaurarServiceReport(fbId) {
+  try {
+    // Verificar conflicto: si algún tramo ya fue agrupado en OTRO reporte nuevo,
+    // avisar al supervisor antes de re-vincular.
+    const todosDeleted = await fbGetDeletedServiceReports();
+    const r = todosDeleted.find(x => x.fbId === fbId);
+    if (!r) { showToast('Reporte no encontrado', 'error'); return; }
+
+    await fbRestoreServiceReport(fbId);
+    // Re-vincular los tramos al reporte restaurado
+    let reVinculados = 0, conflictos = 0;
+    for (const t of (r.viajesSnapshot || [])) {
+      if (!t.fbId) continue;
+      try {
+        const local = localViajes.find(v => v.fbId === t.fbId);
+        const yaEnOtro = local?.serviceReportId && local.serviceReportId !== fbId;
+        if (yaEnOtro) { conflictos++; continue; }
+        await fbUpdateViaje(t.fbId, { serviceReportId: fbId });
+        const idx = localViajes.findIndex(v => v.fbId === t.fbId);
+        if (idx !== -1) localViajes[idx].serviceReportId = fbId;
+        reVinculados++;
+      } catch(e) {}
+    }
+    renderViajes();
+    showPapeleraViajes();
+    showToast(`✓ Reporte restaurado — ${reVinculados} tramos re-agrupados${conflictos ? ` (${conflictos} ya estaban en otro reporte)` : ''}`, 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.restaurarServiceReport = restaurarServiceReport;
+
+async function borrarServiceReportDefinitivo(fbId) {
+  if (!confirm('¿Borrar este reporte DEFINITIVAMENTE? Esta acción no se puede deshacer.')) return;
+  try {
+    await fbHardDeleteServiceReport(fbId);
+    showPapeleraViajes();
+    showToast('Reporte borrado definitivamente', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.borrarServiceReportDefinitivo = borrarServiceReportDefinitivo;
 
 function toggleTramosServiceReport(fbId) {
   const div = document.getElementById('sr-tramos-'+fbId);
@@ -4016,7 +4087,7 @@ async function loadSupServiceReports() {
   if (!el) return;
   el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando reportes de service...</div>';
   try {
-    const reportes = await fbGetAllServiceReports();
+    const reportes = (await fbGetAllServiceReports()).filter(r => !r.eliminado);
     if (reportes.length === 0) {
       el.innerHTML = '<div class="empty-state"><p>Sin reportes de service</p></div>';
       return;
@@ -4118,8 +4189,11 @@ async function showPapeleraViajes() {
   el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando...</div>';
   document.getElementById('modal-papelera-viajes').classList.remove('hidden');
   try {
-    const deleted = await fbGetDeletedViajes();
-    if (deleted.length === 0) {
+    const [deleted, srDeleted] = await Promise.all([
+      fbGetDeletedViajes(),
+      fbGetDeletedServiceReports().catch(() => [])
+    ]);
+    if (deleted.length === 0 && srDeleted.length === 0) {
       el.innerHTML = '<div class="empty-state"><p>La papelera está vacía</p></div>';
       return;
     }
@@ -4163,7 +4237,23 @@ async function showPapeleraViajes() {
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px">Viajes programados (${programados.length})</div>
       ${htmlProg}` : '';
 
-    el.innerHTML = secKm + secProg;
+    const htmlSR = srDeleted.map(r => {
+      const fecha = r.fechaGeneracion ? new Date(r.fechaGeneracion).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);margin-bottom:4px">REPORTE DE SERVICE</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(r.userName||'—')} — ${fecha}</div>
+        <div style="font-size:11px;color:var(--text3)">${escHtml(r.vehiculo||'—')} · ${(r.kmLaborales||0).toLocaleString()} km lab. · ${r.cantidadTramos||0} tramos</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="restaurarServiceReport('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:var(--accent);color:#0a1628;font-size:12px;font-weight:600;cursor:pointer">↩ Restaurar</button>
+          <button onclick="borrarServiceReportDefinitivo('${r.fbId}')" style="flex:1;padding:7px;border-radius:8px;border:none;background:#e53;color:#fff;font-size:12px;font-weight:600;cursor:pointer">✕ Borrar definitivamente</button>
+        </div>
+      </div>`;
+    }).join('');
+    const secSR = srDeleted.length > 0 ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px">Reportes de service (${srDeleted.length})</div>
+      ${htmlSR}` : '';
+
+    el.innerHTML = secKm + secProg + secSR;
   } catch(e) {
     el.innerHTML = `<div style="text-align:center;padding:20px;color:#e53">Error: ${e.message}</div>`;
   }
@@ -6501,7 +6591,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '01.07.2026-v229'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '01.07.2026-v230'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
