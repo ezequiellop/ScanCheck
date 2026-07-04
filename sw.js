@@ -1,4 +1,4 @@
-const CACHE='scancheck-v230';
+const CACHE='scancheck-v229';
 const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
