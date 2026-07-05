@@ -3451,8 +3451,12 @@ async function _ejecutarRendicion() {
 
     // ── PASO 2: Compartir INMEDIATAMENTE (lo más cerca del gesto del usuario) ──
     let compartido = false;
+    const tieneShare = typeof navigator.share === 'function';
     const tieneCanShare = typeof navigator.canShare === 'function';
     const puedeArchivos = tieneCanShare ? navigator.canShare({ files: [zipFile] }) : false;
+
+    // DIAGNÓSTICO: mostrar en pantalla el estado del share
+    alert(`Diagnóstico compartir:\n\nnavigator.share existe: ${tieneShare}\nnavigator.canShare existe: ${tieneCanShare}\ncanShare con archivo: ${puedeArchivos}\n\nProtocolo: ${location.protocol}\nTamaño ZIP: ${(zipBlob.size/1024).toFixed(0)} KB`);
 
     if (typeof navigator.share === 'function' && puedeArchivos) {
       try {
@@ -7460,7 +7464,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v238'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v239'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
