@@ -3073,20 +3073,36 @@ function abrirEditorRecorte(dataUrl, onConfirm) {
     onConfirm,
     rotation: 0,
     img: null,
-    // Área de recorte en coordenadas del canvas (se inicializa al cargar)
     box: null,
-    dragging: null, // 'move' o índice de esquina 0-3
+    dragging: null,
     canvasW: 0,
     canvasH: 0,
   };
-  document.getElementById('modal-recorte').classList.remove('hidden');
 
+  // Renderizar el contenido del modal PRIMERO (así siempre se ve algo)
+  _cropRender();
+
+  // Mostrar el modal por encima de los demás (z-index alto para apilar sobre modal-gasto)
+  const modal = document.getElementById('modal-recorte');
+  modal.style.zIndex = '9999';
+  modal.classList.remove('hidden');
+
+  // Cargar la imagen
   const img = new Image();
   img.onload = () => {
     _crop.img = img;
-    _cropRender();
+    _cropSetupCanvas();
+  };
+  img.onerror = () => {
+    showToast('No se pudo cargar la imagen', 'error');
+    closeModal('modal-recorte');
   };
   img.src = dataUrl;
+  // Si la imagen ya está en caché, onload puede no dispararse: forzar
+  if (img.complete && img.naturalWidth > 0) {
+    _crop.img = img;
+    _cropSetupCanvas();
+  }
 }
 window.abrirEditorRecorte = abrirEditorRecorte;
 
@@ -3096,18 +3112,17 @@ function _cropRender() {
   cont.innerHTML = `
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px">✂️ Ajustar recorte</div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Arrastrá las esquinas para ajustar al ticket</div>
-    <div style="position:relative;width:100%;display:flex;justify-content:center;background:var(--bg3);border-radius:10px;padding:8px;margin-bottom:12px">
+    <div style="position:relative;width:100%;display:flex;justify-content:center;align-items:center;min-height:200px;background:var(--bg3);border-radius:10px;padding:8px;margin-bottom:12px">
       <canvas id="crop-canvas" style="max-width:100%;touch-action:none;border-radius:6px"></canvas>
+      <div id="crop-loading" style="position:absolute;font-size:12px;color:var(--text3)">Cargando imagen...</div>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:10px">
       <button class="btn-secondary" style="flex:1" onclick="_cropRotar()">↻ Rotar 90°</button>
     </div>
     <div style="display:flex;gap:10px">
-      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-recorte')">Cancelar</button>
+      <button class="btn-secondary" style="flex:1" onclick="_cropCancelar()">Cancelar</button>
       <button class="btn-primary" style="flex:1" onclick="_cropConfirmar()">✓ Confirmar</button>
     </div>`;
-
-  setTimeout(() => _cropSetupCanvas(), 30);
 }
 
 function _cropSetupCanvas() {
@@ -3143,6 +3158,9 @@ function _cropSetupCanvas() {
 
   _cropDraw();
   _cropBindEvents(canvas);
+  // Ocultar el "Cargando imagen..."
+  const loading = document.getElementById('crop-loading');
+  if (loading) loading.style.display = 'none';
 }
 
 function _cropDraw() {
@@ -3292,11 +3310,21 @@ function _cropConfirmar() {
   // Exportar como JPEG con calidad razonable (comprime para no saturar R2)
   const result = out.toDataURL('image/jpeg', 0.85);
 
+  const modal = document.getElementById('modal-recorte');
+  if (modal) modal.style.zIndex = '';
   closeModal('modal-recorte');
-  if (_crop.onConfirm) _crop.onConfirm(result);
+  if (_crop && _crop.onConfirm) _crop.onConfirm(result);
   _crop = null;
 }
 window._cropConfirmar = _cropConfirmar;
+
+function _cropCancelar() {
+  const modal = document.getElementById('modal-recorte');
+  if (modal) modal.style.zIndex = '';
+  closeModal('modal-recorte');
+  _crop = null;
+}
+window._cropCancelar = _cropCancelar;
 // ── FIN EDITOR DE RECORTE ─────────────────────────────────────
 
 function _gastoPdf(input) {
@@ -7353,7 +7381,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v234'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v235'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
