@@ -3362,7 +3362,7 @@ function guardarGasto() {
 }
 window.guardarGasto = guardarGasto;
 
-// ── Rendir viáticos: primero muestra modal de advertencia con estilo de la app ──
+// ── Rendir viáticos: muestra modal de advertencia y pre-genera el ZIP ──
 function rendirViaticos() {
   if (_vt.gastos.length === 0) return;
   const monto = parseFloat(_vt.montoAsignado) || 0;
@@ -3375,6 +3375,12 @@ function rendirViaticos() {
   const saldo = monto - totalGastado;
   const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
   const nGastos = _vt.gastos.length;
+
+  // Empezar a generar el ZIP YA (mientras el técnico lee el resumen).
+  // Así cuando toque "Rendir" el archivo está listo y el share se dispara
+  // de forma síncrona, sin await que rompa el gesto del usuario (Chrome Android).
+  window._vtZipListo = null;
+  window._vtZipPromise = _vtPrepararZip();
 
   const modal = document.createElement('div');
   modal.id = 'modal-rendir-confirm';
@@ -3407,125 +3413,119 @@ function rendirViaticos() {
     </div>
   </div>`;
   document.body.appendChild(modal);
-  document.getElementById('modal-rendir-cancelar').onclick = () => modal.remove();
+  document.getElementById('modal-rendir-cancelar').onclick = () => { modal.remove(); window._vtZipPromise = null; };
   document.getElementById('modal-rendir-ok').onclick = () => {
     modal.remove();
-    _ejecutarRendicion();
+    _compartirRendicion();
   };
 }
 window.rendirViaticos = rendirViaticos;
 
-// ── Ejecuta la rendición: genera ZIP, comparte/descarga y guarda ──
-async function _ejecutarRendicion() {
+// Prepara el ZIP y lo deja en window._vtZipListo
+async function _vtPrepararZip() {
+  const fechaStr = new Date().toISOString().split('T')[0];
+  const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
+  const xlsxBlob = _vtGenerarExcel();
+  const pdfFotosBlob = _vtGenerarPdfFotos();
+  const zip = new JSZip();
+  zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
+  if (pdfFotosBlob) zip.file(`Facturas_fotos_${fechaStr}.pdf`, pdfFotosBlob);
+  _vt.gastos.forEach((g, i) => {
+    if (g.archivoPdf) {
+      const base64 = g.archivoPdf.split(',')[1];
+      const nombre = g.archivoPdfNombre || `factura_${i+1}.pdf`;
+      zip.file(`facturas_pdf/${nombre}`, base64, { base64: true });
+    }
+  });
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const zipFile = new File([zipBlob], nombreZip, { type: 'application/zip' });
+  window._vtZipListo = { zipBlob, zipFile, nombreZip, fechaStr };
+  return window._vtZipListo;
+}
+
+// Comparte el ZIP (share síncrono si ya está listo) y luego guarda respaldo
+async function _compartirRendicion() {
   const monto = parseFloat(_vt.montoAsignado) || 0;
   const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
   const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const rendicionId = 'vt_' + Date.now();
-  const fechaStr = new Date().toISOString().split('T')[0];
-  const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
-
-  showToast('Generando archivo...', '');
-
-  // Snapshot de los datos ANTES de limpiar (para R2/Firestore posterior)
-  const gastosSnapshot = _vt.gastos.slice();
   const cantidadGastos = _vt.gastos.length;
+  const gastosSnapshot = _vt.gastos.slice();
+  const rendicionId = 'vt_' + Date.now();
 
-  try {
-    // ── PASO 1: Generar el ZIP (rápido, sin red) ──
-    const xlsxBlob = _vtGenerarExcel();
-    const pdfFotosBlob = _vtGenerarPdfFotos();
-
-    const zip = new JSZip();
-    zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
-    if (pdfFotosBlob) zip.file(`Facturas_fotos_${fechaStr}.pdf`, pdfFotosBlob);
-    gastosSnapshot.forEach((g, i) => {
-      if (g.archivoPdf) {
-        const base64 = g.archivoPdf.split(',')[1];
-        const nombre = g.archivoPdfNombre || `factura_${i+1}.pdf`;
-        zip.file(`facturas_pdf/${nombre}`, base64, { base64: true });
-      }
-    });
-
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const zipFile = new File([zipBlob], nombreZip, { type: 'application/zip' });
-
-    // ── PASO 2: Compartir INMEDIATAMENTE (lo más cerca del gesto del usuario) ──
-    let compartido = false;
-    const tieneShare = typeof navigator.share === 'function';
-    const tieneCanShare = typeof navigator.canShare === 'function';
-    const puedeArchivos = tieneCanShare ? navigator.canShare({ files: [zipFile] }) : false;
-
-    // DIAGNÓSTICO: mostrar en pantalla el estado del share
-    alert(`Diagnóstico compartir:\n\nnavigator.share existe: ${tieneShare}\nnavigator.canShare existe: ${tieneCanShare}\ncanShare con archivo: ${puedeArchivos}\n\nProtocolo: ${location.protocol}\nTamaño ZIP: ${(zipBlob.size/1024).toFixed(0)} KB`);
-
-    if (typeof navigator.share === 'function' && puedeArchivos) {
-      try {
-        await navigator.share({
-          files: [zipFile],
-          title: 'Rendición de viáticos',
-          text: `Rendición de viáticos — ${fechaStr}\n` +
-                `Asignado: ${fmt(monto)} · Gastado: ${fmt(totalGastado)} · Saldo: ${fmt(monto-totalGastado)}\n` +
-                `${cantidadGastos} gastos. Se adjunta planilla y comprobantes.`,
-        });
-        compartido = true;
-      } catch(shareErr) {
-        if (shareErr.name === 'AbortError') {
-          compartido = true; // el usuario cerró el menú a propósito
-        } else {
-          console.warn('Share falló:', shareErr.message);
-        }
-      }
-    }
-
-    // ── PASO 3: Fallback a descarga si no se pudo compartir ──
-    if (!compartido) {
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreZip;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Archivo descargado — adjuntalo al mail', '');
-    }
-
-    // ── PASO 4: Subir fotos a R2 y guardar en Firestore (después del share) ──
-    showToast('Guardando respaldo...', '');
-    let fotoUrls = [];
-    try {
-      const fotos = gastosSnapshot.filter(g => g.foto).map(g => g.foto);
-      if (fotos.length > 0) fotoUrls = await uploadPhotosToR2(rendicionId, fotos);
-    } catch(e) { console.warn('No se pudieron subir fotos a R2:', e.message); }
-
-    const rendicion = {
-      id: rendicionId,
-      userId: currentUser.id,
-      userName: currentUser.name || currentUser.email,
-      fechaCreacion: new Date().toISOString(),
-      montoAsignado: monto,
-      totalGastado,
-      saldo: monto - totalGastado,
-      cantidadGastos,
-      fotoUrls,
-      gastos: gastosSnapshot.map(g => ({
-        fecha: g.fecha, tipo: g.tipo, nroFactura: g.nroFactura,
-        monto: g.monto, concepto: g.concepto, proyecto: g.proyecto,
-        tieneFoto: !!g.foto, tienePdf: !!g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre || '',
-      })),
-    };
-    try { await fbSaveViaticoRendicion(rendicion); } catch(e) { console.warn('No se pudo guardar rendición:', e.message); }
-
-    // ── PASO 5: Limpiar rendición activa ──
-    _vt = null;
-    window._vt = null;
-    localStorage.removeItem('scancheck_viatico_activo_'+currentUser.id);
-
-    closeModal('modal-viaticos');
-    showToast('✓ Rendición completada', 'success');
-  } catch(e) {
-    showToast('Error al rendir: ' + e.message, 'error');
+  // Esperar a que el ZIP esté listo SOLO si todavía no terminó.
+  // En la mayoría de los casos ya está (se generó mientras leía el modal).
+  let z = window._vtZipListo;
+  if (!z) {
+    try { z = await window._vtZipPromise; } catch(e) {}
   }
+  if (!z) { showToast('Error generando el archivo', 'error'); return; }
+
+  const { zipBlob, zipFile, nombreZip, fechaStr } = z;
+
+  // ── Compartir (idealmente síncrono: el ZIP ya está listo) ──
+  let compartido = false;
+  const shareData = {
+    files: [zipFile],
+    title: 'Rendición de viáticos',
+    text: `Rendición de viáticos — ${fechaStr}\n` +
+          `Asignado: ${fmt(monto)} · Gastado: ${fmt(totalGastado)} · Saldo: ${fmt(monto-totalGastado)}\n` +
+          `${cantidadGastos} gastos. Se adjunta planilla y comprobantes.`,
+  };
+
+  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [zipFile] })) {
+    try {
+      await navigator.share(shareData);
+      compartido = true;
+    } catch(err) {
+      if (err.name === 'AbortError') compartido = true;
+      else console.warn('Share falló:', err.message);
+    }
+  }
+
+  if (!compartido) {
+    // Fallback: descargar
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombreZip; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Archivo descargado — adjuntalo al mail', '');
+  }
+
+  // ── Respaldo en R2 + Firestore (después del share) ──
+  showToast('Guardando respaldo...', '');
+  let fotoUrls = [];
+  try {
+    const fotos = gastosSnapshot.filter(g => g.foto).map(g => g.foto);
+    if (fotos.length > 0) fotoUrls = await uploadPhotosToR2(rendicionId, fotos);
+  } catch(e) { console.warn('No se pudieron subir fotos a R2:', e.message); }
+
+  const rendicion = {
+    id: rendicionId,
+    userId: currentUser.id,
+    userName: currentUser.name || currentUser.email,
+    fechaCreacion: new Date().toISOString(),
+    montoAsignado: monto,
+    totalGastado,
+    saldo: monto - totalGastado,
+    cantidadGastos,
+    fotoUrls,
+    gastos: gastosSnapshot.map(g => ({
+      fecha: g.fecha, tipo: g.tipo, nroFactura: g.nroFactura,
+      monto: g.monto, concepto: g.concepto, proyecto: g.proyecto,
+      tieneFoto: !!g.foto, tienePdf: !!g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre || '',
+    })),
+  };
+  try { await fbSaveViaticoRendicion(rendicion); } catch(e) { console.warn('No se pudo guardar rendición:', e.message); }
+
+  // Limpiar
+  _vt = null; window._vt = null;
+  window._vtZipListo = null; window._vtZipPromise = null;
+  localStorage.removeItem('scancheck_viatico_activo_'+currentUser.id);
+  closeModal('modal-viaticos');
+  showToast('✓ Rendición completada', 'success');
 }
-window._ejecutarRendicion = _ejecutarRendicion;
+window._compartirRendicion = _compartirRendicion;
+
 
 // Genera la planilla .xlsx con el formato oficial de Danaide
 function _vtGenerarExcel() {
@@ -7464,7 +7464,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v239'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v240'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
