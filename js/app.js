@@ -3362,14 +3362,33 @@ function guardarGasto() {
 }
 window.guardarGasto = guardarGasto;
 
-// ── Rendir viáticos: genera ZIP con planilla + PDFs + sube fotos a R2 ──
-async function rendirViaticos() {
+// ── Rendir viáticos: primero pide confirmación ──
+function rendirViaticos() {
   if (_vt.gastos.length === 0) return;
   const monto = parseFloat(_vt.montoAsignado) || 0;
   if (!monto) { showToast('Ingresá el monto de viáticos asignados', 'error'); return; }
-
   if (!navigator.onLine) { showToast('Necesitás conexión para rendir', 'error'); return; }
 
+  const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
+  const saldo = monto - totalGastado;
+  const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  const mensaje = `Estás por CERRAR la rendición de viáticos.\n\n` +
+    `• ${_vt.gastos.length} gasto${_vt.gastos.length>1?'s':''}\n` +
+    `• Asignado: ${fmt(monto)}\n` +
+    `• Gastado: ${fmt(totalGastado)}\n` +
+    `• Saldo: ${fmt(saldo)}\n\n` +
+    `Una vez cerrada, la rendición se guarda y el registro actual se vacía. ` +
+    `Se generará el archivo para enviar a Administración.\n\n¿Continuar?`;
+
+  if (!confirm(mensaje)) return;
+  _ejecutarRendicion();
+}
+window.rendirViaticos = rendirViaticos;
+
+// ── Ejecuta la rendición: genera ZIP, comparte/descarga y guarda ──
+async function _ejecutarRendicion() {
+  const monto = parseFloat(_vt.montoAsignado) || 0;
   showToast('Generando rendición...', '');
   try {
     const rendicionId = 'vt_' + Date.now();
@@ -3392,7 +3411,6 @@ async function rendirViaticos() {
     const fechaStr = new Date().toISOString().split('T')[0];
     zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
     if (pdfFotosBlob) zip.file(`Facturas_fotos_${fechaStr}.pdf`, pdfFotosBlob);
-    // PDFs digitales sueltos
     _vt.gastos.forEach((g, i) => {
       if (g.archivoPdf) {
         const base64 = g.archivoPdf.split(',')[1];
@@ -3402,17 +3420,42 @@ async function rendirViaticos() {
     });
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
 
-    // 5) Descargar ZIP
-    const url = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Rendicion_Viaticos_${fechaStr}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // 5) Compartir con Web Share API (abre menú nativo → Gmail con adjunto)
+    //    Fallback a descarga si el dispositivo no lo soporta.
+    const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
+    const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const zipFile = new File([zipBlob], nombreZip, { type: 'application/zip' });
+
+    let compartido = false;
+    if (navigator.canShare && navigator.canShare({ files: [zipFile] })) {
+      try {
+        await navigator.share({
+          files: [zipFile],
+          title: 'Rendición de viáticos',
+          text: `Rendición de viáticos — ${fechaStr}\n` +
+                `Asignado: ${fmt(monto)} · Gastado: ${fmt(totalGastado)} · Saldo: ${fmt(monto-totalGastado)}\n` +
+                `${_vt.gastos.length} gastos. Se adjunta planilla y comprobantes.`,
+        });
+        compartido = true;
+      } catch(shareErr) {
+        // El usuario canceló el share o falló → caer a descarga
+        if (shareErr.name !== 'AbortError') console.warn('Share falló:', shareErr.message);
+      }
+    }
+
+    if (!compartido) {
+      // Fallback: descargar el ZIP
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreZip;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
     // 6) Guardar rendición en Firestore (sin base64 pesado)
-    const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
     const rendicion = {
       id: rendicionId,
       userId: currentUser.id,
@@ -3437,12 +3480,12 @@ async function rendirViaticos() {
     localStorage.removeItem('scancheck_viatico_activo_'+currentUser.id);
 
     closeModal('modal-viaticos');
-    showToast('✓ Rendición generada — ' + rendicion.cantidadGastos + ' gastos', 'success');
+    showToast(compartido ? '✓ Rendición lista para enviar' : '✓ Rendición generada — ' + rendicion.cantidadGastos + ' gastos', 'success');
   } catch(e) {
     showToast('Error al rendir: ' + e.message, 'error');
   }
 }
-window.rendirViaticos = rendirViaticos;
+window._ejecutarRendicion = _ejecutarRendicion;
 
 // Genera la planilla .xlsx con el formato oficial de Danaide
 function _vtGenerarExcel() {
@@ -7381,7 +7424,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v235'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v236'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
