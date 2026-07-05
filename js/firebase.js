@@ -404,6 +404,53 @@ export async function fbGetDeletedServiceReports() {
   return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
+// ── VIÁTICOS: rendiciones y gastos ────────────────────────────
+export async function fbSaveViaticoRendicion(rendicion) {
+  const ref = await addDoc(collection(db, "viaticos"), rendicion);
+  return ref.id;
+}
+
+export async function fbUpdateViaticoRendicion(fbId, data) {
+  await updateDoc(doc(db, "viaticos", fbId), data);
+}
+
+export async function fbGetMyViaticos(userId) {
+  const q = query(collection(db, "viaticos"), where("userId","==",userId));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .sort((a,b) => (b.fechaCreacion||'').localeCompare(a.fechaCreacion||''));
+}
+
+export async function fbGetAllViaticos() {
+  const q = query(collection(db, "viaticos"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .sort((a,b) => (b.fechaCreacion||'').localeCompare(a.fechaCreacion||''));
+}
+
+export async function fbSoftDeleteViatico(fbId, deletedByUserId) {
+  await updateDoc(doc(db, "viaticos", fbId), {
+    eliminado: true, eliminadoEn: serverTimestamp(), eliminadoPor: deletedByUserId || null
+  });
+}
+
+export async function fbRestoreViatico(fbId) {
+  await updateDoc(doc(db, "viaticos", fbId), {
+    eliminado: false, eliminadoEn: null, eliminadoPor: null
+  });
+}
+
+export async function fbHardDeleteViatico(fbId) {
+  await deleteDoc(doc(db, "viaticos", fbId));
+}
+
+export async function fbGetDeletedViaticos() {
+  const q = query(collection(db, "viaticos"), where("eliminado","==",true));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
+}
+
+// ── VIÁTICOS (rendiciones de gastos) ──────────────────────────
 export async function fbSaveServiceData(userId, data) {
   await updateDoc(doc(db, "users", userId), { serviceData: data });
 }

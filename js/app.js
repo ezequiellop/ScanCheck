@@ -9,7 +9,9 @@ import {
   fbSoftDeleteViaje, fbRestoreViaje, fbHardDeleteViaje, fbGetDeletedViajes,
   fbSaveServiceData, fbGetServiceData,
   fbSaveServiceReport, fbGetMyServiceReports, fbGetAllServiceReports,
-  fbSoftDeleteServiceReport, fbRestoreServiceReport, fbHardDeleteServiceReport, fbGetDeletedServiceReports
+  fbSoftDeleteServiceReport, fbRestoreServiceReport, fbHardDeleteServiceReport, fbGetDeletedServiceReports,
+  fbSaveViaticoRendicion, fbUpdateViaticoRendicion, fbGetMyViaticos, fbGetAllViaticos,
+  fbSoftDeleteViatico, fbRestoreViatico, fbHardDeleteViatico, fbGetDeletedViaticos
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -2828,6 +2830,521 @@ async function showReporteService() {
   document.getElementById('modal-service').classList.remove('hidden');
 }
 window.showReporteService = showReporteService;
+
+// ══════════════════════════════════════════════════════════════
+// ── CONTROL DE VIÁTICOS ───────────────────────────────────────
+// Registro continuo de gastos con foto/PDF de factura. El técnico
+// carga el monto asignado y va registrando gastos manualmente.
+// Al rendir genera un ZIP con la planilla .xlsx + PDF de fotos +
+// PDFs digitales sueltos, y las fotos se respaldan en R2.
+// ══════════════════════════════════════════════════════════════
+
+const CONCEPTOS_VIATICO = ['Desayuno','Almuerzo','Merienda','Cena','Combustible','Peajes','Estacionamiento','Hospedaje','Otros'];
+
+// Estado de la rendición activa en memoria
+let _vt = null;
+
+function showViaticos() {
+  // Cargar rendición activa desde localStorage o crear una nueva
+  if (!_vt) {
+    try {
+      const stored = localStorage.getItem('scancheck_viatico_activo_'+currentUser.id);
+      _vt = stored ? JSON.parse(stored) : null;
+    } catch(e) { _vt = null; }
+  }
+  if (!_vt) {
+    _vt = { montoAsignado: '', gastos: [], fechaCreacion: new Date().toISOString() };
+  }
+  window._vt = _vt;
+  document.getElementById('modal-viaticos').classList.remove('hidden');
+  _vtRender();
+}
+window.showViaticos = showViaticos;
+
+function _vtPersistir() {
+  try { localStorage.setItem('scancheck_viatico_activo_'+currentUser.id, JSON.stringify(_vt)); } catch(e) {}
+}
+
+function _vtRender() {
+  const el = document.getElementById('modal-viaticos-content');
+  if (!el) return;
+
+  const monto = parseFloat(_vt.montoAsignado) || 0;
+  const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
+  const saldo = monto - totalGastado;
+  const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  const gastosHTML = _vt.gastos.length === 0
+    ? '<div class="empty-state" style="padding:16px"><p>Sin gastos cargados</p></div>'
+    : _vt.gastos.map((g, i) => {
+        const fmtF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
+        const icono = g.archivoPdf ? '📄' : (g.foto ? '📷' : '📝');
+        return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${icono} ${escHtml(g.concepto||'—')} · ${fmt(parseFloat(g.monto)||0)}</div>
+            <div style="font-size:11px;color:var(--text3)">${fmtF} · Fac ${escHtml(g.tipo||'-')} N°${escHtml(g.nroFactura||'-')}${g.proyecto?' · '+escHtml(g.proyecto):''}</div>
+          </div>
+          <button onclick="_vtEliminarGasto(${i})" style="background:transparent;border:none;color:rgba(238,85,51,.7);font-size:16px;cursor:pointer;flex-shrink:0">×</button>
+        </div>`;
+      }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">🧾 Control de viáticos</div>
+
+    <div class="form-group">
+      <label>Monto de viáticos asignados *</label>
+      <input type="number" id="vt-monto" placeholder="Ej: 150000" min="0" step="0.01" value="${_vt.montoAsignado}"
+        oninput="_vt.montoAsignado=this.value;window._vt=_vt;_vtActualizarSaldo()" style="font-size:18px;font-weight:700">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:15px;font-weight:700;color:var(--text)" id="vt-disp-asignado">${fmt(monto)}</div>
+        <div style="font-size:10px;color:var(--text3)">Asignado</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:15px;font-weight:700;color:#e67e22" id="vt-disp-gastado">${fmt(totalGastado)}</div>
+        <div style="font-size:10px;color:var(--text3)">Gastado</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:15px;font-weight:700;color:${saldo<0?'#e53':'#22c55e'}" id="vt-disp-saldo">${fmt(saldo)}</div>
+        <div style="font-size:10px;color:var(--text3)">Saldo</div>
+      </div>
+    </div>
+
+    <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showCargarGasto()">➕ Cargar gasto</button>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:4px 0 8px">Gastos (${_vt.gastos.length})</div>
+    <div id="vt-gastos-list">${gastosHTML}</div>
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-viaticos')">Cerrar</button>
+      <button class="btn-primary" style="flex:1;${_vt.gastos.length===0?'opacity:.4;pointer-events:none':''}" onclick="rendirViaticos()">📤 Rendir</button>
+    </div>
+
+    <div id="viaticos-hist-list" style="margin-top:8px"></div>`;
+
+  renderViaticosHist();
+}
+window._vtRender = _vtRender;
+
+function _vtActualizarSaldo() {
+  const monto = parseFloat(_vt.montoAsignado) || 0;
+  const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
+  const saldo = monto - totalGastado;
+  const fmt = n => '$' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const a = document.getElementById('vt-disp-asignado');
+  const s = document.getElementById('vt-disp-saldo');
+  if (a) a.textContent = fmt(monto);
+  if (s) { s.textContent = fmt(saldo); s.style.color = saldo<0?'#e53':'#22c55e'; }
+  _vtPersistir();
+}
+window._vtActualizarSaldo = _vtActualizarSaldo;
+
+function _vtEliminarGasto(i) {
+  _vt.gastos.splice(i, 1);
+  _vtPersistir();
+  _vtRender();
+}
+window._vtEliminarGasto = _vtEliminarGasto;
+
+// ── Cargar gasto (modal) ──
+let _gastoTmp = null;
+
+function showCargarGasto() {
+  _gastoTmp = { fecha: new Date().toISOString().split('T')[0], tipo: 'B', nroFactura: '', monto: '', concepto: 'Almuerzo', conceptoOtro: '', proyecto: '', foto: null, archivoPdf: null, archivoPdfNombre: '' };
+  window._gastoTmp = _gastoTmp;
+  document.getElementById('modal-gasto').classList.remove('hidden');
+  _gastoRender();
+}
+window.showCargarGasto = showCargarGasto;
+
+function _gastoRender() {
+  const el = document.getElementById('modal-gasto-content');
+  if (!el) return;
+  const g = _gastoTmp;
+
+  el.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">➕ Cargar gasto</div>
+
+    <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">COMPROBANTE</div>
+      <div style="display:flex;gap:8px">
+        <input type="file" id="gasto-foto" accept="image/*" capture="environment" style="display:none" onchange="_gastoFoto(this)">
+        <input type="file" id="gasto-pdf" accept="application/pdf" style="display:none" onchange="_gastoPdf(this)">
+        <button onclick="document.getElementById('gasto-foto').click()" style="flex:1;padding:10px;border-radius:8px;border:1px dashed var(--border2);background:var(--bg2);color:var(--text2);font-size:13px;cursor:pointer">📷 Escanear ticket</button>
+        <button onclick="document.getElementById('gasto-pdf').click()" style="flex:1;padding:10px;border-radius:8px;border:1px dashed var(--border2);background:var(--bg2);color:var(--text2);font-size:13px;cursor:pointer">📄 Subir PDF</button>
+      </div>
+      <div id="gasto-preview" style="margin-top:10px;text-align:center">${_gastoPreviewHTML()}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Fecha *</label>
+        <input type="date" id="gasto-fecha" value="${g.fecha}" oninput="_gastoTmp.fecha=this.value">
+      </div>
+      <div class="form-group">
+        <label>Tipo factura *</label>
+        <select id="gasto-tipo" oninput="_gastoTmp.tipo=this.value" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+          <option value="A" ${g.tipo==='A'?'selected':''}>A</option>
+          <option value="B" ${g.tipo==='B'?'selected':''}>B</option>
+          <option value="C" ${g.tipo==='C'?'selected':''}>C</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>N° de factura *</label>
+        <input type="text" id="gasto-nro" placeholder="0001-00001234" maxlength="30" value="${escHtml(g.nroFactura)}" oninput="_gastoTmp.nroFactura=this.value">
+      </div>
+      <div class="form-group">
+        <label>Monto *</label>
+        <input type="number" id="gasto-monto" placeholder="0.00" min="0" step="0.01" value="${g.monto}" oninput="_gastoTmp.monto=this.value" style="font-weight:700">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Concepto *</label>
+      <select id="gasto-concepto" oninput="_gastoTmp.concepto=this.value;_gastoToggleOtro()" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+        ${CONCEPTOS_VIATICO.map(c => `<option value="${c}" ${g.concepto===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </div>
+
+    <div id="gasto-otro-wrap" class="form-group" style="display:${g.concepto==='Otros'?'block':'none'}">
+      <label>Especificar concepto *</label>
+      <input type="text" id="gasto-otro" placeholder="Ej: Insumos de limpieza" maxlength="60" value="${escHtml(g.conceptoOtro)}" oninput="_gastoTmp.conceptoOtro=this.value">
+    </div>
+
+    <div class="form-group">
+      <label>Proyecto asociado</label>
+      <input type="text" id="gasto-proyecto" placeholder="Ej: Proyecto Escáneres DNM" maxlength="60" value="${escHtml(g.proyecto)}" oninput="_gastoTmp.proyecto=this.value">
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-gasto')">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="guardarGasto()">Guardar gasto</button>
+    </div>`;
+}
+
+function _gastoPreviewHTML() {
+  const g = _gastoTmp;
+  if (g.foto) return `<img src="${g.foto}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border)">`;
+  if (g.archivoPdf) return `<div style="font-size:12px;color:var(--accent)">📄 ${escHtml(g.archivoPdfNombre||'documento.pdf')}</div>`;
+  return '<div style="font-size:11px;color:var(--text3)">Sin comprobante adjunto</div>';
+}
+
+function _gastoToggleOtro() {
+  const w = document.getElementById('gasto-otro-wrap');
+  if (w) w.style.display = _gastoTmp.concepto === 'Otros' ? 'block' : 'none';
+}
+window._gastoToggleOtro = _gastoToggleOtro;
+
+function _gastoFoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _gastoTmp.foto = e.target.result;
+    _gastoTmp.archivoPdf = null;
+    _gastoTmp.archivoPdfNombre = '';
+    document.getElementById('gasto-preview').innerHTML = _gastoPreviewHTML();
+  };
+  reader.readAsDataURL(file);
+}
+window._gastoFoto = _gastoFoto;
+
+function _gastoPdf(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _gastoTmp.archivoPdf = e.target.result; // dataURL base64
+    _gastoTmp.archivoPdfNombre = file.name;
+    _gastoTmp.foto = null;
+    document.getElementById('gasto-preview').innerHTML = _gastoPreviewHTML();
+  };
+  reader.readAsDataURL(file);
+}
+window._gastoPdf = _gastoPdf;
+
+function guardarGasto() {
+  const g = _gastoTmp;
+  if (!g.fecha || !g.nroFactura.trim() || !g.monto || !g.concepto) {
+    showToast('Completá fecha, N° factura, monto y concepto', 'error'); return;
+  }
+  if (g.concepto === 'Otros' && !g.conceptoOtro.trim()) {
+    showToast('Especificá el concepto', 'error'); return;
+  }
+  const conceptoFinal = g.concepto === 'Otros' ? g.conceptoOtro.trim() : g.concepto;
+  _vt.gastos.push({
+    fecha: g.fecha, tipo: g.tipo, nroFactura: g.nroFactura.trim(),
+    monto: g.monto, concepto: conceptoFinal, proyecto: g.proyecto.trim(),
+    foto: g.foto, archivoPdf: g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre,
+  });
+  _vtPersistir();
+  closeModal('modal-gasto');
+  _vtRender();
+  showToast('✓ Gasto agregado', 'success');
+}
+window.guardarGasto = guardarGasto;
+
+// ── Rendir viáticos: genera ZIP con planilla + PDFs + sube fotos a R2 ──
+async function rendirViaticos() {
+  if (_vt.gastos.length === 0) return;
+  const monto = parseFloat(_vt.montoAsignado) || 0;
+  if (!monto) { showToast('Ingresá el monto de viáticos asignados', 'error'); return; }
+
+  if (!navigator.onLine) { showToast('Necesitás conexión para rendir', 'error'); return; }
+
+  showToast('Generando rendición...', '');
+  try {
+    const rendicionId = 'vt_' + Date.now();
+
+    // 1) Subir fotos a R2 (respaldo)
+    const fotos = _vt.gastos.filter(g => g.foto).map(g => g.foto);
+    let fotoUrls = [];
+    if (fotos.length > 0) {
+      fotoUrls = await uploadPhotosToR2(rendicionId, fotos);
+    }
+
+    // 2) Generar planilla .xlsx
+    const xlsxBlob = _vtGenerarExcel();
+
+    // 3) Generar PDF con las fotos de tickets
+    const pdfFotosBlob = _vtGenerarPdfFotos();
+
+    // 4) Armar ZIP
+    const zip = new JSZip();
+    const fechaStr = new Date().toISOString().split('T')[0];
+    zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
+    if (pdfFotosBlob) zip.file(`Facturas_fotos_${fechaStr}.pdf`, pdfFotosBlob);
+    // PDFs digitales sueltos
+    _vt.gastos.forEach((g, i) => {
+      if (g.archivoPdf) {
+        const base64 = g.archivoPdf.split(',')[1];
+        const nombre = g.archivoPdfNombre || `factura_${i+1}.pdf`;
+        zip.file(`facturas_pdf/${nombre}`, base64, { base64: true });
+      }
+    });
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+    // 5) Descargar ZIP
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Rendicion_Viaticos_${fechaStr}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    // 6) Guardar rendición en Firestore (sin base64 pesado)
+    const totalGastado = _vt.gastos.reduce((s,g) => s + (parseFloat(g.monto)||0), 0);
+    const rendicion = {
+      id: rendicionId,
+      userId: currentUser.id,
+      userName: currentUser.name || currentUser.email,
+      fechaCreacion: new Date().toISOString(),
+      montoAsignado: monto,
+      totalGastado,
+      saldo: monto - totalGastado,
+      cantidadGastos: _vt.gastos.length,
+      fotoUrls,
+      gastos: _vt.gastos.map(g => ({
+        fecha: g.fecha, tipo: g.tipo, nroFactura: g.nroFactura,
+        monto: g.monto, concepto: g.concepto, proyecto: g.proyecto,
+        tieneFoto: !!g.foto, tienePdf: !!g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre || '',
+      })),
+    };
+    try { await fbSaveViaticoRendicion(rendicion); } catch(e) { console.warn('No se pudo guardar rendición:', e.message); }
+
+    // 7) Limpiar rendición activa
+    _vt = null;
+    window._vt = null;
+    localStorage.removeItem('scancheck_viatico_activo_'+currentUser.id);
+
+    closeModal('modal-viaticos');
+    showToast('✓ Rendición generada — ' + rendicion.cantidadGastos + ' gastos', 'success');
+  } catch(e) {
+    showToast('Error al rendir: ' + e.message, 'error');
+  }
+}
+window.rendirViaticos = rendirViaticos;
+
+// Genera la planilla .xlsx con el formato oficial de Danaide
+function _vtGenerarExcel() {
+  const monto = parseFloat(_vt.montoAsignado) || 0;
+  const hoy = new Date().toLocaleDateString('es-AR');
+
+  // Construir matriz de celdas (AOA) replicando la planilla
+  const aoa = [];
+  aoa[0] = ['', 'RECEPCIÓN DEL FORMULARIO:', '', '', '', '', 'FECHA DE RENDICIÓN:', hoy];
+  aoa[1] = ['', '', '', '', '', '', 'ÁREA:', ''];
+  aoa[2] = ['', '', '', '', '', '', '', ''];
+  aoa[3] = ['', '', '', '', '', '', '', ''];
+  aoa[4] = ['', 'FIRMA Y ACLARACIÓN DEL RESPONSABLE:', '', '', '', '', 'SALDO:', monto];
+  aoa[5] = ['', '', '', '', '', '', '', ''];
+  aoa[6] = ['', '', '', '', '', '', '', ''];
+  aoa[7] = ['', 'RESUMEN DE GASTOS', '', '', '', '', '', ''];
+  aoa[8] = ['', 'Fecha', 'Tipo', 'Nro de Factura', 'Gastos', 'Saldo', 'Proyecto Asociado', 'Detalle'];
+
+  let saldoAcum = monto;
+  _vt.gastos.forEach((g, i) => {
+    const gasto = parseFloat(g.monto) || 0;
+    saldoAcum -= gasto;
+    const fechaF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR') : '';
+    aoa[9 + i] = ['', fechaF, g.tipo || '', g.nroFactura || '', gasto, saldoAcum, g.proyecto || '', g.concepto || ''];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:2},{wch:14},{wch:8},{wch:18},{wch:14},{wch:14},{wch:22},{wch:20}];
+  ws['!merges'] = [{ s:{r:7,c:1}, e:{r:7,c:7} }]; // "RESUMEN DE GASTOS"
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Genera un PDF con las fotos de tickets, una por página
+function _vtGenerarPdfFotos() {
+  const conFoto = _vt.gastos.filter(g => g.foto);
+  if (conFoto.length === 0) return null;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pw = 210, ph = 297, margin = 15;
+
+  conFoto.forEach((g, i) => {
+    if (i > 0) doc.addPage();
+    // Encabezado del ticket
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.setFont(undefined, 'bold');
+    doc.text(`${g.concepto} — ${g.tipo} N° ${g.nroFactura}`, margin, margin);
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    const fechaF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR') : '';
+    const monto = '$' + (parseFloat(g.monto)||0).toLocaleString('es-AR',{minimumFractionDigits:2});
+    doc.text(`${fechaF} · ${monto}${g.proyecto?' · '+g.proyecto:''}`, margin, margin + 6);
+
+    // Imagen
+    try {
+      const props = doc.getImageProperties(g.foto);
+      const maxW = pw - margin*2;
+      const maxH = ph - margin*2 - 15;
+      let w = props.width, h = props.height;
+      const ratio = Math.min(maxW/w, maxH/h);
+      w = w * ratio; h = h * ratio;
+      const fmt = g.foto.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(g.foto, fmt, margin, margin + 12, w, h);
+    } catch(e) {}
+  });
+
+  return doc.output('blob');
+}
+
+// ── Historial de rendiciones (on-demand) ──
+function renderViaticosHist() {
+  const el = document.getElementById('viaticos-hist-list');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:12px 0 8px;display:flex;justify-content:space-between;align-items:center">
+      <span>Rendiciones anteriores</span>
+      <button id="btn-ver-viaticos" onclick="cargarViaticosHist()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">Ver</button>
+    </div>
+    <div id="viaticos-hist-content"><div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div></div>`;
+}
+window.renderViaticosHist = renderViaticosHist;
+
+async function cargarViaticosHist() {
+  const el = document.getElementById('viaticos-hist-content');
+  const btn = document.getElementById('btn-ver-viaticos');
+  if (!el) return;
+  if (el.dataset.cargado === '1') {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Tocá "Ver" para cargar</div>';
+    el.dataset.cargado = '0'; if (btn) btn.textContent = 'Ver'; return;
+  }
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Cargando...</div>';
+  if (btn) btn.textContent = 'Ocultar';
+  if (!navigator.onLine) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px">Sin conexión</div>';
+    if (btn) btn.textContent = 'Ver'; return;
+  }
+  try {
+    const rends = (await fbGetMyViaticos(currentUser.id)).filter(r => !r.eliminado);
+    if (rends.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Sin rendiciones anteriores</div>';
+      el.dataset.cargado = '1'; return;
+    }
+    const fmt = n => '$' + (n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    el.innerHTML = rends.map(r => {
+      const fecha = r.fechaCreacion ? new Date(r.fechaCreacion).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">🧾 Rendición ${fecha}</div>
+          <div style="font-size:12px;font-weight:700;color:#e67e22">${fmt(r.totalGastado)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3)">Asignado ${fmt(r.montoAsignado)} · Saldo ${fmt(r.saldo)} · ${r.cantidadGastos||0} gastos</div>
+        <button onclick="eliminarViatico('${r.fbId}')" style="width:100%;margin-top:8px;padding:7px;border-radius:8px;border:1px solid rgba(238,85,51,.3);background:rgba(238,85,51,.06);color:#e55;font-size:12px;font-weight:600;cursor:pointer">🗑 Eliminar</button>
+      </div>`;
+    }).join('');
+    el.dataset.cargado = '1';
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#e55;text-align:center;padding:8px">Error: ${escHtml(e.message)}</div>`;
+    if (btn) btn.textContent = 'Ver';
+  }
+}
+window.cargarViaticosHist = cargarViaticosHist;
+
+async function eliminarViatico(fbId) {
+  if (!confirm('¿Eliminar esta rendición? Va a la papelera del supervisor.')) return;
+  try {
+    await fbSoftDeleteViatico(fbId, currentUser?.id);
+    // Forzar refresh de la lista (marcar como no cargado y volver a cargar)
+    const cont = document.getElementById('viaticos-hist-content');
+    if (cont) cont.dataset.cargado = '0';
+    await cargarViaticosHist();
+    showToast('Rendición enviada a papelera', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.eliminarViatico = eliminarViatico;
+
+// ── Supervisor: viáticos de todos los técnicos ──
+async function loadSupViaticos() {
+  const el = document.getElementById('sup-viajes-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando viáticos...</div>';
+  try {
+    const rends = (await fbGetAllViaticos()).filter(r => !r.eliminado);
+    if (rends.length === 0) { el.innerHTML = '<div class="empty-state"><p>Sin rendiciones de viáticos</p></div>'; return; }
+    const fmt = n => '$' + (n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    el.innerHTML = rends.map(r => {
+      const fecha = r.fechaCreacion ? new Date(r.fechaCreacion).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      const gastosHTML = (r.gastos||[]).map(g => {
+        const f = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
+        return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px">
+          <span style="color:var(--text3)">${f} · ${escHtml(g.concepto||'—')} (${escHtml(g.tipo||'-')})</span>
+          <span style="color:var(--text2);font-weight:600">${fmt(parseFloat(g.monto)||0)}</span>
+        </div>`;
+      }).join('');
+      return `<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(r.userName||'—')}</div>
+          <div style="font-size:12px;font-weight:700;color:#e67e22">${fmt(r.totalGastado)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${fecha} · Asignado ${fmt(r.montoAsignado)} · Saldo ${fmt(r.saldo)}</div>
+        <div style="border-top:1px solid var(--border);padding-top:6px">${gastosHTML}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+}
+window.loadSupViaticos = loadSupViaticos;
+// ── FIN CONTROL DE VIÁTICOS ───────────────────────────────────
+
 
 // ══════════════════════════════════════════════════════════════
 // ── PROGRAMAR VIAJE ───────────────────────────────────────────
@@ -6591,7 +7108,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '04.07.2026-v232'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v233'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
