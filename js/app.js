@@ -3391,7 +3391,7 @@ function rendirViaticos() {
       ⚠️ Cerrar rendición de viáticos
     </div>
     <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:16px">
-      Una vez cerrada, el registro actual se vacía y se genera el archivo para enviar a Administración.
+      Se descargará el archivo ZIP y se abrirá Gmail con el mail listo. Solo tenés que adjuntar el archivo descargado y enviar. El registro actual se vaciará.
     </div>
     <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">
@@ -3463,33 +3463,38 @@ async function _compartirRendicion() {
   const { zipBlob, zipFile, nombreZip, fechaStr } = z;
 
   // ── Compartir (idealmente síncrono: el ZIP ya está listo) ──
-  let compartido = false;
-  const shareData = {
-    files: [zipFile],
-    title: 'Rendición de viáticos',
-    text: `Rendición de viáticos — ${fechaStr}\n` +
-          `Asignado: ${fmt(monto)} · Gastado: ${fmt(totalGastado)} · Saldo: ${fmt(monto-totalGastado)}\n` +
-          `${cantidadGastos} gastos. Se adjunta planilla y comprobantes.`,
-  };
+  // ── Descargar el ZIP ──
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombreZip; a.click();
+  URL.revokeObjectURL(url);
 
-  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [zipFile] })) {
-    try {
-      await navigator.share(shareData);
-      compartido = true;
-    } catch(err) {
-      if (err.name === 'AbortError') compartido = true;
-      else console.warn('Share falló:', err.message);
-    }
-  }
+  // ── Abrir Gmail con el mail prellenado (el técnico adjunta el ZIP descargado) ──
+  const para = 'comprobantes@danaide.com.ar';
+  const cc = ['elopapa@danaide.com.ar','rsifontes@danaide.com.ar','spizzola@danaide.com.ar','vialinksrl@gmail.com'].join(',');
+  const asunto = `Rendición de viáticos - ${currentUser.name || currentUser.email} - ${fechaStr}`;
+  const cuerpo =
+    `Buenos días,\n\n` +
+    `Adjunto la rendición de viáticos correspondiente.\n\n` +
+    `Fecha: ${fechaStr}\n` +
+    `Monto asignado: ${fmt(monto)}\n` +
+    `Total gastado: ${fmt(totalGastado)}\n` +
+    `Saldo: ${fmt(monto-totalGastado)}\n` +
+    `Cantidad de comprobantes: ${cantidadGastos}\n\n` +
+    `Se adjunta el archivo ${nombreZip} con la planilla de gastos y los comprobantes.\n\n` +
+    `IMPORTANTE: adjuntar el archivo ${nombreZip} que se acaba de descargar antes de enviar.\n\n` +
+    `Saludos.`;
 
-  if (!compartido) {
-    // Fallback: descargar
-    const url = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = url; a.download = nombreZip; a.click();
-    URL.revokeObjectURL(url);
-    showToast('Archivo descargado — adjuntalo al mail', '');
-  }
+  // Intent de Gmail (Android) → cae a mailto si Gmail no está
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(para)}` +
+    `&cc=${encodeURIComponent(cc)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+
+  // Pequeño delay para que arranque la descarga antes de abrir Gmail
+  setTimeout(() => {
+    window.open(gmailUrl, '_blank');
+  }, 600);
+
+  showToast('Archivo descargado — adjuntalo en el mail', '');
 
   // ── Respaldo en R2 + Firestore (después del share) ──
   showToast('Guardando respaldo...', '');
@@ -7464,7 +7469,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v240'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v242'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
