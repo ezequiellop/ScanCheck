@@ -21,6 +21,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -430,6 +432,7 @@
       <button class="btn-primary" style="width:100%;margin-bottom:16px" onclick="showIniciarViaje()">🚗 Iniciar nuevo viaje</button>
       <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showProgramarViaje()">🗓️ Programar viaje</button>
       <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showReporteService()">🔧 Reporte para Service</button>
+      <button class="btn-secondary" style="width:100%;margin-bottom:16px" onclick="showViaticos()">🧾 Control de viáticos</button>
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 0 8px">Viajes programados</div>
       <div id="viajes-programados-list"><div class="empty-state"><p>Sin viajes programados</p></div></div>
       <div id="service-reports-list"></div>
@@ -474,6 +477,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn-ghost small" onclick="exportViajesSheets()">📊 Sheets</button>
             <button class="btn-ghost small" onclick="loadSupServiceReports()">🔧 Service</button>
+            <button class="btn-ghost small" onclick="loadSupViaticos()">🧾 Viáticos</button>
             <button class="btn-ghost small" onclick="showPapeleraViajes()">🗑 Papelera</button>
             <button class="btn-ghost small" onclick="loadSupViajes()">↻ Actualizar</button>
           </div>
@@ -585,6 +589,24 @@
   <div class="modal-sheet" style="max-height:92vh;overflow-y:auto">
     <div class="modal-handle"></div>
     <div id="modal-programar-viaje-content"></div>
+  </div>
+</div>
+
+<!-- MODAL: Control de viáticos -->
+<div id="modal-viaticos" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-viaticos')"></div>
+  <div class="modal-sheet" style="max-height:92vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+    <div id="modal-viaticos-content"></div>
+  </div>
+</div>
+
+<!-- MODAL: Cargar gasto -->
+<div id="modal-gasto" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal('modal-gasto')"></div>
+  <div class="modal-sheet" style="max-height:92vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+    <div id="modal-gasto-content"></div>
   </div>
 </div>
 
