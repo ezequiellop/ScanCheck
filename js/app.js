@@ -3045,14 +3045,259 @@ function _gastoFoto(input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    _gastoTmp.foto = e.target.result;
-    _gastoTmp.archivoPdf = null;
-    _gastoTmp.archivoPdfNombre = '';
-    document.getElementById('gasto-preview').innerHTML = _gastoPreviewHTML();
+    // En lugar de guardar directo, abrir el editor de recorte
+    abrirEditorRecorte(e.target.result, (recortada) => {
+      _gastoTmp.foto = recortada;
+      _gastoTmp.archivoPdf = null;
+      _gastoTmp.archivoPdfNombre = '';
+      const prev = document.getElementById('gasto-preview');
+      if (prev) prev.innerHTML = _gastoPreviewHTML();
+    });
   };
   reader.readAsDataURL(file);
+  // Limpiar el input para permitir volver a elegir la misma foto
+  input.value = '';
 }
 window._gastoFoto = _gastoFoto;
+
+// ══════════════════════════════════════════════════════════════
+// ── EDITOR DE RECORTE DE IMAGEN ───────────────────────────────
+// Editor liviano con canvas puro (sin librerías). Recuadro con 4
+// esquinas arrastrables + rotación 90°. Pensado para gama baja.
+// ══════════════════════════════════════════════════════════════
+let _crop = null;
+
+function abrirEditorRecorte(dataUrl, onConfirm) {
+  _crop = {
+    src: dataUrl,
+    onConfirm,
+    rotation: 0,
+    img: null,
+    // Área de recorte en coordenadas del canvas (se inicializa al cargar)
+    box: null,
+    dragging: null, // 'move' o índice de esquina 0-3
+    canvasW: 0,
+    canvasH: 0,
+  };
+  document.getElementById('modal-recorte').classList.remove('hidden');
+
+  const img = new Image();
+  img.onload = () => {
+    _crop.img = img;
+    _cropRender();
+  };
+  img.src = dataUrl;
+}
+window.abrirEditorRecorte = abrirEditorRecorte;
+
+function _cropRender() {
+  const cont = document.getElementById('modal-recorte-content');
+  if (!cont) return;
+  cont.innerHTML = `
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px">✂️ Ajustar recorte</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Arrastrá las esquinas para ajustar al ticket</div>
+    <div style="position:relative;width:100%;display:flex;justify-content:center;background:var(--bg3);border-radius:10px;padding:8px;margin-bottom:12px">
+      <canvas id="crop-canvas" style="max-width:100%;touch-action:none;border-radius:6px"></canvas>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <button class="btn-secondary" style="flex:1" onclick="_cropRotar()">↻ Rotar 90°</button>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-recorte')">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="_cropConfirmar()">✓ Confirmar</button>
+    </div>`;
+
+  setTimeout(() => _cropSetupCanvas(), 30);
+}
+
+function _cropSetupCanvas() {
+  const canvas = document.getElementById('crop-canvas');
+  if (!canvas || !_crop.img) return;
+  const ctx = canvas.getContext('2d');
+
+  // Dimensiones de la imagen según rotación
+  const rot = _crop.rotation % 360;
+  const swap = (rot === 90 || rot === 270);
+  const iw = swap ? _crop.img.height : _crop.img.width;
+  const ih = swap ? _crop.img.width : _crop.img.height;
+
+  // Escalar para que quepa en pantalla (máx 320px de ancho para gama baja)
+  const maxW = Math.min(320, (document.getElementById('modal-recorte-content').clientWidth || 320) - 32);
+  const scale = Math.min(maxW / iw, 400 / ih, 1);
+  const cw = Math.round(iw * scale);
+  const ch = Math.round(ih * scale);
+  canvas.width = cw;
+  canvas.height = ch;
+  _crop.canvasW = cw;
+  _crop.canvasH = ch;
+  _crop.scale = scale;
+
+  // Inicializar caja de recorte al 90% del área si no existe
+  if (!_crop.box) {
+    const m = Math.round(Math.min(cw, ch) * 0.06);
+    _crop.box = { x1: m, y1: m, x2: cw - m, y2: ch - m };
+  } else {
+    // Ajustar la caja si cambió el tamaño (tras rotar)
+    _crop.box = { x1: 8, y1: 8, x2: cw - 8, y2: ch - 8 };
+  }
+
+  _cropDraw();
+  _cropBindEvents(canvas);
+}
+
+function _cropDraw() {
+  const canvas = document.getElementById('crop-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const { canvasW: cw, canvasH: ch, box } = _crop;
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Dibujar imagen rotada
+  ctx.save();
+  const rot = _crop.rotation % 360;
+  ctx.translate(cw/2, ch/2);
+  ctx.rotate(rot * Math.PI / 180);
+  if (rot === 90 || rot === 270) {
+    ctx.drawImage(_crop.img, -ch/2, -cw/2, ch, cw);
+  } else {
+    ctx.drawImage(_crop.img, -cw/2, -ch/2, cw, ch);
+  }
+  ctx.restore();
+
+  // Oscurecer todo menos la caja
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, cw, box.y1);
+  ctx.fillRect(0, box.y2, cw, ch - box.y2);
+  ctx.fillRect(0, box.y1, box.x1, box.y2 - box.y1);
+  ctx.fillRect(box.x2, box.y1, cw - box.x2, box.y2 - box.y1);
+
+  // Borde de la caja
+  ctx.strokeStyle = '#00d4aa';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
+
+  // Esquinas
+  const corners = [[box.x1,box.y1],[box.x2,box.y1],[box.x2,box.y2],[box.x1,box.y2]];
+  ctx.fillStyle = '#00d4aa';
+  corners.forEach(([x,y]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+
+function _cropBindEvents(canvas) {
+  const getPos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+  };
+
+  const cornerAt = (p) => {
+    const b = _crop.box;
+    const corners = [[b.x1,b.y1],[b.x2,b.y1],[b.x2,b.y2],[b.x1,b.y2]];
+    for (let i = 0; i < 4; i++) {
+      const dx = p.x - corners[i][0], dy = p.y - corners[i][1];
+      if (Math.sqrt(dx*dx + dy*dy) < 22) return i;
+    }
+    // ¿Dentro de la caja? → mover
+    if (p.x > b.x1 && p.x < b.x2 && p.y > b.y1 && p.y < b.y2) return 'move';
+    return null;
+  };
+
+  const start = (e) => {
+    e.preventDefault();
+    const p = getPos(e);
+    _crop.dragging = cornerAt(p);
+    _crop.lastPos = p;
+  };
+
+  const move = (e) => {
+    if (_crop.dragging === null) return;
+    e.preventDefault();
+    const p = getPos(e);
+    const b = _crop.box;
+    const cw = _crop.canvasW, ch = _crop.canvasH;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    if (_crop.dragging === 'move') {
+      const dx = p.x - _crop.lastPos.x, dy = p.y - _crop.lastPos.y;
+      const w = b.x2 - b.x1, h = b.y2 - b.y1;
+      let nx1 = clamp(b.x1 + dx, 0, cw - w);
+      let ny1 = clamp(b.y1 + dy, 0, ch - h);
+      b.x1 = nx1; b.y1 = ny1; b.x2 = nx1 + w; b.y2 = ny1 + h;
+    } else {
+      const i = _crop.dragging;
+      const minSize = 30;
+      if (i === 0) { b.x1 = clamp(p.x, 0, b.x2 - minSize); b.y1 = clamp(p.y, 0, b.y2 - minSize); }
+      if (i === 1) { b.x2 = clamp(p.x, b.x1 + minSize, cw); b.y1 = clamp(p.y, 0, b.y2 - minSize); }
+      if (i === 2) { b.x2 = clamp(p.x, b.x1 + minSize, cw); b.y2 = clamp(p.y, b.y1 + minSize, ch); }
+      if (i === 3) { b.x1 = clamp(p.x, 0, b.x2 - minSize); b.y2 = clamp(p.y, b.y1 + minSize, ch); }
+    }
+    _crop.lastPos = p;
+    _cropDraw();
+  };
+
+  const end = () => { _crop.dragging = null; };
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function _cropRotar() {
+  _crop.rotation = (_crop.rotation + 90) % 360;
+  _crop.box = null; // recalcular caja tras rotar
+  _cropSetupCanvas();
+}
+window._cropRotar = _cropRotar;
+
+function _cropConfirmar() {
+  const { img, box, rotation, scale } = _crop;
+
+  // Canvas temporal con la imagen rotada a resolución completa
+  const rot = rotation % 360;
+  const swap = (rot === 90 || rot === 270);
+  const fullW = swap ? img.height : img.width;
+  const fullH = swap ? img.width : img.height;
+
+  const tmp = document.createElement('canvas');
+  tmp.width = fullW; tmp.height = fullH;
+  const tctx = tmp.getContext('2d');
+  tctx.save();
+  tctx.translate(fullW/2, fullH/2);
+  tctx.rotate(rot * Math.PI / 180);
+  if (swap) tctx.drawImage(img, -fullH/2, -fullW/2, fullH, fullW);
+  else tctx.drawImage(img, -fullW/2, -fullH/2, fullW, fullH);
+  tctx.restore();
+
+  // Recortar según la caja (convertir coords de canvas a coords reales)
+  const sx = box.x1 / scale;
+  const sy = box.y1 / scale;
+  const sw = (box.x2 - box.x1) / scale;
+  const sh = (box.y2 - box.y1) / scale;
+
+  const out = document.createElement('canvas');
+  out.width = Math.round(sw);
+  out.height = Math.round(sh);
+  const octx = out.getContext('2d');
+  octx.drawImage(tmp, sx, sy, sw, sh, 0, 0, out.width, out.height);
+
+  // Exportar como JPEG con calidad razonable (comprime para no saturar R2)
+  const result = out.toDataURL('image/jpeg', 0.85);
+
+  closeModal('modal-recorte');
+  if (_crop.onConfirm) _crop.onConfirm(result);
+  _crop = null;
+}
+window._cropConfirmar = _cropConfirmar;
+// ── FIN EDITOR DE RECORTE ─────────────────────────────────────
 
 function _gastoPdf(input) {
   const file = input.files[0];
@@ -7108,7 +7353,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v233'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v234'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
