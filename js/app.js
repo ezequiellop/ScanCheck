@@ -3485,14 +3485,17 @@ async function _compartirRendicion() {
     `IMPORTANTE: adjuntar el archivo ${nombreZip} que se acaba de descargar antes de enviar.\n\n` +
     `Saludos.`;
 
-  // Intent de Gmail (Android) → cae a mailto si Gmail no está
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(para)}` +
-    `&cc=${encodeURIComponent(cc)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+  // mailto: — la app de Gmail en Android lo interpreta y abre un mail nuevo
+  // con destinatario, copias, asunto y cuerpo cargados.
+  const mailtoUrl = `mailto:${encodeURIComponent(para)}` +
+    `?cc=${encodeURIComponent(cc)}` +
+    `&subject=${encodeURIComponent(asunto)}` +
+    `&body=${encodeURIComponent(cuerpo)}`;
 
-  // Pequeño delay para que arranque la descarga antes de abrir Gmail
+  // Pequeño delay para que arranque la descarga antes de abrir el mail
   setTimeout(() => {
-    window.open(gmailUrl, '_blank');
-  }, 600);
+    window.location.href = mailtoUrl;
+  }, 800);
 
   showToast('Archivo descargado — adjuntalo en el mail', '');
 
@@ -7469,7 +7472,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v242'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v243'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
