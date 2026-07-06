@@ -1,4 +1,4 @@
-const CACHE='scancheck-v244';
+const CACHE='scancheck-v245';
 const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase.js','./js/logo.js','./qr-scanner.html','./manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
@@ -6,7 +6,9 @@ const ASSETS=['./','./index.html','./css/style.css','./js/app.js','./js/firebase
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
 ];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>
