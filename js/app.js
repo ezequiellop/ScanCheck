@@ -1559,8 +1559,8 @@ async function saveScan() {
     updateLibrerias: document.getElementById('chk-update-librerias').checked,
     autoInicioDocAuth:  document.getElementById('chk-autoinicio-doc-auth').checked,
     autoInicioSentinel: document.getElementById('chk-autoinicio-sentinel').checked,
-    camaraWeb:          document.getElementById('chk-camara-web').checked,
-    camaraWebMarca:     document.getElementById('chk-camara-web').checked ? (document.getElementById('chk-camara-web-marca')?.value.trim() || '') : ''
+    camaraWeb:          document.getElementById('chk-camara-web')?.checked || false,
+    camaraWebMarca:     document.getElementById('chk-camara-web')?.checked ? (document.getElementById('chk-camara-web-marca')?.value.trim() || '') : ''
   };
 
   // Checklist de instalación (equipo nuevo) — solo relevante cuando opTypeReal es instalacion_*
@@ -7488,7 +7488,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v244'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v245'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
