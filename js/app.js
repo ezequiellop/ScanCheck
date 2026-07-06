@@ -2952,7 +2952,7 @@ window._vtEliminarGasto = _vtEliminarGasto;
 let _gastoTmp = null;
 
 function showCargarGasto() {
-  _gastoTmp = { fecha: new Date().toISOString().split('T')[0], tipo: 'B', nroFactura: '', monto: '', concepto: 'Almuerzo', conceptoOtro: '', proyecto: '', foto: null, archivoPdf: null, archivoPdfNombre: '' };
+  _gastoTmp = { fecha: new Date().toISOString().split('T')[0], tipo: 'B', tipoOtro: '', nroFactura: '', monto: '', concepto: 'Almuerzo', conceptoOtro: '', proyecto: '', foto: null, archivoPdf: null, archivoPdfNombre: '' };
   window._gastoTmp = _gastoTmp;
   document.getElementById('modal-gasto').classList.remove('hidden');
   _gastoRender();
@@ -2985,12 +2985,18 @@ function _gastoRender() {
       </div>
       <div class="form-group">
         <label>Tipo factura *</label>
-        <select id="gasto-tipo" oninput="_gastoTmp.tipo=this.value" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+        <select id="gasto-tipo" oninput="_gastoTmp.tipo=this.value;_gastoToggleTipoOtro()" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
           <option value="A" ${g.tipo==='A'?'selected':''}>A</option>
           <option value="B" ${g.tipo==='B'?'selected':''}>B</option>
           <option value="C" ${g.tipo==='C'?'selected':''}>C</option>
+          <option value="Otro" ${g.tipo==='Otro'?'selected':''}>Otro</option>
         </select>
       </div>
+    </div>
+
+    <div id="gasto-tipo-otro-wrap" class="form-group" style="display:${g.tipo==='Otro'?'block':'none'}">
+      <label>Especificar tipo de factura *</label>
+      <input type="text" id="gasto-tipo-otro" placeholder="Ej: M, E, Ticket, Recibo" maxlength="20" value="${escHtml(g.tipoOtro||'')}" oninput="_gastoTmp.tipoOtro=this.value">
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -3039,6 +3045,12 @@ function _gastoToggleOtro() {
   if (w) w.style.display = _gastoTmp.concepto === 'Otros' ? 'block' : 'none';
 }
 window._gastoToggleOtro = _gastoToggleOtro;
+
+function _gastoToggleTipoOtro() {
+  const w = document.getElementById('gasto-tipo-otro-wrap');
+  if (w) w.style.display = _gastoTmp.tipo === 'Otro' ? 'block' : 'none';
+}
+window._gastoToggleTipoOtro = _gastoToggleTipoOtro;
 
 function _gastoFoto(input) {
   const file = input.files[0];
@@ -3346,12 +3358,16 @@ function guardarGasto() {
   if (!g.fecha || !g.nroFactura.trim() || !g.monto || !g.concepto) {
     showToast('Completá fecha, N° factura, monto y concepto', 'error'); return;
   }
+  if (g.tipo === 'Otro' && !(g.tipoOtro||'').trim()) {
+    showToast('Especificá el tipo de factura', 'error'); return;
+  }
   if (g.concepto === 'Otros' && !g.conceptoOtro.trim()) {
     showToast('Especificá el concepto', 'error'); return;
   }
+  const tipoFinal = g.tipo === 'Otro' ? g.tipoOtro.trim() : g.tipo;
   const conceptoFinal = g.concepto === 'Otros' ? g.conceptoOtro.trim() : g.concepto;
   _vt.gastos.push({
-    fecha: g.fecha, tipo: g.tipo, nroFactura: g.nroFactura.trim(),
+    fecha: g.fecha, tipo: tipoFinal, nroFactura: g.nroFactura.trim(),
     monto: g.monto, concepto: conceptoFinal, proyecto: g.proyecto.trim(),
     foto: g.foto, archivoPdf: g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre,
   });
@@ -7472,7 +7488,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v243'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '05.07.2026-v244'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
