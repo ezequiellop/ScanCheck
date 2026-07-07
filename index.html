@@ -419,6 +419,10 @@
         <div class="form-group"><label>Modelo miniPC</label><input type="text" id="totem-modelo-minipc" maxlength="60"></div>
       </div>
       <div class="form-row">
+        <div class="form-group"><label>IP miniPC</label><input type="text" id="totem-ip-minipc" maxlength="45" placeholder="Ej: 192.168.1.50"></div>
+        <div class="form-group"><label>MAC miniPC</label><input type="text" id="totem-mac-minipc" maxlength="17" placeholder="Ej: AA:BB:CC:DD:EE:FF"></div>
+      </div>
+      <div class="form-row">
         <div class="form-group"><label>Serie Cámara</label><input type="text" id="totem-serie-camara" maxlength="60"></div>
         <div class="form-group"><label>Modelo/Marca Cámara</label><input type="text" id="totem-modelo-camara" maxlength="60"></div>
       </div>
@@ -435,13 +439,17 @@
       <div id="totem-reemplazo-fields" style="display:none">
         <div class="section-label" style="margin-top:12px">Datos del reemplazo</div>
         <div class="form-group"><label>Equipo que se reemplaza *</label>
-          <select id="totem-equipo-reemplazo">
+          <select id="totem-equipo-reemplazo" onchange="document.getElementById('totem-equipo-otro-wrap').style.display=this.value==='Otro'?'block':'none'">
             <option value="miniPC">miniPC</option>
             <option value="Pantalla">Pantalla</option>
             <option value="Camara">Cámara</option>
             <option value="Switch POE">Switch POE</option>
             <option value="Estabilizador">Estabilizador</option>
+            <option value="Otro">Otro</option>
           </select>
+        </div>
+        <div id="totem-equipo-otro-wrap" style="display:none">
+          <div class="form-group"><label>Especificar equipo *</label><input type="text" id="totem-equipo-otro" maxlength="60" placeholder="Ej: Lector de código"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Marca/Modelo que se retira *</label><input type="text" id="totem-mm-retira" maxlength="60"></div>
