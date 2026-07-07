@@ -2589,15 +2589,15 @@ function showGeneradorEtiqueta() {
   const inp = (id, label, ph='') => `<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input type="text" id="${id}" placeholder="${ph}" maxlength="80" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
   modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:20px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4);max-height:92vh;overflow-y:auto">
     <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;text-align:center">🏷️ Generar etiqueta QR — Tótem</div>
-    ${inp('et-paso','Nombre del Paso','Ej: Paso de los Libres')}
+    ${inp('et-paso','Nombre del Paso','Ej: La Quiaca')}
     ${inp('et-puesto','N° de Puesto','Ej: 3')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${inp('et-serie-minipc','Serie miniPC *')}
       ${inp('et-modelo-minipc','Modelo miniPC')}
       ${inp('et-serie-camara','Serie Cámara')}
-      ${inp('et-modelo-camara','Modelo Cámara')}
+      ${inp('et-modelo-camara','Modelo/Marca Cámara')}
       ${inp('et-serie-pantalla','Serie Pantalla')}
-      ${inp('et-modelo-pantalla','Modelo Pantalla')}
+      ${inp('et-modelo-pantalla','Modelo/Marca Pantalla')}
       ${inp('et-inv-dnd','N° Inv. DND')}
       ${inp('et-inv-dnm','N° Inv. DNM')}
     </div>
@@ -7835,7 +7835,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '06.07.2026-v247'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '06.07.2026-v249'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -8045,8 +8045,43 @@ function scannerEstadoLabel(estado) {
   return SCANNER_ESTADO_LABELS[estado] || estado;
 }
 
+// Filas de exportación para la hoja "Totems"
+function buildTotemExportRows(allScans) {
+  const totems = allScans.filter(s => s.producto === 'totem');
+  const headers = [
+    'Fecha', 'Hora', 'Técnico', 'Inspector DNM', 'Paso', 'Puesto', 'Tipo Operación',
+    'Serie miniPC', 'Modelo miniPC', 'Serie Cámara', 'Modelo Cámara',
+    'Serie Pantalla', 'Modelo Pantalla', 'N° Inv. DND', 'N° Inv. DNM',
+    'Checklist OK', 'Checklist Detalle',
+    'Equipo Reemplazado', 'Marca/Modelo Retira', 'Serie Retira', 'Marca/Modelo Nuevo', 'Serie Nuevo',
+    'Latitud', 'Longitud', 'Dirección', 'Notas'
+  ];
+  const rows = [headers];
+  totems.forEach(s => {
+    const d = new Date(s.timestamp);
+    const items = s.checklistItems || [];
+    const oks = items.filter(i => i.ok).length;
+    rows.push([
+      d.toLocaleDateString('es-AR'), d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),
+      s.technicianName || '', s.inspectorName || '', s.paso || '', s.puesto || '',
+      opLabel(s.opType) || s.opType || '',
+      s.serieMiniPC || s.serie || '', s.modeloMiniPC || '',
+      s.serieCamara || '', s.modeloCamara || '',
+      s.seriePantalla || '', s.modeloPantalla || '',
+      s.invDnd || '', s.invDnm || '',
+      items.length ? `${oks}/${items.length}` : '',
+      items.map(i => `${i.ok?'OK':'—'} ${i.label}`).join(' | '),
+      s.equipoReemplazado || '', s.mmRetira || '', s.serieRetira || '', s.mmNuevo || '', s.serieNuevo || '',
+      s.lat != null ? s.lat : '', s.lon != null ? s.lon : '', s.address || '', s.notas || ''
+    ]);
+  });
+  return rows;
+}
+
 function buildExportRows(allScans) {
-  const deduplicated = deduplicateScans(allScans);
+  // Solo scanners — los tótems/tablets van a sus propias hojas
+  const soloScanners = allScans.filter(s => !s.producto || s.producto === 'scanner');
+  const deduplicated = deduplicateScans(soloScanners);
   const headers = [
     'Fecha', 'Técnico', 'Inspector DNM', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
@@ -8178,9 +8213,39 @@ async function exportToGoogleSheets() {
       throw new Error(err.error?.message || `HTTP ${writeRes.status}`);
     }
 
+    // ── Hoja Totems (si hay registros de tótem) ──
+    let totemMsg = '';
+    const totemRows = buildTotemExportRows(allScans);
+    if (totemRows.length > 1) {
+      statusEl.textContent = `Exportando ${totemRows.length - 1} tótems...`;
+      try {
+        const clearT = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent('Totems!A:Z')}:clear`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' }
+        });
+        if (!clearT.ok) {
+          const err = await clearT.json().catch(()=>({}));
+          throw new Error(err.error?.message || `HTTP ${clearT.status} — ¿existe la hoja "Totems" en el Sheet?`);
+        }
+        const writeT = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent('Totems!A1')}?valueInputOption=RAW`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: totemRows })
+        });
+        if (!writeT.ok) {
+          const err = await writeT.json().catch(()=>({}));
+          throw new Error(err.error?.message || `HTTP ${writeT.status}`);
+        }
+        totemMsg = ` + ${totemRows.length - 1} tótems`;
+      } catch(e) {
+        console.warn('Export Totems:', e.message);
+        totemMsg = ` (hoja Totems: ${e.message})`;
+      }
+    }
+
     const dupMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicados eliminados)` : '';
-    statusEl.textContent = `✓ ${exportedCount} registros exportados${dupMsg}.`;
-    showToast(`✓ ${exportedCount} registros exportados a Sheets${dupMsg}`, 'success');
+    statusEl.textContent = `✓ ${exportedCount} registros exportados${totemMsg}${dupMsg}.`;
+    showToast(`✓ ${exportedCount} registros${totemMsg} exportados a Sheets${dupMsg}`, 'success');
 
   } catch(e) {
     console.error('Export error:', e);
