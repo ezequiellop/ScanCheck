@@ -393,18 +393,18 @@
       </div>
 
       <div class="section-label">Tipo de operación</div>
-      <div class="op-type-grid">
-        <button class="op-type-btn active" id="totem-op-mantenimiento" onclick="totemSetOpType('mantenimiento')">🔧 Mantenimiento</button>
-        <button class="op-type-btn" id="totem-op-instalacion" onclick="totemSetOpType('instalacion')">➕ Instalación</button>
-        <button class="op-type-btn" id="totem-op-incidencia" onclick="totemSetOpType('incidencia')">⚠️ Incidencia</button>
+      <div class="op-type-row">
+        <button class="op-btn active" id="totem-op-mantenimiento" onclick="totemSetOpType('mantenimiento')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Mantenimiento Preventivo</button>
+        <button class="op-btn" id="totem-op-instalacion" onclick="totemSetOpType('instalacion')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Instalación</button>
+        <button class="op-btn" id="totem-op-incidencia" onclick="totemSetOpType('incidencia')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Incidencia</button>
       </div>
 
       <!-- Subtipo de incidencia -->
       <div id="totem-incidencia-subtipo" style="display:none;margin-top:10px">
         <div class="section-label">Tipo de incidencia</div>
-        <div class="op-type-grid" style="grid-template-columns:1fr 1fr">
-          <button class="op-type-btn active" id="totem-inc-reparable" onclick="totemSetIncSubtipo('reparable')">🔨 Reparable en sitio</button>
-          <button class="op-type-btn" id="totem-inc-reemplazo" onclick="totemSetIncSubtipo('reemplazo')">🔄 Reemplazo de equipo</button>
+        <div class="op-type-row">
+          <button class="op-btn active" id="totem-inc-reparable" onclick="totemSetIncSubtipo('reparable')">🔨 Reparable en sitio</button>
+          <button class="op-btn" id="totem-inc-reemplazo" onclick="totemSetIncSubtipo('reemplazo')">🔄 Reemplazo de equipo</button>
         </div>
       </div>
 
@@ -412,7 +412,7 @@
       <button class="btn-secondary" style="width:100%;margin-bottom:12px" onclick="startTotemQRScan()">📷 Escanear etiqueta QR</button>
       <div id="totem-qr-preview" class="hidden" style="background:var(--bg3);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--accent)">✓ Datos cargados desde etiqueta</div>
 
-      <div class="form-group"><label>Nombre del Paso *</label><input type="text" id="totem-paso" maxlength="80" placeholder="Ej: Paso de los Libres"></div>
+      <div class="form-group"><label>Nombre del Paso *</label><input type="text" id="totem-paso" maxlength="80" placeholder="Ej: La Quiaca"></div>
       <div class="form-group"><label>N° de Puesto *</label><input type="text" id="totem-puesto" maxlength="30" placeholder="Ej: 3"></div>
       <div class="form-row">
         <div class="form-group"><label>Serie miniPC *</label><input type="text" id="totem-serie-minipc" maxlength="60"></div>
@@ -593,6 +593,7 @@
         <button class="sup-tab" onclick="supTab('storage',this)">Storage</button>
         <button class="sup-tab" onclick="supTab('viajes',this)">Viajes km</button>
         <button class="sup-tab" onclick="supTab('programados',this)">Programados</button>
+        <button class="sup-tab" onclick="showGeneradorEtiqueta()">🏷️ Etiquetas</button>
       </div>
       <div id="sup-informes" class="sup-panel">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
@@ -620,7 +621,6 @@
             <button class="btn-ghost small" onclick="exportViajesSheets()">📊 Sheets</button>
             <button class="btn-ghost small" onclick="loadSupServiceReports()">🔧 Service</button>
             <button class="btn-ghost small" onclick="loadSupViaticos()">🧾 Viáticos</button>
-            <button class="btn-ghost small" onclick="showGeneradorEtiqueta()">🏷️ Etiquetas</button>
             <button class="btn-ghost small" onclick="showPapeleraViajes()">🗑 Papelera</button>
             <button class="btn-ghost small" onclick="loadSupViajes()">↻ Actualizar</button>
           </div>
