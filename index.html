@@ -161,6 +161,10 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Registrar Scanner
       </button>
+      <button class="btn-primary big" style="margin-top:10px;background:linear-gradient(135deg,#6c5ce7,#a29bfe)" onclick="showTotemPage()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+        Registrar Tótem
+      </button>
       <div class="section-label" style="margin-top:24px">Registros de hoy</div>
       <div id="today-list" class="scan-list"></div>
       <div id="btn-close-day-wrap" class="hidden">
@@ -381,6 +385,144 @@
       </button>
     </div>
 
+    <!-- ═══════════ PÁGINA: NUEVO REGISTRO TÓTEM ═══════════ -->
+    <div class="page" id="page-new-totem">
+      <div class="page-header">
+        <button class="btn-back" onclick="showPage('home')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15,18 9,12 15,6"/></svg></button>
+        <h2>Registro de Tótem</h2>
+      </div>
+
+      <div class="section-label">Tipo de operación</div>
+      <div class="op-type-grid">
+        <button class="op-type-btn active" id="totem-op-mantenimiento" onclick="totemSetOpType('mantenimiento')">🔧 Mantenimiento</button>
+        <button class="op-type-btn" id="totem-op-instalacion" onclick="totemSetOpType('instalacion')">➕ Instalación</button>
+        <button class="op-type-btn" id="totem-op-incidencia" onclick="totemSetOpType('incidencia')">⚠️ Incidencia</button>
+      </div>
+
+      <!-- Subtipo de incidencia -->
+      <div id="totem-incidencia-subtipo" style="display:none;margin-top:10px">
+        <div class="section-label">Tipo de incidencia</div>
+        <div class="op-type-grid" style="grid-template-columns:1fr 1fr">
+          <button class="op-type-btn active" id="totem-inc-reparable" onclick="totemSetIncSubtipo('reparable')">🔨 Reparable en sitio</button>
+          <button class="op-type-btn" id="totem-inc-reemplazo" onclick="totemSetIncSubtipo('reemplazo')">🔄 Reemplazo de equipo</button>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:16px">Datos del equipo</div>
+      <button class="btn-secondary" style="width:100%;margin-bottom:12px" onclick="startTotemQRScan()">📷 Escanear etiqueta QR</button>
+      <div id="totem-qr-preview" class="hidden" style="background:var(--bg3);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--accent)">✓ Datos cargados desde etiqueta</div>
+
+      <div class="form-group"><label>Nombre del Paso *</label><input type="text" id="totem-paso" maxlength="80" placeholder="Ej: Paso de los Libres"></div>
+      <div class="form-group"><label>N° de Puesto *</label><input type="text" id="totem-puesto" maxlength="30" placeholder="Ej: 3"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Serie miniPC *</label><input type="text" id="totem-serie-minipc" maxlength="60"></div>
+        <div class="form-group"><label>Modelo miniPC</label><input type="text" id="totem-modelo-minipc" maxlength="60"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Serie Cámara</label><input type="text" id="totem-serie-camara" maxlength="60"></div>
+        <div class="form-group"><label>Modelo/Marca Cámara</label><input type="text" id="totem-modelo-camara" maxlength="60"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Serie Pantalla</label><input type="text" id="totem-serie-pantalla" maxlength="60"></div>
+        <div class="form-group"><label>Modelo/Marca Pantalla</label><input type="text" id="totem-modelo-pantalla" maxlength="60"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>N° Inv. DND</label><input type="text" id="totem-inv-dnd" maxlength="40"></div>
+        <div class="form-group"><label>N° Inv. DNM</label><input type="text" id="totem-inv-dnm" maxlength="40"></div>
+      </div>
+
+      <!-- Reemplazo de equipo -->
+      <div id="totem-reemplazo-fields" style="display:none">
+        <div class="section-label" style="margin-top:12px">Datos del reemplazo</div>
+        <div class="form-group"><label>Equipo que se reemplaza *</label>
+          <select id="totem-equipo-reemplazo">
+            <option value="miniPC">miniPC</option>
+            <option value="Pantalla">Pantalla</option>
+            <option value="Camara">Cámara</option>
+            <option value="Switch POE">Switch POE</option>
+            <option value="Estabilizador">Estabilizador</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Marca/Modelo que se retira *</label><input type="text" id="totem-mm-retira" maxlength="60"></div>
+          <div class="form-group"><label>Serie que se retira *</label><input type="text" id="totem-serie-retira" maxlength="60"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Marca/Modelo nuevo *</label><input type="text" id="totem-mm-nuevo" maxlength="60"></div>
+          <div class="form-group"><label>Serie nuevo *</label><input type="text" id="totem-serie-nuevo" maxlength="60"></div>
+        </div>
+      </div>
+
+      <!-- Checklists -->
+      <div id="totem-checklist-mantenimiento">
+        <div class="section-label" style="margin-top:16px">Checklist de mantenimiento</div>
+        <div class="checklist-box">
+          <label class="checklist-item"><input type="checkbox" id="tchk-coolers"><span>Limpieza y control de funcionamiento de coolers</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-minipc"><span>Limpieza y control de funcionamiento de miniPC</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-camara"><span>Limpieza y control de funcionamiento de Cámara</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-pantalla"><span>Limpieza y control de funcionamiento de Pantalla</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-cables"><span>Control de cables periféricos y puertos de miniPC</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-fuentes"><span>Control de fuentes de alimentación</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchk-switch-poe"><span>Control y limpieza de switch POE</span></label>
+        </div>
+      </div>
+
+      <div id="totem-checklist-instalacion" style="display:none">
+        <div class="section-label" style="margin-top:16px">Checklist de instalación</div>
+        <div class="checklist-box">
+          <label class="checklist-item"><input type="checkbox" id="tchki-tension"><span>Verificar tensión de entrada 220V AC</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchki-mda"><span>Verificar acceso remoto con MDA</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchki-tvf"><span>Prueba del sistema TVF</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchki-limpieza-pantalla"><span>Limpieza de pantalla</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchki-limpieza-camara"><span>Limpieza de cámara</span></label>
+        </div>
+      </div>
+
+      <div id="totem-checklist-reparable" style="display:none">
+        <div class="section-label" style="margin-top:16px">Falla detectada (reparable en sitio)</div>
+        <div class="checklist-box">
+          <label class="checklist-item"><input type="checkbox" id="tchkr-fuente"><span>Falla fuente de alimentación</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-limpieza-camara"><span>Limpieza de cámara</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-software"><span>Problema de configuración/actualización de software</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-cables"><span>Falla en cables periféricos</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-coolers"><span>Falla coolers</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-reset"><span>MiniPC bloqueada por falla de energía (reset)</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkr-otro" onchange="document.getElementById('tchkr-otro-wrap').style.display=this.checked?'block':'none'"><span>Otro</span></label>
+          <div id="tchkr-otro-wrap" style="display:none;padding:6px 0 4px 28px">
+            <input type="text" id="tchkr-otro-detalle" placeholder="Especificar" maxlength="100" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+          </div>
+        </div>
+      </div>
+
+      <div id="totem-checklist-reemplazo" style="display:none">
+        <div class="section-label" style="margin-top:16px">Motivo del reemplazo</div>
+        <div class="checklist-box">
+          <label class="checklist-item"><input type="checkbox" id="tchkm-minipc"><span>Falla miniPC</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkm-pantalla"><span>Pantalla rota/quemada</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkm-camara"><span>Falla cámara</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkm-switch"><span>Falla switch POE</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkm-estabilizador"><span>Falla estabilizador</span></label>
+          <label class="checklist-item"><input type="checkbox" id="tchkm-otro" onchange="document.getElementById('tchkm-otro-wrap').style.display=this.checked?'block':'none'"><span>Otro</span></label>
+          <div id="tchkm-otro-wrap" style="display:none;padding:6px 0 4px 28px">
+            <input type="text" id="tchkm-otro-detalle" placeholder="Especificar" maxlength="100" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:12px"><label>Notas</label><textarea id="totem-notas" rows="3" maxlength="500" placeholder="Observaciones adicionales..."></textarea></div>
+
+      <div class="section-label">Fotografías <span class="photo-count-badge" id="totem-photo-count-badge">0/10</span></div>
+      <div id="totem-photos-grid" class="photos-grid"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-photo-add" onclick="startCamera()" id="totem-btn-add-photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>Tomar foto</button>
+      </div>
+
+      <button id="btn-save-totem" class="btn-primary" style="margin-top:24px" onclick="saveTotem()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+        Guardar Registro
+      </button>
+    </div>
+
     <!-- REPORT -->
     <div id="page-report" class="page">
       <div class="report-header">
@@ -478,6 +620,7 @@
             <button class="btn-ghost small" onclick="exportViajesSheets()">📊 Sheets</button>
             <button class="btn-ghost small" onclick="loadSupServiceReports()">🔧 Service</button>
             <button class="btn-ghost small" onclick="loadSupViaticos()">🧾 Viáticos</button>
+            <button class="btn-ghost small" onclick="showGeneradorEtiqueta()">🏷️ Etiquetas</button>
             <button class="btn-ghost small" onclick="showPapeleraViajes()">🗑 Papelera</button>
             <button class="btn-ghost small" onclick="loadSupViajes()">↻ Actualizar</button>
           </div>
