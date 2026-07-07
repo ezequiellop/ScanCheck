@@ -2536,7 +2536,7 @@ async function saveTotem() {
     serieNuevo: reemplazoData.serieNuevo || '',
     notas: val('totem-notas'),
     lat, lon, address,
-    photos: capturedPhotos.slice(),
+    photos: capturedPhotos.map(p => p.dataUrl), // array de strings, igual que saveScan
   };
 
   localScans.push(scan);
@@ -2560,7 +2560,7 @@ async function saveTotem() {
       if (idx !== -1) localScans[idx].fbId = fbId;
       if (scan.photos.length > 0) {
         try {
-          const urls = await uploadPhotosToR2(fbId, scan.photos.map(p => p.dataUrl));
+          const urls = await uploadPhotosToR2(fbId, scan.photos);
           if (urls.length) await fbUpdateScan(fbId, { photoUrls: urls });
         } catch(e) { console.warn('R2 tótem:', e.message); }
       }
@@ -7848,7 +7848,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '06.07.2026-v251'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '06.07.2026-v252'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
