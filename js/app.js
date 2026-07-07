@@ -1054,7 +1054,11 @@ function renderTodayList() {
   }
   container.innerHTML = scans.map(s => {
     const time  = new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    const thumb = s.photos?.[0] ? `<img src="${s.photos[0]}" alt="foto">` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+    // Miniatura: priorizar photoUrls (R2, válidas siempre) y caer a photos
+    // (base64 local, solo disponible en el dispositivo que las tomó) — mismo
+    // orden que usa viewScan() para el detalle del registro.
+    const thumbSrc = (s.photoUrls && s.photoUrls[0]) || (s.photos && s.photos[0]) || null;
+    const thumb = thumbSrc ? `<img src="${thumbSrc}" alt="foto">` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
     return `<div class="scan-item" onclick="viewScan('${s.id||s.fbId}')">
       <div class="scan-item-thumb">${thumb}</div>
       <div class="scan-item-info">
@@ -7848,7 +7852,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '06.07.2026-v252'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '06.07.2026-v253'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
