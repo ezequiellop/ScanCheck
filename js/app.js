@@ -960,7 +960,7 @@ const pageTitles = {
   'home':'Inicio','new-scan':'Nuevo Registro','report':'Informe del Día',
   'view-report':'Ver Informe','history':'Historial',
   'supervisor':'Panel Supervisor','viajes':'Mis Viajes'
-};
+, 'new-totem': 'Registro de Tótem'};
 
 function showPage(name, addHistory=true) {
   const current = document.getElementById('page-'+currentPage);
@@ -1056,8 +1056,8 @@ function renderTodayList() {
     return `<div class="scan-item" onclick="viewScan('${s.id||s.fbId}')">
       <div class="scan-item-thumb">${thumb}</div>
       <div class="scan-item-info">
-        <div class="scan-item-paso">${escHtml(s.paso||'(Sin nombre)')}</div>
-        <div class="scan-item-meta">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}</div>
+        <div class="scan-item-paso">${s.producto==='totem'?'🗼 ':''}${escHtml(s.paso||'(Sin nombre)')}</div>
+        <div class="scan-item-meta">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.producto==='totem'?' · Tótem':''}</div>
         <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span>
       </div>
       <div class="scan-item-time">${time}</div>
@@ -1161,6 +1161,14 @@ function resetNewScanForm() {
 
 // ======== PHOTOS ========
 function renderPhotosGrid() {
+  // Actualiza tanto la grilla del scanner como la del tótem (solo una es visible a la vez)
+  const badgeT = document.getElementById('totem-photo-count-badge');
+  if (badgeT) badgeT.textContent = `${capturedPhotos.length}/10`;
+  const gridT = document.getElementById('totem-photos-grid');
+  if (gridT) gridT.innerHTML = capturedPhotos.map((p,i)=>`
+    <div class="photo-thumb"><img src="${p.dataUrl}"><button class="photo-del" onclick="removePhoto(${i})">✕</button></div>`).join('');
+  const btnT = document.getElementById('totem-btn-add-photo');
+  if (btnT) { btnT.disabled = capturedPhotos.length >= 10; btnT.style.opacity = capturedPhotos.length >= 10 ? '0.4' : '1'; }
   document.getElementById('photo-count-badge').textContent = `${capturedPhotos.length}/10`;
   document.getElementById('photos-grid').innerHTML = capturedPhotos.map((p,i)=>`
     <div class="photo-thumb"><img src="${p.dataUrl}" alt="foto ${i+1}">
@@ -1335,6 +1343,16 @@ function scanQRFrame(vid) {
 
 function processQRData(raw) {
   try {
+    // ¿Es una etiqueta de tótem/tablet generada por ScanCheck?
+    try {
+      const et = JSON.parse(raw);
+      if (et && et.t === 'totem') {
+        window._esperandoEtiquetaTotem = false;
+        fillTotemFromEtiqueta(et);
+        return;
+      }
+    } catch(e) {}
+
     let data;
     try { data=JSON.parse(raw); } catch(e) {
       data={};
@@ -1853,7 +1871,7 @@ async function viewScan(id) {
     ${datosSistemaHtml(scan.datosSistema)}
 
     <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">✅ Checklists</div>
-    ${scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?checklistInstalacionHtml(scan.checklistInstalacion):checklistHtml(scan.checklist)}
+    ${scan.checklistItems?checklistItemsHtml(scan.checklistItems):(scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?checklistInstalacionHtml(scan.checklistInstalacion):checklistHtml(scan.checklist))}
     ${scan.opType==='reemplazo'?fallaChecklistHtml(scan.actaReemplazo):''}
     ${scan.opType==='falla_reparable'?fallaReparableHtml(scan.fallaReparable):''}
     ${scan.opType==='cambio_equipo'?fallaChecklistHtml(scan.actaReemplazo):''}
@@ -2298,11 +2316,12 @@ function closeDayReport() {
     const paso = (s.paso||'').trim() || '(Sin paso especificado)';
     const categoria = categoriaDe(s.opType);
     const fecha = localDateKey(s.timestamp);
+    const producto = s.producto || 'scanner';
     // Incidencia: clave única por scan (id) → nunca se agrupa con otro registro.
-    // Solicitud: clave por paso+categoria+fecha → se agrupan solo si son del
-    // mismo Paso Y del mismo día.
-    const key = categoria === 'Incidencia' ? `incidencia|||${s.id||s.fbId}` : `${paso}|||${categoria}|||${fecha}`;
-    if (!groups.has(key)) groups.set(key, { paso, categoria, fecha, scans: [] });
+    // Solicitud: clave por paso+categoria+fecha+PRODUCTO → un informe por producto,
+    // para no mezclar scanners con tótems/tablets en el mismo informe firmado.
+    const key = categoria === 'Incidencia' ? `incidencia|||${s.id||s.fbId}` : `${paso}|||${categoria}|||${fecha}|||${producto}`;
+    if (!groups.has(key)) groups.set(key, { paso, categoria, fecha, producto, scans: [] });
     groups.get(key).scans.push(s);
   });
 
@@ -2310,15 +2329,330 @@ function closeDayReport() {
   // el técnico los vaya firmando en orden cronológico.
   const gruposOrdenados = Array.from(groups.values()).sort((a,b) => a.fecha.localeCompare(b.fecha));
 
-  pendingReportQueue = gruposOrdenados.map(({paso, categoria, fecha, scans}) => ({
-    paso: categoria === 'Incidencia' ? `${paso} (Incidencia)` : paso,
-    scans,
-    fecha
-  }));
+  pendingReportQueue = gruposOrdenados.map(({paso, categoria, fecha, producto, scans}) => {
+    const prodLabel = (producto || scans[0]?.producto) === 'totem' ? ' [Tótem]' : ((producto || scans[0]?.producto) === 'tablet' ? ' [Tablet]' : '');
+    return {
+      paso: (categoria === 'Incidencia' ? `${paso} (Incidencia)` : paso) + prodLabel,
+      producto: producto || scans[0]?.producto || 'scanner',
+      scans,
+      fecha
+    };
+  });
   pendingReportTotal = pendingReportQueue.length;
   showNextPendingReport();
 }
 window.closeDayReport = closeDayReport;
+
+// ══════════════════════════════════════════════════════════════
+// ── MÓDULO TÓTEM ──────────────────────────────────────────────
+// Registro de Tótems TVF. Guarda en la MISMA colección scans con
+// producto:'totem' y campos estándar (serie=serie miniPC) para que
+// todo el pipeline existente (informes, sync, supervisor) funcione.
+// Los checklists se guardan autodescriptivos en checklistItems
+// [{label, ok}] — extensible a futuros productos (tablets).
+// ══════════════════════════════════════════════════════════════
+let currentTotemOpType = 'mantenimiento';
+let currentTotemIncSubtipo = 'reparable';
+
+const TOTEM_CHK = {
+  mantenimiento: [
+    ['tchk-coolers','Limpieza y control de funcionamiento de coolers'],
+    ['tchk-minipc','Limpieza y control de funcionamiento de miniPC'],
+    ['tchk-camara','Limpieza y control de funcionamiento de Cámara'],
+    ['tchk-pantalla','Limpieza y control de funcionamiento de Pantalla'],
+    ['tchk-cables','Control de cables periféricos y puertos de miniPC'],
+    ['tchk-fuentes','Control de fuentes de alimentación'],
+    ['tchk-switch-poe','Control y limpieza de switch POE'],
+  ],
+  instalacion: [
+    ['tchki-tension','Verificar tensión de entrada 220V AC'],
+    ['tchki-mda','Verificar acceso remoto con MDA'],
+    ['tchki-tvf','Prueba del sistema TVF'],
+    ['tchki-limpieza-pantalla','Limpieza de pantalla'],
+    ['tchki-limpieza-camara','Limpieza de cámara'],
+  ],
+  reparable: [
+    ['tchkr-fuente','Falla fuente de alimentación'],
+    ['tchkr-limpieza-camara','Limpieza de cámara'],
+    ['tchkr-software','Problema de configuración/actualización de software'],
+    ['tchkr-cables','Falla en cables periféricos'],
+    ['tchkr-coolers','Falla coolers'],
+    ['tchkr-reset','MiniPC bloqueada por falla de energía (reset)'],
+  ],
+  reemplazo: [
+    ['tchkm-minipc','Falla miniPC'],
+    ['tchkm-pantalla','Pantalla rota/quemada'],
+    ['tchkm-camara','Falla cámara'],
+    ['tchkm-switch','Falla switch POE'],
+    ['tchkm-estabilizador','Falla estabilizador'],
+  ],
+};
+
+function showTotemPage() {
+  // Reset del formulario
+  ['totem-paso','totem-puesto','totem-serie-minipc','totem-modelo-minipc','totem-serie-camara','totem-modelo-camara',
+   'totem-serie-pantalla','totem-modelo-pantalla','totem-inv-dnd','totem-inv-dnm','totem-notas',
+   'totem-mm-retira','totem-serie-retira','totem-mm-nuevo','totem-serie-nuevo',
+   'tchkr-otro-detalle','tchkm-otro-detalle'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  Object.values(TOTEM_CHK).flat().forEach(([id]) => { const el = document.getElementById(id); if (el) el.checked = false; });
+  ['tchkr-otro','tchkm-otro'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  ['tchkr-otro-wrap','tchkm-otro-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  const prev = document.getElementById('totem-qr-preview'); if (prev) prev.classList.add('hidden');
+  capturedPhotos = [];
+  totemSetOpType('mantenimiento');
+  showPage('new-totem');
+  renderPhotosGrid();
+}
+window.showTotemPage = showTotemPage;
+
+function totemSetOpType(tipo) {
+  currentTotemOpType = tipo;
+  ['mantenimiento','instalacion','incidencia'].forEach(t => {
+    const btn = document.getElementById('totem-op-' + t);
+    if (btn) btn.classList.toggle('active', t === tipo);
+  });
+  document.getElementById('totem-incidencia-subtipo').style.display = tipo === 'incidencia' ? 'block' : 'none';
+  document.getElementById('totem-checklist-mantenimiento').style.display = tipo === 'mantenimiento' ? 'block' : 'none';
+  document.getElementById('totem-checklist-instalacion').style.display = tipo === 'instalacion' ? 'block' : 'none';
+  if (tipo === 'incidencia') { totemSetIncSubtipo(currentTotemIncSubtipo); }
+  else {
+    document.getElementById('totem-checklist-reparable').style.display = 'none';
+    document.getElementById('totem-checklist-reemplazo').style.display = 'none';
+    document.getElementById('totem-reemplazo-fields').style.display = 'none';
+  }
+}
+window.totemSetOpType = totemSetOpType;
+
+function totemSetIncSubtipo(sub) {
+  currentTotemIncSubtipo = sub;
+  const bR = document.getElementById('totem-inc-reparable');
+  const bM = document.getElementById('totem-inc-reemplazo');
+  if (bR) bR.classList.toggle('active', sub === 'reparable');
+  if (bM) bM.classList.toggle('active', sub === 'reemplazo');
+  document.getElementById('totem-checklist-reparable').style.display = sub === 'reparable' ? 'block' : 'none';
+  document.getElementById('totem-checklist-reemplazo').style.display = sub === 'reemplazo' ? 'block' : 'none';
+  document.getElementById('totem-reemplazo-fields').style.display = sub === 'reemplazo' ? 'block' : 'none';
+}
+window.totemSetIncSubtipo = totemSetIncSubtipo;
+
+// Escaneo de etiqueta QR: reutiliza el scanner existente; processQRData detecta el formato etiqueta
+function startTotemQRScan() {
+  window._esperandoEtiquetaTotem = true;
+  startQRScan();
+}
+window.startTotemQRScan = startTotemQRScan;
+
+// Llena el formulario de tótem desde los datos de una etiqueta {"t":"totem",...}
+function fillTotemFromEtiqueta(d) {
+  const map = {
+    'totem-paso': d.paso, 'totem-puesto': d.puesto,
+    'totem-serie-minipc': d.serieMiniPC, 'totem-modelo-minipc': d.modeloMiniPC,
+    'totem-serie-camara': d.serieCamara, 'totem-modelo-camara': d.modeloCamara,
+    'totem-serie-pantalla': d.seriePantalla, 'totem-modelo-pantalla': d.modeloPantalla,
+    'totem-inv-dnd': d.invDnd, 'totem-inv-dnm': d.invDnm,
+  };
+  Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el && val) el.value = val; });
+  const prev = document.getElementById('totem-qr-preview'); if (prev) prev.classList.remove('hidden');
+  if (currentPage !== 'new-totem') showPage('new-totem');
+  showToast('✓ Etiqueta escaneada', 'success');
+}
+
+async function saveTotem() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const paso = val('totem-paso');
+  const puesto = val('totem-puesto');
+  const serieMiniPC = val('totem-serie-minipc');
+  if (!paso) { showToast('Ingresá el nombre del paso','error'); return; }
+  if (!puesto) { showToast('Ingresá el número de puesto','error'); return; }
+  if (!serieMiniPC) { showToast('Ingresá la serie de la miniPC','error'); return; }
+
+  // opType real (compatible con la categorización de informes/Jira existente)
+  let opTypeReal = currentTotemOpType;
+  if (currentTotemOpType === 'incidencia') {
+    opTypeReal = currentTotemIncSubtipo === 'reemplazo' ? 'cambio_equipo' : 'falla_reparable';
+  }
+
+  // Checklist autodescriptivo según el tipo
+  const chkKey = currentTotemOpType === 'incidencia' ? currentTotemIncSubtipo : currentTotemOpType;
+  const checklistItems = TOTEM_CHK[chkKey].map(([id, label]) => ({ label, ok: !!document.getElementById(id)?.checked }));
+  // Ítem "Otro" con detalle en incidencias
+  if (chkKey === 'reparable' && document.getElementById('tchkr-otro')?.checked) {
+    checklistItems.push({ label: 'Otro: ' + (val('tchkr-otro-detalle') || 'sin detalle'), ok: true });
+  }
+  if (chkKey === 'reemplazo' && document.getElementById('tchkm-otro')?.checked) {
+    checklistItems.push({ label: 'Otro: ' + (val('tchkm-otro-detalle') || 'sin detalle'), ok: true });
+  }
+
+  // Datos de reemplazo
+  let reemplazoData = {};
+  if (opTypeReal === 'cambio_equipo') {
+    const equipoR = val('totem-equipo-reemplazo') || document.getElementById('totem-equipo-reemplazo')?.value || '';
+    const mmRetira = val('totem-mm-retira'), serieRetira = val('totem-serie-retira');
+    const mmNuevo = val('totem-mm-nuevo'), serieNuevo = val('totem-serie-nuevo');
+    if (!mmRetira || !serieRetira || !mmNuevo || !serieNuevo) {
+      showToast('Completá marca/modelo y serie del equipo que se retira y del nuevo','error'); return;
+    }
+    reemplazoData = { equipoReemplazado: equipoR, mmRetira, serieRetira, mmNuevo, serieNuevo };
+  }
+
+  // GPS igual que el scanner
+  let lat=null, lon=null, address='';
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, maximumAge: 60000 }));
+    lat = pos.coords.latitude; lon = pos.coords.longitude;
+    address = window._lastKnownAddress || '';
+  } catch(e) {}
+
+  const scan = {
+    id: 'totem_' + Date.now(),
+    producto: 'totem',
+    userId: currentUser.id,
+    technicianName: currentUser.name || currentUser.email,
+    timestamp: new Date().toISOString(),
+    paso, puesto,
+    serie: serieMiniPC, // compat con pipeline existente (informes, renders, Jira)
+    serieMiniPC,
+    modeloMiniPC: val('totem-modelo-minipc'),
+    serieCamara: val('totem-serie-camara'),
+    modeloCamara: val('totem-modelo-camara'),
+    seriePantalla: val('totem-serie-pantalla'),
+    modeloPantalla: val('totem-modelo-pantalla'),
+    invDnd: val('totem-inv-dnd'),
+    invDnm: val('totem-inv-dnm'),
+    opType: opTypeReal,
+    checklistItems,
+    ...reemplazoData,
+    serieRetira: reemplazoData.serieRetira || '',
+    serieNuevo: reemplazoData.serieNuevo || '',
+    notas: val('totem-notas'),
+    lat, lon, address,
+    photos: capturedPhotos.slice(),
+  };
+
+  localScans.push(scan);
+  if (scan.photos.length > 0) {
+    try { localStorage.setItem('scancheck_photos_' + scan.id, JSON.stringify(scan.photos)); } catch(e) {}
+  }
+  try {
+    const scansForStorage = localScans.map(({photos,...s}) => ({...s, photoCount:(photos||[]).length}));
+    localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+  } catch(e) {}
+  updateStats(); renderTodayList();
+  showPage('home');
+  showToast('✓ Tótem registrado','success');
+
+  // Sync a Firestore (mismo mecanismo que el scanner)
+  if (navigator.onLine) {
+    setSyncStatus('syncing');
+    try {
+      const fbId = await fbSaveScan(scan);
+      const idx = localScans.findIndex(s => s.id === scan.id);
+      if (idx !== -1) localScans[idx].fbId = fbId;
+      if (scan.photos.length > 0) {
+        try {
+          const urls = await uploadPhotosToR2(fbId, scan.photos.map(p => p.dataUrl));
+          if (urls.length) await fbUpdateScan(fbId, { photoUrls: urls });
+        } catch(e) { console.warn('R2 tótem:', e.message); }
+      }
+      setSyncStatus('online');
+    } catch(e) {
+      queueAdd('scan', scan);
+      setSyncStatus('offline');
+    }
+  } else {
+    queueAdd('scan', scan);
+  }
+}
+window.saveTotem = saveTotem;
+
+// Render del checklist autodescriptivo (tótem y futuros productos)
+function checklistItemsHtml(items) {
+  if (!items || !items.length) return '';
+  const rows = items.map(it => `<div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+    <span style="font-size:12px;font-weight:700;color:${it.ok?'var(--accent)':'var(--text3)'};min-width:28px">${it.ok?'OK':'—'}</span>
+    <span style="font-size:12px;color:${it.ok?'var(--text)':'var(--text3)'}">${escHtml(it.label)}</span>
+  </div>`).join('');
+  return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin:8px 0">${rows}</div>`;
+}
+function checklistItemsLines(items) {
+  if (!items || !items.length) return [];
+  return items.map(it => `${it.ok?'OK':'—'} — ${it.label}`);
+}
+// ── GENERADOR DE ETIQUETAS QR (supervisor) ────────────────────
+// Genera el QR de identificación de un equipo (tótem/tablet) para
+// imprimir como etiqueta adhesiva. Usa api.qrserver.com (requiere conexión).
+function showGeneradorEtiqueta() {
+  if (document.getElementById('modal-etiqueta-qr')) return;
+  const modal = document.createElement('div');
+  modal.id = 'modal-etiqueta-qr';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
+  const inp = (id, label, ph='') => `<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input type="text" id="${id}" placeholder="${ph}" maxlength="80" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+  modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:20px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4);max-height:92vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;text-align:center">🏷️ Generar etiqueta QR — Tótem</div>
+    ${inp('et-paso','Nombre del Paso','Ej: Paso de los Libres')}
+    ${inp('et-puesto','N° de Puesto','Ej: 3')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${inp('et-serie-minipc','Serie miniPC *')}
+      ${inp('et-modelo-minipc','Modelo miniPC')}
+      ${inp('et-serie-camara','Serie Cámara')}
+      ${inp('et-modelo-camara','Modelo Cámara')}
+      ${inp('et-serie-pantalla','Serie Pantalla')}
+      ${inp('et-modelo-pantalla','Modelo Pantalla')}
+      ${inp('et-inv-dnd','N° Inv. DND')}
+      ${inp('et-inv-dnm','N° Inv. DNM')}
+    </div>
+    <div id="et-qr-result" style="display:none;text-align:center;margin:12px 0">
+      <img id="et-qr-img" style="width:220px;height:220px;border-radius:8px;background:#fff;padding:8px">
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Mantené presionada la imagen para guardarla, o tocá Descargar</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="document.getElementById('modal-etiqueta-qr').remove()" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">Cerrar</button>
+      <button onclick="generarEtiquetaQR()" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#0a1628;font-size:13px;font-weight:700;cursor:pointer">Generar QR</button>
+      <button id="et-btn-descargar" onclick="descargarEtiquetaQR()" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--accent2);color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">⬇ Descargar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+window.showGeneradorEtiqueta = showGeneradorEtiqueta;
+
+function generarEtiquetaQR() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  if (!v('et-serie-minipc')) { showToast('Ingresá al menos la serie de la miniPC','error'); return; }
+  const data = {
+    t: 'totem',
+    paso: v('et-paso'), puesto: v('et-puesto'),
+    serieMiniPC: v('et-serie-minipc'), modeloMiniPC: v('et-modelo-minipc'),
+    serieCamara: v('et-serie-camara'), modeloCamara: v('et-modelo-camara'),
+    seriePantalla: v('et-serie-pantalla'), modeloPantalla: v('et-modelo-pantalla'),
+    invDnd: v('et-inv-dnd'), invDnm: v('et-inv-dnm'),
+  };
+  // Quitar claves vacías para un QR más chico (más fácil de imprimir/escanear)
+  Object.keys(data).forEach(k => { if (!data[k]) delete data[k]; });
+  const json = JSON.stringify(data);
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&ecc=M&data=' + encodeURIComponent(json);
+  const img = document.getElementById('et-qr-img');
+  img.src = url;
+  document.getElementById('et-qr-result').style.display = 'block';
+  document.getElementById('et-btn-descargar').style.display = 'block';
+  window._etQrUrl = url;
+  window._etQrNombre = `Etiqueta_Totem_${(data.serieMiniPC||'').replace(/[^\w-]/g,'_')}.png`;
+}
+window.generarEtiquetaQR = generarEtiquetaQR;
+
+async function descargarEtiquetaQR() {
+  try {
+    const res = await fetch(window._etQrUrl);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = window._etQrNombre || 'etiqueta_totem.png'; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { showToast('Error al descargar: ' + e.message, 'error'); }
+}
+window.descargarEtiquetaQR = descargarEtiquetaQR;
+
+// ── FIN MÓDULO TÓTEM ──────────────────────────────────────────
+
 
 // ── VIAJES ───────────────────────────────────────────────────
 async function loadViajes() {
@@ -5550,7 +5884,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">✅ Checklists</div>
       <div style="padding:0 14px">
-        ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
+        ${s.checklistItems?checklistItemsHtml(s.checklistItems):(s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist))}
         ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
         ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       </div>
@@ -5821,7 +6155,7 @@ async function viewReport(id) {
       ${s.notas?`<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">${notasListHtml(s.notas)}</div>`:''}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
-      ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
+      ${s.checklistItems?checklistItemsHtml(s.checklistItems):(s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist))}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
@@ -6032,7 +6366,7 @@ async function buildReportPDFDoc(rep) {
 
       // Checklist de inspección — Instalación usa su propio checklist, el resto usa el de mantenimiento
       const esInstalacionPdf = s.opType === 'instalacion_nueva' || s.opType === 'instalacion_reemplazo';
-      const cklLines = esInstalacionPdf ? checklistInstalacionLines(s.checklistInstalacion) : checklistLines(s.checklist);
+      const cklLines = s.checklistItems ? checklistItemsLines(s.checklistItems) : (esInstalacionPdf ? checklistInstalacionLines(s.checklistInstalacion) : checklistLines(s.checklist));
       if (cklLines.length > 0) {
         if (y > 250) { doc.addPage(); y = M; }
         doc.setFillColor(18,30,44);
@@ -6558,8 +6892,21 @@ async function sendToJira() {
   // Título formateado del ticket: DND - Modo - Paso - Provincia
   const tituloTicket = `DND - ${modoLabel} - ${pasoLabel}${provincia ? ' - ' + provincia : ''}`;
 
-  // Campo Hardware = Escaner (id: 10802), fijo para todos los tickets de ScanCheck
-  const HARDWARE_FIELD = { customfield_10049: { id: '10802' } };
+  // Campo Hardware según producto del informe:
+  // scanner → Escaner (id 10802) | totem → 'Tótem TVF' (por value) | tablet → 'Tablet' (por value)
+  const productoInforme = rep.producto || scans[0]?.producto || 'scanner';
+  const HARDWARE_FIELD = productoInforme === 'totem'
+    ? { customfield_10049: { value: 'Tótem TVF' } }
+    : (productoInforme === 'tablet'
+      ? { customfield_10049: { value: 'Tablet' } }
+      : { customfield_10049: { id: '10802' } });
+  // Campo Productos (customfield_10103): para scanner lo completa Jira solo
+  // ("Scanner"); para tótem/tablet lo enviamos explícito.
+  const PRODUCTOS_FIELD = productoInforme === 'totem'
+    ? { customfield_10103: { value: 'Totems' } }
+    : (productoInforme === 'tablet'
+      ? { customfield_10103: { value: 'Tablets' } }
+      : {});
 
   try {
     let parentKey;
@@ -6618,7 +6965,7 @@ async function sendToJira() {
     } else {
       // ── FLUJO: crear ticket nuevo ──
       const issueRes = await jiraCall('/rest/api/3/issue', {
-        fields:{project:{key:cfg.project},summary:tituloTicket,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:issueTypePadre},...FIXED_FIELDS,...HARDWARE_FIELD,...ASSIGNEE_FIELD}
+        fields:{project:{key:cfg.project},summary:tituloTicket,description:mkDoc(`Técnico: ${rep.technicianName}\nInspector DNM: ${rep.inspectorName}\nDispositivos: ${scans.length}`),issuetype:{name:issueTypePadre},...FIXED_FIELDS,...HARDWARE_FIELD,...PRODUCTOS_FIELD,...ASSIGNEE_FIELD}
       });
       if(!issueRes.ok){const err=await issueRes.text();showJiraError(err);return;}
       const issue=await issueRes.json();
@@ -6681,7 +7028,7 @@ async function sendToJira() {
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\nSerie PC: ${s.serie}\nTipo: ${opLabel(s.opType)}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${checklistLines(s.checklist).length?`\n\nChecklist:\n${checklistLines(s.checklist).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
             issuetype:{id:'10003'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
@@ -7265,7 +7612,7 @@ async function viewReportSupervisor(id) {
       ${datosSistemaHtml(s.datosSistema)}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
-      ${s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist)}
+      ${s.checklistItems?checklistItemsHtml(s.checklistItems):(s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist))}
       ${s.opType==='reemplazo'?fallaChecklistHtml(s.actaReemplazo):''}
       ${s.opType==='falla_reparable'?fallaReparableHtml(s.fallaReparable):''}
       ${s.opType==='reemplazo'?`<button class="btn-secondary" style="margin-top:8px;width:100%;font-size:12px" onclick="downloadActaReemplazo('${s.id||s.fbId}')">📄 Descargar Acta de Reemplazo</button>`:''}
@@ -7488,7 +7835,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '05.07.2026-v245'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '06.07.2026-v247'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
