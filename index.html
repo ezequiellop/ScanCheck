@@ -368,17 +368,6 @@
       <div id="qr-data-preview" class="qr-data-preview hidden"></div>
       <div id="qr-controls" style="display:none"></div>
 
-      <div id="camera-container" style="display:none;margin-bottom:8px">
-        <div style="position:relative;border-radius:12px;overflow:hidden;background:#000">
-          <video id="camera-stream" autoplay playsinline muted style="width:100%;display:block;max-height:60vh;object-fit:cover"></video>
-          <div id="cam-live-overlay" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.72);padding:8px 12px;font-size:11px;color:rgba(255,255,255,.92);font-family:monospace;white-space:pre-line;line-height:1.8;border-left:3px solid #00d4aa"></div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:10px">
-          <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
-          <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
-        </div>
-      </div>
-
       <button id="btn-save-scan" class="btn-primary" style="margin-top:24px" onclick="saveScan()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
         Guardar Registro
@@ -521,8 +510,9 @@
 
       <div class="section-label">Fotografías <span class="photo-count-badge" id="totem-photo-count-badge">0/10</span></div>
       <div id="totem-photos-grid" class="photos-grid"></div>
-      <div style="display:flex;gap:8px">
+      <div class="photo-actions">
         <button class="btn-photo-add" onclick="startCamera()" id="totem-btn-add-photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>Tomar foto</button>
+        <button class="btn-photo-add" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>Galería</button>
       </div>
 
       <button id="btn-save-totem" class="btn-primary" style="margin-top:24px" onclick="saveTotem()">
@@ -758,6 +748,18 @@
   <div class="modal-sheet" style="max-height:92vh;overflow-y:auto">
     <div class="modal-handle"></div>
     <div id="modal-gasto-content"></div>
+  </div>
+</div>
+
+<!-- CÁMARA: overlay global, funciona sobre cualquier página activa (scanner/tótem/tablet) -->
+<div id="camera-container" style="display:none;position:fixed;inset:0;background:#000;z-index:9998">
+  <div style="position:relative;width:100%;height:100%">
+    <video id="camera-stream" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+    <div id="cam-live-overlay" style="position:absolute;bottom:90px;left:0;right:0;background:rgba(0,0,0,.72);padding:8px 12px;font-size:11px;color:rgba(255,255,255,.92);font-family:monospace;white-space:pre-line;line-height:1.8;border-left:3px solid #00d4aa"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 0 24px;background:linear-gradient(transparent,rgba(0,0,0,.6))">
+      <button class="btn-capture" onclick="capturePhoto()"><div class="capture-ring"></div></button>
+      <button class="btn-cam-cancel" onclick="stopCamera()">Cancelar</button>
+    </div>
   </div>
 </div>
 
