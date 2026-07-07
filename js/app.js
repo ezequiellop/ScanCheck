@@ -963,6 +963,8 @@ const pageTitles = {
 , 'new-totem': 'Registro de Tótem'};
 
 function showPage(name, addHistory=true) {
+  // Si la cámara está abierta (overlay global) y se navega a otra página, cerrarla
+  if (cameraStream) stopCamera();
   const current = document.getElementById('page-'+currentPage);
   const next    = document.getElementById('page-'+name);
   if (!next) return;
@@ -7846,7 +7848,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '06.07.2026-v250'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '06.07.2026-v251'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
