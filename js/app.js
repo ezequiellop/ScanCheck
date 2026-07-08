@@ -3754,6 +3754,7 @@ function _gastoRender() {
           <option value="A" ${g.tipo==='A'?'selected':''}>A</option>
           <option value="B" ${g.tipo==='B'?'selected':''}>B</option>
           <option value="C" ${g.tipo==='C'?'selected':''}>C</option>
+          <option value="M" ${g.tipo==='M'?'selected':''}>M</option>
           <option value="Otro" ${g.tipo==='Otro'?'selected':''}>Otro</option>
         </select>
       </div>
@@ -3761,7 +3762,7 @@ function _gastoRender() {
 
     <div id="gasto-tipo-otro-wrap" class="form-group" style="display:${g.tipo==='Otro'?'block':'none'}">
       <label>Especificar tipo de factura *</label>
-      <input type="text" id="gasto-tipo-otro" placeholder="Ej: M, E, Ticket, Recibo" maxlength="20" value="${escHtml(g.tipoOtro||'')}" oninput="_gastoTmp.tipoOtro=this.value">
+      <input type="text" id="gasto-tipo-otro" placeholder="Ej: E, Ticket, Recibo" maxlength="20" value="${escHtml(g.tipoOtro||'')}" oninput="_gastoTmp.tipoOtro=this.value">
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -4207,10 +4208,33 @@ async function _vtPrepararZip() {
   const fechaStr = new Date().toISOString().split('T')[0];
   const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
   const xlsxBlob = _vtGenerarExcel();
-  const pdfFotosBlob = _vtGenerarPdfFotos();
   const zip = new JSZip();
   zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
-  if (pdfFotosBlob) zip.file(`Facturas_fotos_${fechaStr}.pdf`, pdfFotosBlob);
+
+  // ── Fotos de tickets: separadas por tipo de factura ──
+  // A, C y M → un PDF individual por cada foto.
+  // B y cualquier otro tipo → un solo PDF, una foto legible por página.
+  const conFoto = _vt.gastos.filter(g => g.foto);
+  const individuales = conFoto.filter(g => ['A','C','M'].includes(g.tipo));
+  const agrupadas   = conFoto.filter(g => !['A','C','M'].includes(g.tipo)); // B y otros
+
+  // PDFs individuales (uno por foto): nombre = tipo + número + fecha
+  individuales.forEach((g, i) => {
+    const pdf = _vtPdfDeGastos([g]);
+    if (pdf) {
+      const nombre = `Factura_${_vtSafeName(g.tipo)}_${_vtSafeName(g.nroFactura)}_${_vtSafeName(g.fecha)}.pdf`;
+      // Evitar colisión si dos gastos tienen mismo tipo/número/fecha
+      zip.file(`facturas_${g.tipo}/${i+1}_${nombre}`, pdf);
+    }
+  });
+
+  // PDF conjunto para B y otros (una foto por página, sin achicar)
+  if (agrupadas.length > 0) {
+    const pdfB = _vtPdfDeGastos(agrupadas);
+    if (pdfB) zip.file(`Facturas_B_y_otras_${fechaStr}.pdf`, pdfB);
+  }
+
+  // Archivos PDF digitales subidos por el técnico: siguen sueltos como estaban
   _vt.gastos.forEach((g, i) => {
     if (g.archivoPdf) {
       const base64 = g.archivoPdf.split(',')[1];
@@ -4218,6 +4242,7 @@ async function _vtPrepararZip() {
       zip.file(`facturas_pdf/${nombre}`, base64, { base64: true });
     }
   });
+
   const zipBlob = await zip.generateAsync({ type: 'blob' });
   const zipFile = new File([zipBlob], nombreZip, { type: 'application/zip' });
   window._vtZipListo = { zipBlob, zipFile, nombreZip, fechaStr };
@@ -4351,18 +4376,16 @@ function _vtGenerarExcel() {
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
-// Genera un PDF con las fotos de tickets, una por página
-function _vtGenerarPdfFotos() {
-  const conFoto = _vt.gastos.filter(g => g.foto);
-  if (conFoto.length === 0) return null;
-
+// Genera un PDF con una lista de gastos (con foto), una foto por página a
+// tamaño legible (sin achicar para meter varias por hoja).
+function _vtPdfDeGastos(gastos) {
+  if (!gastos || gastos.length === 0) return null;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pw = 210, ph = 297, margin = 15;
 
-  conFoto.forEach((g, i) => {
+  gastos.forEach((g, i) => {
     if (i > 0) doc.addPage();
-    // Encabezado del ticket
     doc.setFontSize(11);
     doc.setTextColor(30);
     doc.setFont(undefined, 'bold');
@@ -4373,8 +4396,6 @@ function _vtGenerarPdfFotos() {
     const fechaF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR') : '';
     const monto = '$' + (parseFloat(g.monto)||0).toLocaleString('es-AR',{minimumFractionDigits:2});
     doc.text(`${fechaF} · ${monto}${g.proyecto?' · '+g.proyecto:''}`, margin, margin + 6);
-
-    // Imagen
     try {
       const props = doc.getImageProperties(g.foto);
       const maxW = pw - margin*2;
@@ -4386,8 +4407,18 @@ function _vtGenerarPdfFotos() {
       doc.addImage(g.foto, fmt, margin, margin + 12, w, h);
     } catch(e) {}
   });
-
   return doc.output('blob');
+}
+
+// Normaliza un texto para usarlo en nombre de archivo (sin caracteres raros)
+function _vtSafeName(s) {
+  return String(s || '').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '') || 'sin_dato';
+}
+
+// (compat) PDF único con todas las fotos — ya no se usa en la rendición,
+// se mantiene por si alguna llamada externa lo referencia.
+function _vtGenerarPdfFotos() {
+  return _vtPdfDeGastos(_vt.gastos.filter(g => g.foto));
 }
 
 // ── Historial de rendiciones (on-demand) ──
@@ -8334,7 +8365,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '07.07.2026-v258'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '08.07.2026-v259'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
