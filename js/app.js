@@ -714,21 +714,27 @@ function gpsDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// Intenta autocompletar el campo "Nombre del paso" si el técnico está dentro de 1000m de algún paso conocido.
+// Intenta autocompletar el campo "Nombre del paso" (scanner, tótem o tablet)
+// si el técnico está dentro de 200m de algún paso conocido.
 // Solo autocompleta si el campo está vacío (no sobreescribe lo que el técnico ya ingresó).
 function autoFillPasoFromGPS(lat, lon) {
-  const campo = document.getElementById('inp-paso');
-  if (!campo || campo.value.trim()) return; // no sobreescribir si ya tiene algo
   const RADIO_METROS = 200;
   let masNear = null, minDist = Infinity;
   for (const p of PASOS_COORDS) {
     const d = gpsDistanceMeters(lat, lon, p.lat, p.lon);
     if (d < minDist) { minDist = d; masNear = p; }
   }
-  if (masNear && minDist <= RADIO_METROS) {
-    campo.value = masNear.nombre;
-    showToast(`📍 Paso detectado: ${masNear.nombre}`, 'success');
-  }
+  if (!masNear || minDist > RADIO_METROS) return;
+
+  let algunoCompletado = false;
+  ['inp-paso', 'totem-paso', 'tablet-paso'].forEach(id => {
+    const campo = document.getElementById(id);
+    if (campo && !campo.value.trim()) {
+      campo.value = masNear.nombre;
+      algunoCompletado = true;
+    }
+  });
+  if (algunoCompletado) showToast(`📍 Paso detectado: ${masNear.nombre}`, 'success');
 }
 
 // ======== LOCATION TRACKING ========
@@ -2421,6 +2427,7 @@ function showTotemPage() {
   totemSetOpType('mantenimiento');
   showPage('new-totem');
   renderPhotosGrid();
+  requestLocation(); // autocompleta "Nombre del Paso" según la ubicación GPS
 }
 window.showTotemPage = showTotemPage;
 
@@ -2464,7 +2471,7 @@ window.startTotemQRScan = startTotemQRScan;
 // Llena el formulario de tótem desde los datos de una etiqueta {"t":"totem",...}
 function fillTotemFromEtiqueta(d) {
   const map = {
-    'totem-paso': d.paso, 'totem-puesto': d.puesto,
+    'totem-puesto': d.puesto,
     'totem-serie-minipc': d.serieMiniPC, 'totem-modelo-minipc': d.modeloMiniPC,
     'totem-ip-minipc': d.ipMiniPC, 'totem-mac-minipc': d.macMiniPC,
     'totem-serie-camara': d.serieCamara, 'totem-modelo-camara': d.modeloCamara,
@@ -2656,6 +2663,7 @@ function showTabletPage() {
   tabletSetOpType('mantenimiento');
   showPage('new-tablet');
   renderPhotosGrid();
+  requestLocation(); // autocompleta "Nombre del Paso" según la ubicación GPS
 }
 window.showTabletPage = showTabletPage;
 
@@ -2697,7 +2705,7 @@ window.startTabletQRScan = startTabletQRScan;
 
 function fillTabletFromEtiqueta(d) {
   const map = {
-    'tablet-paso': d.paso, 'tablet-puesto': d.puesto,
+    'tablet-puesto': d.puesto,
     'tablet-serie': d.serie, 'tablet-device-id': d.deviceId,
     'tablet-ip': d.ip, 'tablet-mac': d.mac,
   };
@@ -2838,8 +2846,7 @@ window.showGeneradorEtiqueta = showGeneradorEtiqueta;
 const _etInp = (id, label, ph='') => `<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input type="text" id="${id}" placeholder="${ph}" maxlength="80" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
 
 function _etCamposTotemHtml() {
-  return `${_etInp('et-paso','Nombre del Paso','Ej: La Quiaca')}
-    ${_etInp('et-puesto','N° de Puesto','Ej: 3')}
+  return `${_etInp('et-puesto','N° de Puesto','Ej: 3')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${_etInp('et-serie-minipc','Serie miniPC *')}
       ${_etInp('et-modelo-minipc','Modelo miniPC')}
@@ -2855,8 +2862,7 @@ function _etCamposTotemHtml() {
 }
 
 function _etCamposTabletHtml() {
-  return `${_etInp('et-tb-paso','Nombre del Paso','Ej: La Quiaca')}
-    ${_etInp('et-tb-puesto','N° de Puesto','Ej: 3')}
+  return `${_etInp('et-tb-puesto','N° de Puesto','Ej: 3')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${_etInp('et-tb-serie','N° Serie Tablet *')}
       ${_etInp('et-tb-device-id','Device ID')}
@@ -2885,7 +2891,7 @@ function generarEtiquetaQR() {
     if (!v('et-serie-minipc')) { showToast('Ingresá al menos la serie de la miniPC','error'); return; }
     data = {
       t: 'totem',
-      paso: v('et-paso'), puesto: v('et-puesto'),
+      puesto: v('et-puesto'),
       serieMiniPC: v('et-serie-minipc'), modeloMiniPC: v('et-modelo-minipc'),
       ipMiniPC: v('et-ip-minipc'), macMiniPC: v('et-mac-minipc'),
       serieCamara: v('et-serie-camara'), modeloCamara: v('et-modelo-camara'),
@@ -2897,7 +2903,7 @@ function generarEtiquetaQR() {
     if (!v('et-tb-serie')) { showToast('Ingresá al menos la serie de la tablet','error'); return; }
     data = {
       t: 'tablet',
-      paso: v('et-tb-paso'), puesto: v('et-tb-puesto'),
+      puesto: v('et-tb-puesto'),
       serie: v('et-tb-serie'), deviceId: v('et-tb-device-id'),
       ip: v('et-tb-ip'), mac: v('et-tb-mac'),
     };
@@ -8113,7 +8119,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '07.07.2026-v255'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '07.07.2026-v256'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
