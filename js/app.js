@@ -960,7 +960,7 @@ const pageTitles = {
   'home':'Inicio','new-scan':'Nuevo Registro','report':'Informe del Día',
   'view-report':'Ver Informe','history':'Historial',
   'supervisor':'Panel Supervisor','viajes':'Mis Viajes'
-, 'new-totem': 'Registro de Tótem'};
+, 'new-totem': 'Registro de Tótem', 'new-tablet': 'Registro de Tablet'};
 
 function showPage(name, addHistory=true) {
   // Si la cámara está abierta (overlay global) y se navega a otra página, cerrarla
@@ -1062,8 +1062,8 @@ function renderTodayList() {
     return `<div class="scan-item" onclick="viewScan('${s.id||s.fbId}')">
       <div class="scan-item-thumb">${thumb}</div>
       <div class="scan-item-info">
-        <div class="scan-item-paso">${s.producto==='totem'?'🗼 ':''}${escHtml(s.paso||'(Sin nombre)')}</div>
-        <div class="scan-item-meta">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.producto==='totem'?' · Tótem':''}</div>
+        <div class="scan-item-paso">${s.producto==='totem'?'🗼 ':(s.producto==='tablet'?'📱 ':'')}${escHtml(s.paso||'(Sin nombre)')}</div>
+        <div class="scan-item-meta">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.producto==='totem'?' · Tótem':(s.producto==='tablet'?' · Tablet':'')}</div>
         <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span>
       </div>
       <div class="scan-item-time">${time}</div>
@@ -1167,7 +1167,7 @@ function resetNewScanForm() {
 
 // ======== PHOTOS ========
 function renderPhotosGrid() {
-  // Actualiza tanto la grilla del scanner como la del tótem (solo una es visible a la vez)
+  // Actualiza las grillas del scanner, tótem y tablet (solo una es visible a la vez)
   const badgeT = document.getElementById('totem-photo-count-badge');
   if (badgeT) badgeT.textContent = `${capturedPhotos.length}/10`;
   const gridT = document.getElementById('totem-photos-grid');
@@ -1175,6 +1175,14 @@ function renderPhotosGrid() {
     <div class="photo-thumb"><img src="${p.dataUrl}"><button class="photo-del" onclick="removePhoto(${i})">✕</button></div>`).join('');
   const btnT = document.getElementById('totem-btn-add-photo');
   if (btnT) { btnT.disabled = capturedPhotos.length >= 10; btnT.style.opacity = capturedPhotos.length >= 10 ? '0.4' : '1'; }
+
+  const badgeTb = document.getElementById('tablet-photo-count-badge');
+  if (badgeTb) badgeTb.textContent = `${capturedPhotos.length}/10`;
+  const gridTb = document.getElementById('tablet-photos-grid');
+  if (gridTb) gridTb.innerHTML = capturedPhotos.map((p,i)=>`
+    <div class="photo-thumb"><img src="${p.dataUrl}"><button class="photo-del" onclick="removePhoto(${i})">✕</button></div>`).join('');
+  const btnTb = document.getElementById('tablet-btn-add-photo');
+  if (btnTb) { btnTb.disabled = capturedPhotos.length >= 10; btnTb.style.opacity = capturedPhotos.length >= 10 ? '0.4' : '1'; }
   document.getElementById('photo-count-badge').textContent = `${capturedPhotos.length}/10`;
   document.getElementById('photos-grid').innerHTML = capturedPhotos.map((p,i)=>`
     <div class="photo-thumb"><img src="${p.dataUrl}" alt="foto ${i+1}">
@@ -1355,6 +1363,11 @@ function processQRData(raw) {
       if (et && et.t === 'totem') {
         window._esperandoEtiquetaTotem = false;
         fillTotemFromEtiqueta(et);
+        return;
+      }
+      if (et && et.t === 'tablet') {
+        window._esperandoEtiquetaTablet = false;
+        fillTabletFromEtiqueta(et);
         return;
       }
     } catch(e) {}
@@ -2592,6 +2605,205 @@ function checklistItemsLines(items) {
   if (!items || !items.length) return [];
   return items.map(it => `${it.ok?'OK':'—'} — ${it.label}`);
 }
+// ══════════════════════════════════════════════════════════════
+// ── MÓDULO TABLET ─────────────────────────────────────────────
+// Mismo patrón que el módulo Tótem: guarda en la colección scans
+// con producto:'tablet'. serie=serie de la tablet.
+// ══════════════════════════════════════════════════════════════
+let currentTabletOpType = 'mantenimiento';
+let currentTabletIncSubtipo = 'reparable';
+
+const TABLET_CHK = {
+  mantenimiento: [
+    ['tbchk-pantalla','Estado/Limpieza de pantalla'],
+    ['tbchk-camara','Estado/Limpieza de Cámara'],
+    ['tbchk-carcasa','Estado/Limpieza de Carcasa'],
+    ['tbchk-arnes','Estado de Arnés'],
+    ['tbchk-kiosko','Modo Kiosko Activado'],
+    ['tbchk-pin-carga','Estado Pin de carga'],
+    ['tbchk-wifi','Conexión WiFi'],
+    ['tbchk-software','Actualización de Software'],
+  ],
+  instalacion: [
+    ['tbchki-red','Configuración de red'],
+    ['tbchki-wifi-auto','Verificar que conecte a WiFi automáticamente luego de perder señal'],
+    ['tbchki-kiosko','Activar modo Kiosko'],
+    ['tbchki-reinicio','Reiniciar y verificar que inicie en modo Kiosko'],
+    ['tbchki-tvf-mobile','Prueba de software TVF Mobile'],
+  ],
+  reparable: [
+    ['tbchkr-software','Configuración/Actualización de software'],
+    ['tbchkr-limpieza','Limpieza'],
+    ['tbchkr-cargador','Falla cargador'],
+  ],
+  reemplazo: [
+    ['tbchkm-pantalla','Pantalla rota'],
+    ['tbchkm-pin','Falla Pin de carga'],
+    ['tbchkm-bateria','Falla batería'],
+    ['tbchkm-camara','Cámara rayada/rota'],
+  ],
+};
+
+function showTabletPage() {
+  ['tablet-paso','tablet-puesto','tablet-serie','tablet-device-id','tablet-ip','tablet-mac','tablet-notas',
+   'tablet-serie-retira','tablet-deviceid-retira','tablet-serie-nueva','tablet-deviceid-nueva',
+   'tbchkr-otro-detalle','tbchkm-otro-detalle'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  Object.values(TABLET_CHK).flat().forEach(([id]) => { const el = document.getElementById(id); if (el) el.checked = false; });
+  ['tbchkr-otro','tbchkm-otro'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  ['tbchkr-otro-wrap','tbchkm-otro-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  const prev = document.getElementById('tablet-qr-preview'); if (prev) prev.classList.add('hidden');
+  capturedPhotos = [];
+  tabletSetOpType('mantenimiento');
+  showPage('new-tablet');
+  renderPhotosGrid();
+}
+window.showTabletPage = showTabletPage;
+
+function tabletSetOpType(tipo) {
+  currentTabletOpType = tipo;
+  ['mantenimiento','instalacion','incidencia'].forEach(t => {
+    const btn = document.getElementById('tablet-op-' + t);
+    if (btn) btn.classList.toggle('active', t === tipo);
+  });
+  document.getElementById('tablet-incidencia-subtipo').style.display = tipo === 'incidencia' ? 'block' : 'none';
+  document.getElementById('tablet-checklist-mantenimiento').style.display = tipo === 'mantenimiento' ? 'block' : 'none';
+  document.getElementById('tablet-checklist-instalacion').style.display = tipo === 'instalacion' ? 'block' : 'none';
+  if (tipo === 'incidencia') { tabletSetIncSubtipo(currentTabletIncSubtipo); }
+  else {
+    document.getElementById('tablet-checklist-reparable').style.display = 'none';
+    document.getElementById('tablet-checklist-reemplazo').style.display = 'none';
+    document.getElementById('tablet-reemplazo-fields').style.display = 'none';
+  }
+}
+window.tabletSetOpType = tabletSetOpType;
+
+function tabletSetIncSubtipo(sub) {
+  currentTabletIncSubtipo = sub;
+  const bR = document.getElementById('tablet-inc-reparable');
+  const bM = document.getElementById('tablet-inc-reemplazo');
+  if (bR) bR.classList.toggle('active', sub === 'reparable');
+  if (bM) bM.classList.toggle('active', sub === 'reemplazo');
+  document.getElementById('tablet-checklist-reparable').style.display = sub === 'reparable' ? 'block' : 'none';
+  document.getElementById('tablet-checklist-reemplazo').style.display = sub === 'reemplazo' ? 'block' : 'none';
+  document.getElementById('tablet-reemplazo-fields').style.display = sub === 'reemplazo' ? 'block' : 'none';
+}
+window.tabletSetIncSubtipo = tabletSetIncSubtipo;
+
+function startTabletQRScan() {
+  window._esperandoEtiquetaTablet = true;
+  startQRScan();
+}
+window.startTabletQRScan = startTabletQRScan;
+
+function fillTabletFromEtiqueta(d) {
+  const map = {
+    'tablet-paso': d.paso, 'tablet-puesto': d.puesto,
+    'tablet-serie': d.serie, 'tablet-device-id': d.deviceId,
+    'tablet-ip': d.ip, 'tablet-mac': d.mac,
+  };
+  Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el && val) el.value = val; });
+  const prev = document.getElementById('tablet-qr-preview'); if (prev) prev.classList.remove('hidden');
+  if (currentPage !== 'new-tablet') showPage('new-tablet');
+  showToast('✓ Etiqueta escaneada', 'success');
+}
+
+async function saveTablet() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const paso = val('tablet-paso');
+  const puesto = val('tablet-puesto');
+  const serie = val('tablet-serie');
+  if (!paso) { showToast('Ingresá el nombre del paso','error'); return; }
+  if (!puesto) { showToast('Ingresá el número de puesto','error'); return; }
+  if (!serie) { showToast('Ingresá la serie de la tablet','error'); return; }
+
+  let opTypeReal = currentTabletOpType;
+  if (currentTabletOpType === 'incidencia') {
+    opTypeReal = currentTabletIncSubtipo === 'reemplazo' ? 'cambio_equipo' : 'falla_reparable';
+  }
+
+  const chkKey = currentTabletOpType === 'incidencia' ? currentTabletIncSubtipo : currentTabletOpType;
+  const checklistItems = TABLET_CHK[chkKey].map(([id, label]) => ({ label, ok: !!document.getElementById(id)?.checked }));
+  if (chkKey === 'reparable' && document.getElementById('tbchkr-otro')?.checked) {
+    checklistItems.push({ label: 'Otro: ' + (val('tbchkr-otro-detalle') || 'sin detalle'), ok: true });
+  }
+  if (chkKey === 'reemplazo' && document.getElementById('tbchkm-otro')?.checked) {
+    checklistItems.push({ label: 'Otro: ' + (val('tbchkm-otro-detalle') || 'sin detalle'), ok: true });
+  }
+
+  let reemplazoData = {};
+  if (opTypeReal === 'cambio_equipo') {
+    const serieRetira = val('tablet-serie-retira'), serieNuevo = val('tablet-serie-nueva');
+    const deviceIdRetira = val('tablet-deviceid-retira'), deviceIdNuevo = val('tablet-deviceid-nueva');
+    if (!serieRetira || !serieNuevo) {
+      showToast('Completá la serie de la tablet que se retira y de la nueva','error'); return;
+    }
+    reemplazoData = { serieRetira, serieNuevo, deviceIdRetira, deviceIdNuevo };
+  }
+
+  let lat=null, lon=null, address='';
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, maximumAge: 60000 }));
+    lat = pos.coords.latitude; lon = pos.coords.longitude;
+    address = window._lastKnownAddress || '';
+  } catch(e) {}
+
+  const scan = {
+    id: 'tablet_' + Date.now(),
+    producto: 'tablet',
+    userId: currentUser.id,
+    technicianName: currentUser.name || currentUser.email,
+    timestamp: new Date().toISOString(),
+    paso, puesto,
+    serie, // compat con pipeline existente
+    deviceId: val('tablet-device-id'),
+    ip: val('tablet-ip'),
+    mac: val('tablet-mac'),
+    opType: opTypeReal,
+    checklistItems,
+    ...reemplazoData,
+    serieRetira: reemplazoData.serieRetira || '',
+    serieNuevo: reemplazoData.serieNuevo || '',
+    notas: val('tablet-notas'),
+    lat, lon, address,
+    photos: capturedPhotos.map(p => p.dataUrl),
+  };
+
+  localScans.push(scan);
+  if (scan.photos.length > 0) {
+    try { localStorage.setItem('scancheck_photos_' + scan.id, JSON.stringify(scan.photos)); } catch(e) {}
+  }
+  try {
+    const scansForStorage = localScans.map(({photos,...s}) => ({...s, photoCount:(photos||[]).length}));
+    localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+  } catch(e) {}
+  updateStats(); renderTodayList();
+  showPage('home');
+  showToast('✓ Tablet registrada','success');
+
+  if (navigator.onLine) {
+    setSyncStatus('syncing');
+    try {
+      const fbId = await fbSaveScan(scan);
+      const idx = localScans.findIndex(s => s.id === scan.id);
+      if (idx !== -1) localScans[idx].fbId = fbId;
+      if (scan.photos.length > 0) {
+        try {
+          const urls = await uploadPhotosToR2(fbId, scan.photos);
+          if (urls.length) await fbUpdateScan(fbId, { photoUrls: urls });
+        } catch(e) { console.warn('R2 tablet:', e.message); }
+      }
+      setSyncStatus('online');
+    } catch(e) {
+      queueAdd('scan', scan);
+      setSyncStatus('offline');
+    }
+  } else {
+    queueAdd('scan', scan);
+  }
+}
+window.saveTablet = saveTablet;
+// ── FIN MÓDULO TABLET ─────────────────────────────────────────
+
 // ── GENERADOR DE ETIQUETAS QR (supervisor) ────────────────────
 // Genera el QR de identificación de un equipo (tótem/tablet) para
 // imprimir como etiqueta adhesiva. Usa api.qrserver.com (requiere conexión).
@@ -2600,23 +2812,14 @@ function showGeneradorEtiqueta() {
   const modal = document.createElement('div');
   modal.id = 'modal-etiqueta-qr';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
-  const inp = (id, label, ph='') => `<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input type="text" id="${id}" placeholder="${ph}" maxlength="80" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
   modal.innerHTML = `<div style="background:var(--bg2);border-radius:16px;padding:20px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4);max-height:92vh;overflow-y:auto">
-    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;text-align:center">🏷️ Generar etiqueta QR — Tótem/Tablet</div>
-    ${inp('et-paso','Nombre del Paso','Ej: La Quiaca')}
-    ${inp('et-puesto','N° de Puesto','Ej: 3')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      ${inp('et-serie-minipc','Serie miniPC *')}
-      ${inp('et-modelo-minipc','Modelo miniPC')}
-      ${inp('et-ip-minipc','IP miniPC','Ej: 192.168.1.50')}
-      ${inp('et-mac-minipc','MAC miniPC','Ej: AA:BB:CC:DD:EE:FF')}
-      ${inp('et-serie-camara','Serie Cámara')}
-      ${inp('et-modelo-camara','Modelo/Marca Cámara')}
-      ${inp('et-serie-pantalla','Serie Pantalla')}
-      ${inp('et-modelo-pantalla','Modelo/Marca Pantalla')}
-      ${inp('et-inv-dnd','N° Inv. DND')}
-      ${inp('et-inv-dnm','N° Inv. DNM')}
+    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;text-align:center">🏷️ Generar etiqueta QR</div>
+    <div class="op-type-row" style="margin-bottom:14px">
+      <button class="op-btn active" id="et-tipo-totem" onclick="etSetTipo('totem')">🗼 Tótem</button>
+      <button class="op-btn" id="et-tipo-tablet" onclick="etSetTipo('tablet')">📱 Tablet</button>
     </div>
+    <div id="et-campos-totem">${_etCamposTotemHtml()}</div>
+    <div id="et-campos-tablet" style="display:none">${_etCamposTabletHtml()}</div>
     <div id="et-qr-result" style="display:none;text-align:center;margin:12px 0">
       <img id="et-qr-img" style="width:220px;height:220px;border-radius:8px;background:#fff;padding:8px">
       <div style="font-size:11px;color:var(--text3);margin-top:6px">Mantené presionada la imagen para guardarla, o tocá Descargar</div>
@@ -2628,21 +2831,79 @@ function showGeneradorEtiqueta() {
     </div>
   </div>`;
   document.body.appendChild(modal);
+  window._etTipo = 'totem';
 }
 window.showGeneradorEtiqueta = showGeneradorEtiqueta;
 
+const _etInp = (id, label, ph='') => `<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input type="text" id="${id}" placeholder="${ph}" maxlength="80" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+
+function _etCamposTotemHtml() {
+  return `${_etInp('et-paso','Nombre del Paso','Ej: La Quiaca')}
+    ${_etInp('et-puesto','N° de Puesto','Ej: 3')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${_etInp('et-serie-minipc','Serie miniPC *')}
+      ${_etInp('et-modelo-minipc','Modelo miniPC')}
+      ${_etInp('et-ip-minipc','IP miniPC','Ej: 192.168.1.50')}
+      ${_etInp('et-mac-minipc','MAC miniPC','Ej: AA:BB:CC:DD:EE:FF')}
+      ${_etInp('et-serie-camara','Serie Cámara')}
+      ${_etInp('et-modelo-camara','Modelo/Marca Cámara')}
+      ${_etInp('et-serie-pantalla','Serie Pantalla')}
+      ${_etInp('et-modelo-pantalla','Modelo/Marca Pantalla')}
+      ${_etInp('et-inv-dnd','N° Inv. DND')}
+      ${_etInp('et-inv-dnm','N° Inv. DNM')}
+    </div>`;
+}
+
+function _etCamposTabletHtml() {
+  return `${_etInp('et-tb-paso','Nombre del Paso','Ej: La Quiaca')}
+    ${_etInp('et-tb-puesto','N° de Puesto','Ej: 3')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${_etInp('et-tb-serie','N° Serie Tablet *')}
+      ${_etInp('et-tb-device-id','Device ID')}
+      ${_etInp('et-tb-ip','IP','Ej: 192.168.1.60')}
+      ${_etInp('et-tb-mac','MAC Add','Ej: AA:BB:CC:DD:EE:FF')}
+    </div>`;
+}
+
+function etSetTipo(tipo) {
+  window._etTipo = tipo;
+  document.getElementById('et-tipo-totem').classList.toggle('active', tipo === 'totem');
+  document.getElementById('et-tipo-tablet').classList.toggle('active', tipo === 'tablet');
+  document.getElementById('et-campos-totem').style.display = tipo === 'totem' ? 'block' : 'none';
+  document.getElementById('et-campos-tablet').style.display = tipo === 'tablet' ? 'block' : 'none';
+  document.getElementById('et-qr-result').style.display = 'none';
+  document.getElementById('et-btn-descargar').style.display = 'none';
+}
+window.etSetTipo = etSetTipo;
+
 function generarEtiquetaQR() {
   const v = id => (document.getElementById(id)?.value || '').trim();
-  if (!v('et-serie-minipc')) { showToast('Ingresá al menos la serie de la miniPC','error'); return; }
-  const data = {
-    t: 'totem',
-    paso: v('et-paso'), puesto: v('et-puesto'),
-    serieMiniPC: v('et-serie-minipc'), modeloMiniPC: v('et-modelo-minipc'),
-    ipMiniPC: v('et-ip-minipc'), macMiniPC: v('et-mac-minipc'),
-    serieCamara: v('et-serie-camara'), modeloCamara: v('et-modelo-camara'),
-    seriePantalla: v('et-serie-pantalla'), modeloPantalla: v('et-modelo-pantalla'),
-    invDnd: v('et-inv-dnd'), invDnm: v('et-inv-dnm'),
-  };
+  const tipo = window._etTipo || 'totem';
+  let data, nombreArchivo;
+
+  if (tipo === 'totem') {
+    if (!v('et-serie-minipc')) { showToast('Ingresá al menos la serie de la miniPC','error'); return; }
+    data = {
+      t: 'totem',
+      paso: v('et-paso'), puesto: v('et-puesto'),
+      serieMiniPC: v('et-serie-minipc'), modeloMiniPC: v('et-modelo-minipc'),
+      ipMiniPC: v('et-ip-minipc'), macMiniPC: v('et-mac-minipc'),
+      serieCamara: v('et-serie-camara'), modeloCamara: v('et-modelo-camara'),
+      seriePantalla: v('et-serie-pantalla'), modeloPantalla: v('et-modelo-pantalla'),
+      invDnd: v('et-inv-dnd'), invDnm: v('et-inv-dnm'),
+    };
+    nombreArchivo = `Etiqueta_Totem_${(data.serieMiniPC||'').replace(/[^\w-]/g,'_')}.png`;
+  } else {
+    if (!v('et-tb-serie')) { showToast('Ingresá al menos la serie de la tablet','error'); return; }
+    data = {
+      t: 'tablet',
+      paso: v('et-tb-paso'), puesto: v('et-tb-puesto'),
+      serie: v('et-tb-serie'), deviceId: v('et-tb-device-id'),
+      ip: v('et-tb-ip'), mac: v('et-tb-mac'),
+    };
+    nombreArchivo = `Etiqueta_Tablet_${(data.serie||'').replace(/[^\w-]/g,'_')}.png`;
+  }
+
   // Quitar claves vacías para un QR más chico (más fácil de imprimir/escanear)
   Object.keys(data).forEach(k => { if (!data[k]) delete data[k]; });
   const json = JSON.stringify(data);
@@ -2652,7 +2913,7 @@ function generarEtiquetaQR() {
   document.getElementById('et-qr-result').style.display = 'block';
   document.getElementById('et-btn-descargar').style.display = 'block';
   window._etQrUrl = url;
-  window._etQrNombre = `Etiqueta_Totem_${(data.serieMiniPC||'').replace(/[^\w-]/g,'_')}.png`;
+  window._etQrNombre = nombreArchivo;
 }
 window.generarEtiquetaQR = generarEtiquetaQR;
 
@@ -6922,7 +7183,7 @@ async function sendToJira() {
   const PRODUCTOS_FIELD = productoInforme === 'totem'
     ? { customfield_10103: { value: 'Totems' } }
     : (productoInforme === 'tablet'
-      ? { customfield_10103: { value: 'Tablets' } }
+      ? { customfield_10103: { value: 'Ultra IP - App móvil' } }
       : {});
 
   try {
@@ -7045,7 +7306,7 @@ async function sendToJira() {
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}`:(s.producto==='tablet'?`Producto: Tablet\nSerie Tablet: ${s.serie}${s.deviceId?`\nDevice ID: ${s.deviceId}`:''}${s.ip?`\nIP: ${s.ip}`:''}${s.mac?`\nMAC: ${s.mac}`:''}${s.serieRetira?`\nRetira: ${s.serieRetira}${s.deviceIdRetira?` (Device ID: ${s.deviceIdRetira})`:''}\nNuevo: ${s.serieNuevo}${s.deviceIdNuevo?` (Device ID: ${s.deviceIdNuevo})`:''}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`)}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
             issuetype:{id:'10003'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
@@ -7852,7 +8113,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '06.07.2026-v253'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '07.07.2026-v255'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -8096,6 +8357,35 @@ function buildTotemExportRows(allScans) {
   return rows;
 }
 
+// Filas de exportación para la hoja "Tablets"
+function buildTabletExportRows(allScans) {
+  const tablets = allScans.filter(s => s.producto === 'tablet');
+  const headers = [
+    'Fecha', 'Hora', 'Técnico', 'Inspector DNM', 'Paso', 'Puesto', 'Tipo Operación',
+    'Serie Tablet', 'Device ID', 'IP', 'MAC Add',
+    'Checklist OK', 'Checklist Detalle',
+    'Serie Retira', 'Device ID Retira', 'Serie Nueva', 'Device ID Nueva',
+    'Latitud', 'Longitud', 'Dirección', 'Notas'
+  ];
+  const rows = [headers];
+  tablets.forEach(s => {
+    const d = new Date(s.timestamp);
+    const items = s.checklistItems || [];
+    const oks = items.filter(i => i.ok).length;
+    rows.push([
+      d.toLocaleDateString('es-AR'), d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),
+      s.technicianName || '', s.inspectorName || '', s.paso || '', s.puesto || '',
+      opLabel(s.opType) || s.opType || '',
+      s.serie || '', s.deviceId || '', s.ip || '', s.mac || '',
+      items.length ? `${oks}/${items.length}` : '',
+      items.map(i => `${i.ok?'OK':'—'} ${i.label}`).join(' | '),
+      s.serieRetira || '', s.deviceIdRetira || '', s.serieNuevo || '', s.deviceIdNuevo || '',
+      s.lat != null ? s.lat : '', s.lon != null ? s.lon : '', s.address || '', s.notas || ''
+    ]);
+  });
+  return rows;
+}
+
 function buildExportRows(allScans) {
   // Solo scanners — los tótems/tablets van a sus propias hojas
   const soloScanners = allScans.filter(s => !s.producto || s.producto === 'scanner');
@@ -8261,9 +8551,39 @@ async function exportToGoogleSheets() {
       }
     }
 
+    // ── Hoja Tablets (si hay registros de tablet) ──
+    let tabletMsg = '';
+    const tabletRows = buildTabletExportRows(allScans);
+    if (tabletRows.length > 1) {
+      statusEl.textContent = `Exportando ${tabletRows.length - 1} tablets...`;
+      try {
+        const clearTb = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent('Tablets!A:Z')}:clear`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' }
+        });
+        if (!clearTb.ok) {
+          const err = await clearTb.json().catch(()=>({}));
+          throw new Error(err.error?.message || `HTTP ${clearTb.status} — ¿existe la hoja "Tablets" en el Sheet?`);
+        }
+        const writeTb = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent('Tablets!A1')}?valueInputOption=RAW`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${gsiAccessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: tabletRows })
+        });
+        if (!writeTb.ok) {
+          const err = await writeTb.json().catch(()=>({}));
+          throw new Error(err.error?.message || `HTTP ${writeTb.status}`);
+        }
+        tabletMsg = ` + ${tabletRows.length - 1} tablets`;
+      } catch(e) {
+        console.warn('Export Tablets:', e.message);
+        tabletMsg = ` (hoja Tablets: ${e.message})`;
+      }
+    }
+
     const dupMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicados eliminados)` : '';
-    statusEl.textContent = `✓ ${exportedCount} registros exportados${totemMsg}${dupMsg}.`;
-    showToast(`✓ ${exportedCount} registros${totemMsg} exportados a Sheets${dupMsg}`, 'success');
+    statusEl.textContent = `✓ ${exportedCount} registros exportados${totemMsg}${tabletMsg}${dupMsg}.`;
+    showToast(`✓ ${exportedCount} registros${totemMsg}${tabletMsg} exportados a Sheets${dupMsg}`, 'success');
 
   } catch(e) {
     console.error('Export error:', e);
