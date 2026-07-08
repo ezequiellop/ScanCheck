@@ -1873,6 +1873,24 @@ async function viewScan(id) {
       ${scan.address?`<div style="font-size:11px;color:var(--text3);grid-column:1/-1">📍 ${escHtml(scan.address)}</div>`:''}
     </div>
 
+    ${scan.producto==='totem' ? `
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">🗼 Tótem TVF</div>
+    <div class="modal-fields">
+      ${fTag('Serie miniPC', scan.serieMiniPC||scan.serie)} ${scan.modeloMiniPC?fTag('Modelo miniPC',scan.modeloMiniPC):''}
+      ${scan.ipMiniPC?fTag('IP miniPC',scan.ipMiniPC):''} ${scan.macMiniPC?fTag('MAC miniPC',scan.macMiniPC):''}
+      ${scan.serieCamara?fTag('Serie Cámara',scan.serieCamara):''} ${scan.modeloCamara?fTag('Modelo/Marca Cámara',scan.modeloCamara):''}
+      ${scan.seriePantalla?fTag('Serie Pantalla',scan.seriePantalla):''} ${scan.modeloPantalla?fTag('Modelo/Marca Pantalla',scan.modeloPantalla):''}
+      ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''} ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
+      ${scan.equipoReemplazado?fTag('Equipo reemplazado',scan.equipoReemplazado):''}
+      ${scan.serieRetira?fTag('Retira',`${scan.mmRetira||''} ${scan.serieRetira}`):''} ${scan.serieNuevo?fTag('Nuevo',`${scan.mmNuevo||''} ${scan.serieNuevo}`):''}
+    </div>` : scan.producto==='tablet' ? `
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📱 Tablet</div>
+    <div class="modal-fields">
+      ${fTag('Serie Tablet', scan.serie)} ${scan.deviceId?fTag('Device ID',scan.deviceId):''}
+      ${scan.ip?fTag('IP',scan.ip):''} ${scan.mac?fTag('MAC Add',scan.mac):''}
+      ${scan.serieRetira?fTag('Serie retira',scan.serieRetira):''} ${scan.deviceIdRetira?fTag('Device ID retira',scan.deviceIdRetira):''}
+      ${scan.serieNuevo?fTag('Serie nueva',scan.serieNuevo):''} ${scan.deviceIdNuevo?fTag('Device ID nueva',scan.deviceIdNuevo):''}
+    </div>` : `
     <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">🖨 Scanner DESKO</div>
     <div class="modal-fields">
       ${scan.scannerSerie?fTag('Serie',scan.scannerSerie):''} ${scan.scannerModelo?fTag('Modelo',scan.scannerModelo):''}
@@ -1893,7 +1911,7 @@ async function viewScan(id) {
     <div class="modal-fields">
       ${scan.pcNombre?fTag('Nombre PC',scan.pcNombre):''} ${fTag('Serie PC',scan.serie)}
     </div>
-    ${datosSistemaHtml(scan.datosSistema)}
+    ${datosSistemaHtml(scan.datosSistema)}`}
 
     <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">✅ Checklists</div>
     ${scan.checklistItems?checklistItemsHtml(scan.checklistItems):(scan.opType==='instalacion_nueva'||scan.opType==='instalacion_reemplazo'?checklistInstalacionHtml(scan.checklistInstalacion):checklistHtml(scan.checklist))}
@@ -2598,6 +2616,99 @@ async function saveTotem() {
   }
 }
 window.saveTotem = saveTotem;
+
+// Helpers de producto: nombre del dispositivo según scanner/totem/tablet.
+// Se usan en los conteos de informes/listas y en los encabezados de sección.
+function productoDeScans(scans) {
+  if (!scans || !scans.length) return 'scanner';
+  return scans[0].producto || 'scanner';
+}
+function nombreDispositivo(producto, plural) {
+  const map = {
+    scanner: ['scanner', 'scanners'],
+    totem:   ['tótem', 'tótems'],
+    tablet:  ['tablet', 'tablets'],
+  };
+  const par = map[producto] || map.scanner;
+  return plural ? par[1] : par[0];
+}
+function contarDispositivos(scans) {
+  const n = scans.length;
+  const prod = productoDeScans(scans);
+  return `${n} ${nombreDispositivo(prod, n !== 1)}`;
+}
+// Encabezado de la sección de datos del equipo según producto
+function tituloEquipoHtml(producto, margin) {
+  const label = producto === 'totem' ? '🗼 Tótem TVF' : (producto === 'tablet' ? '📱 Tablet' : '🖨 Scanner DESKO');
+  return `<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;${margin}">${label}</div>`;
+}
+
+// Bloque "datos del equipo" para informes (HTML). Recibe el scan (s) y clases
+// de padding para el encabezado y los campos. Muestra los campos propios del
+// producto: scanner (+ PC), tótem o tablet.
+function bloqueEquipoInformeHtml(s, headStyle, fieldsClass) {
+  const head = (label) => `<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;${headStyle}">${label}</div>`;
+  if (s.producto === 'totem') {
+    return head('🗼 Tótem TVF') + `<div class="${fieldsClass}">
+      ${fTag('Serie miniPC', s.serieMiniPC||s.serie)} ${s.modeloMiniPC?fTag('Modelo miniPC',s.modeloMiniPC):''}
+      ${s.ipMiniPC?fTag('IP miniPC',s.ipMiniPC):''} ${s.macMiniPC?fTag('MAC miniPC',s.macMiniPC):''}
+      ${s.serieCamara?fTag('Serie Cámara',s.serieCamara):''} ${s.modeloCamara?fTag('Modelo/Marca Cámara',s.modeloCamara):''}
+      ${s.seriePantalla?fTag('Serie Pantalla',s.seriePantalla):''} ${s.modeloPantalla?fTag('Modelo/Marca Pantalla',s.modeloPantalla):''}
+      ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''} ${s.invDnm?fTag('N° Inv. DNM',s.invDnm):''}
+      ${s.equipoReemplazado?fTag('Equipo reemplazado',s.equipoReemplazado):''}
+      ${s.serieRetira?fTag('Retira',`${s.mmRetira||''} ${s.serieRetira}`):''} ${s.serieNuevo?fTag('Nuevo',`${s.mmNuevo||''} ${s.serieNuevo}`):''}
+    </div>`;
+  }
+  if (s.producto === 'tablet') {
+    return head('📱 Tablet') + `<div class="${fieldsClass}">
+      ${fTag('Serie Tablet', s.serie)} ${s.deviceId?fTag('Device ID',s.deviceId):''}
+      ${s.ip?fTag('IP',s.ip):''} ${s.mac?fTag('MAC Add',s.mac):''}
+      ${s.serieRetira?fTag('Serie retira',s.serieRetira):''} ${s.deviceIdRetira?fTag('Device ID retira',s.deviceIdRetira):''}
+      ${s.serieNuevo?fTag('Serie nueva',s.serieNuevo):''} ${s.deviceIdNuevo?fTag('Device ID nueva',s.deviceIdNuevo):''}
+    </div>`;
+  }
+  // Scanner (comportamiento original)
+  return head('🖨 Scanner DESKO') + `<div class="${fieldsClass}">
+      ${s.scannerSerie?fTag('Serie',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo',s.scannerModelo):''}
+      ${s.scannerEstado?fTag('Estado',s.scannerEstado):''}
+      ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''} ${s.invDnm?fTag('N° Inv. DNM',s.invDnm):''}
+      ${s.serieRetira?fTag('Serie retira',s.serieRetira):''} ${s.serieNuevo?fTag('Serie nueva',s.serieNuevo):''}
+      ${s.instalacionReemplazoData?fTag('Equipo retirado',`${s.instalacionReemplazoData.marcaVieja} — ${s.instalacionReemplazoData.serieVieja}`):''}
+    </div>`;
+}
+
+// Bloque "datos del equipo" formato grid-inline (viewReport / viewReportSupervisor)
+function bloqueEquipoGridHtml(s, headMargin) {
+  const head = (label) => `<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;${headMargin}">${label}</div>`;
+  const row = (lbl, val, color) => val ? `<div style="color:var(--text2)">${lbl}: <span style="color:${color||'var(--text)'}">${escHtml(String(val))}</span></div>` : '';
+  const open = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">';
+  if (s.producto === 'totem') {
+    return head('🗼 Tótem TVF') + open +
+      row('Serie miniPC', s.serieMiniPC||s.serie) + row('Modelo miniPC', s.modeloMiniPC) +
+      row('IP miniPC', s.ipMiniPC) + row('MAC miniPC', s.macMiniPC) +
+      row('Serie Cámara', s.serieCamara) + row('Modelo/Marca Cámara', s.modeloCamara) +
+      row('Serie Pantalla', s.seriePantalla) + row('Modelo/Marca Pantalla', s.modeloPantalla) +
+      row('N° Inv. DND', s.invDnd) + row('N° Inv. DNM', s.invDnm) +
+      row('Equipo reemplazado', s.equipoReemplazado) +
+      row('Retira', s.serieRetira?`${s.mmRetira||''} ${s.serieRetira}`:'', 'var(--warning)') +
+      row('Nuevo', s.serieNuevo?`${s.mmNuevo||''} ${s.serieNuevo}`:'', 'var(--accent)') +
+      '</div>';
+  }
+  if (s.producto === 'tablet') {
+    return head('📱 Tablet') + open +
+      row('Serie Tablet', s.serie) + row('Device ID', s.deviceId) +
+      row('IP', s.ip) + row('MAC Add', s.mac) +
+      row('Serie retira', s.serieRetira, 'var(--warning)') + row('Device ID retira', s.deviceIdRetira) +
+      row('Serie nueva', s.serieNuevo, 'var(--accent)') + row('Device ID nueva', s.deviceIdNuevo) +
+      '</div>';
+  }
+  return head('🖨 Scanner DESKO') + open +
+    row('Serie', s.scannerSerie) + row('Modelo', s.scannerModelo) + row('Estado', s.scannerEstado) +
+    row('N° Inv. DND', s.invDnd) + row('N° Inv. DNM', s.invDnm) +
+    row('Serie retira', s.serieRetira, 'var(--warning)') + row('Serie nueva', s.serieNuevo, 'var(--accent)') +
+    (s.instalacionReemplazoData?`<div style="color:var(--text2);grid-column:1/-1">Equipo retirado: <span style="color:var(--text)">${escHtml(s.instalacionReemplazoData.marcaVieja)} — ${escHtml(s.instalacionReemplazoData.serieVieja)}</span></div>`:'') +
+    '</div>';
+}
 
 // Render del checklist autodescriptivo (tótem y futuros productos)
 function checklistItemsHtml(items) {
@@ -6122,7 +6233,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
   const label = d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const progresoLabel = totalEnCola > 1 ? ` · Informe ${posicionActual} de ${totalEnCola}` : '';
   document.getElementById('report-date-label').textContent = label.charAt(0).toUpperCase()+label.slice(1) + (paso ? ` — ${paso}` : '') + progresoLabel;
-  document.getElementById('report-count-label').textContent = `${scans.length} scanner${scans.length!==1?'s':''}`;
+  document.getElementById('report-count-label').textContent = contarDispositivos(scans);
   if (totalEnCola > 1 && posicionActual === 1) {
     showToast(`Se generarán ${totalEnCola} informes pendientes`, 'success');
   }
@@ -6144,15 +6255,17 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
       </div>
       ${strip}
 
-      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">🖨 Scanner DESKO</div>
-      <div class="report-item-fields">
-        ${s.scannerSerie?fTag('Serie',s.scannerSerie):''} ${s.scannerModelo?fTag('Modelo',s.scannerModelo):''}
-        ${s.scannerEstado?fTag('Estado',s.scannerEstado):''}
-        ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''} ${s.invDnm?fTag('N° Inv. DNM',s.invDnm):''}
-        ${s.serieRetira?fTag('Serie retira',s.serieRetira):''} ${s.serieNuevo?fTag('Serie nueva',s.serieNuevo):''}
-        ${s.instalacionReemplazoData?fTag('Equipo retirado',`${s.instalacionReemplazoData.marcaVieja} — ${s.instalacionReemplazoData.serieVieja}`):''}
-      </div>
+      ${bloqueEquipoInformeHtml(s, 'padding:8px 14px 4px', 'report-item-fields')}
 
+      ${(s.producto && s.producto!=='scanner') ? `
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">📍 Ubicación</div>
+      <div class="report-item-fields">
+        ${fTag('Hora',new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}))}
+        ${s.jiraTicket?fTagHtml('Jira',jiraTicketLink(s.jiraTicket)):''}
+        ${fTag('GPS',s.lat?`${s.lat.toFixed(5)},${s.lon.toFixed(5)}`:'—')}
+        ${s.address?fTag('Dirección',s.address):''}
+      </div>
+      <div style="padding:0 14px">${notasListHtml(s.notas)}</div>` : `
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">💻 PC</div>
       <div class="report-item-fields">
         ${s.pcNombre?fTag('Nombre PC',s.pcNombre):''} ${fTag('Serie PC',s.serie)}
@@ -6164,7 +6277,7 @@ function renderReportPage(scans, dateKey, paso, posicionActual, totalEnCola) {
       <div style="padding:0 14px">
         ${datosSistemaHtml(s.datosSistema)}
         ${notasListHtml(s.notas)}
-      </div>
+      </div>`}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:8px 14px 4px">✅ Checklists</div>
       <div style="padding:0 14px">
@@ -6230,9 +6343,18 @@ async function saveReport() {
   const todayScans = localScans.filter(s => currentReport.scanIds.includes(s.id||s.fbId));
   const scansSnapshot = todayScans.map(s => ({
     id: s.id, fbId: s.fbId,
+    producto: s.producto || 'scanner',
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
     pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, checklistInstalacion: s.checklistInstalacion, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
+    // Campos específicos de Tótem
+    serieMiniPC: s.serieMiniPC, modeloMiniPC: s.modeloMiniPC, ipMiniPC: s.ipMiniPC, macMiniPC: s.macMiniPC,
+    serieCamara: s.serieCamara, modeloCamara: s.modeloCamara, seriePantalla: s.seriePantalla, modeloPantalla: s.modeloPantalla,
+    equipoReemplazado: s.equipoReemplazado, mmRetira: s.mmRetira, mmNuevo: s.mmNuevo,
+    // Campos específicos de Tablet
+    deviceId: s.deviceId, ip: s.ip, mac: s.mac, deviceIdRetira: s.deviceIdRetira, deviceIdNuevo: s.deviceIdNuevo,
+    // Checklist autodescriptivo (tótem/tablet)
+    checklistItems: s.checklistItems || null,
     assureEngine: s.assureEngine, assureDocLib: s.assureDocLib, assureLicKey: s.assureLicKey, jiraTicket: s.jiraTicket,
     datosSistema: s.datosSistema || null,
     opType: s.opType, notas: s.notas,
@@ -6333,7 +6455,7 @@ function renderHistory() {
       <div class="history-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div>
       <div class="history-info">
         <div class="history-date">${paso?`<span style="color:var(--accent);font-weight:700">${escHtml(paso)}</span>`:''} ${opBadge} ${jiraBadge}</div>
-        <div class="history-meta">${label} · ${count} scanner${count!==1?'s':''}</div>
+        <div class="history-meta">${label} · ${count} ${nombreDispositivo(rep.scansSnapshot?.[0]?.producto || 'scanner', count!==1)}</div>
         <div class="history-meta">Inspector: ${escHtml(rep.inspectorName||'—')}</div>
         ${currentUser?.role==='supervisor'?`<div class="history-meta" style="color:var(--text3)">Técnico: ${escHtml(rep.technicianName||'—')}</div>`:''}
       </div>
@@ -6417,24 +6539,21 @@ async function viewReport(id) {
       <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${photos}
 
-      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">🖨 Scanner DESKO</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">
-        ${s.scannerSerie?`<div style="color:var(--text2)">Serie: <span style="color:var(--text)">${escHtml(s.scannerSerie)}</span></div>`:''}
-        ${s.scannerModelo?`<div style="color:var(--text2)">Modelo: <span style="color:var(--text)">${escHtml(s.scannerModelo)}</span></div>`:''}
-        ${s.scannerEstado?`<div style="color:var(--text2)">Estado: <span style="color:var(--text)">${escHtml(s.scannerEstado)}</span></div>`:''}
-        ${s.invDnd?`<div style="color:var(--text2)">N° Inv. DND: <span style="color:var(--text)">${escHtml(s.invDnd)}</span></div>`:''}
-        ${s.invDnm?`<div style="color:var(--text2)">N° Inv. DNM: <span style="color:var(--text)">${escHtml(s.invDnm)}</span></div>`:''}
-        ${s.serieRetira?`<div style="color:var(--text2)">Serie retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span></div>`:''}
-        ${s.serieNuevo?`<div style="color:var(--text2)">Serie nueva: <span style="color:var(--accent)">${escHtml(s.serieNuevo)}</span></div>`:''}
-        ${s.instalacionReemplazoData?`<div style="color:var(--text2);grid-column:1/-1">Equipo retirado: <span style="color:var(--text)">${escHtml(s.instalacionReemplazoData.marcaVieja)} — ${escHtml(s.instalacionReemplazoData.serieVieja)}</span></div>`:''}
-      </div>
+      ${bloqueEquipoGridHtml(s, 'margin:8px 0 4px')}
 
+      ${(s.producto && s.producto!=='scanner') ? `
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">📍 Ubicación</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">
+        <div style="color:var(--text2)">Puesto: <span style="color:var(--text)">${escHtml(s.puesto||'—')}</span></div>
+        ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
+      </div>` : `
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">💻 PC</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;font-family:var(--mono)">
         ${s.pcNombre?`<div style="color:var(--text2)">Nombre PC: <span style="color:var(--text)">${escHtml(s.pcNombre)}</span></div>`:''}
         <div style="color:var(--text2)">Puesto: <span style="color:var(--text)">${escHtml(s.puesto||'—')}</span></div>
         ${s.lat?`<div style="color:var(--text3);font-size:10px;grid-column:1/-1">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
-      </div>
+      </div>`}
+      ${(!s.producto||s.producto==='scanner')?datosSistemaHtml(s.datosSistema):''}
       ${datosSistemaHtml(s.datosSistema)}
       ${s.notas?`<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">${notasListHtml(s.notas)}</div>`:''}
 
@@ -6450,7 +6569,7 @@ async function viewReport(id) {
       <div class="vr-title" style="margin:0">Informe de Visita</div>
       <img src="${DANAIDE_LOGO}" style="height:24px;object-fit:contain;opacity:.85">
     </div>
-    <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
+    <div class="vr-sub">${label} · ${contarDispositivos(scans)}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector DNM',rep.inspectorName)}
     </div>
@@ -6609,19 +6728,53 @@ async function buildReportPDFDoc(rep) {
       doc.text(opLabel(s.opType), W-M-2, y+6.5, {align:'right'});
       y += 12;
 
-      // Fields grid (2 rows x 4 cols)
-      const fields = [
-        ['PUESTO',    s.puesto||'—'],
-        ['SERIE PC',  s.serie||'—'],
-        ['NOMBRE PC', s.pcNombre||'—'],
-        ['HORA',      new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
-        ['TIPO OP.',  opLabel(s.opType)],
-      ];
-      if (s.scannerSerie)  fields.push(['SERIE SCANNER', s.scannerSerie]);
-      if (s.scannerModelo) fields.push(['MODELO SCANNER', s.scannerModelo]);
-      if (s.scannerEstado) fields.push(['ESTADO SCANNER', s.scannerEstado]);
-      if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
-      if (s.serieRetira) { fields.push(['SERIE RETIRA', s.serieRetira]); fields.push(['SERIE NUEVA', s.serieNuevo||'—']); }
+      // Fields grid (2 rows x 4 cols) — según producto
+      let fields;
+      if (s.producto === 'totem') {
+        fields = [
+          ['PUESTO',        s.puesto||'—'],
+          ['SERIE MINIPC',  s.serieMiniPC||s.serie||'—'],
+          ['MODELO MINIPC', s.modeloMiniPC||'—'],
+          ['HORA',          new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
+          ['TIPO OP.',      opLabel(s.opType)],
+        ];
+        if (s.ipMiniPC) fields.push(['IP MINIPC', s.ipMiniPC]);
+        if (s.macMiniPC) fields.push(['MAC MINIPC', s.macMiniPC]);
+        if (s.serieCamara) fields.push(['SERIE CÁMARA', s.serieCamara]);
+        if (s.modeloCamara) fields.push(['MOD/MARCA CÁMARA', s.modeloCamara]);
+        if (s.seriePantalla) fields.push(['SERIE PANTALLA', s.seriePantalla]);
+        if (s.modeloPantalla) fields.push(['MOD/MARCA PANTALLA', s.modeloPantalla]);
+        if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
+        if (s.invDnm) fields.push(['N° INV. DNM', s.invDnm]);
+        if (s.equipoReemplazado) fields.push(['EQUIPO REEMPLAZADO', s.equipoReemplazado]);
+        if (s.serieRetira) { fields.push(['RETIRA', `${s.mmRetira||''} ${s.serieRetira}`]); fields.push(['NUEVO', `${s.mmNuevo||''} ${s.serieNuevo||'—'}`]); }
+      } else if (s.producto === 'tablet') {
+        fields = [
+          ['PUESTO',      s.puesto||'—'],
+          ['SERIE TABLET', s.serie||'—'],
+          ['DEVICE ID',   s.deviceId||'—'],
+          ['HORA',        new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
+          ['TIPO OP.',    opLabel(s.opType)],
+        ];
+        if (s.ip) fields.push(['IP', s.ip]);
+        if (s.mac) fields.push(['MAC ADD', s.mac]);
+        if (s.serieRetira) { fields.push(['SERIE RETIRA', s.serieRetira]); fields.push(['SERIE NUEVA', s.serieNuevo||'—']); }
+        if (s.deviceIdRetira) fields.push(['DEVICE ID RETIRA', s.deviceIdRetira]);
+        if (s.deviceIdNuevo) fields.push(['DEVICE ID NUEVA', s.deviceIdNuevo]);
+      } else {
+        fields = [
+          ['PUESTO',    s.puesto||'—'],
+          ['SERIE PC',  s.serie||'—'],
+          ['NOMBRE PC', s.pcNombre||'—'],
+          ['HORA',      new Date(s.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})],
+          ['TIPO OP.',  opLabel(s.opType)],
+        ];
+        if (s.scannerSerie)  fields.push(['SERIE SCANNER', s.scannerSerie]);
+        if (s.scannerModelo) fields.push(['MODELO SCANNER', s.scannerModelo]);
+        if (s.scannerEstado) fields.push(['ESTADO SCANNER', s.scannerEstado]);
+        if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
+        if (s.serieRetira) { fields.push(['SERIE RETIRA', s.serieRetira]); fields.push(['SERIE NUEVA', s.serieNuevo||'—']); }
+      }
       if (s.lat) fields.push(['GPS', s.lat.toFixed(5)+', '+s.lon.toFixed(5)]);
 
       const colW = (W-M*2)/4;
@@ -7867,7 +8020,7 @@ async function viewReportSupervisor(id) {
       <div class="vr-title" style="margin:0">Informe de Visita</div>
       <img src="${DANAIDE_LOGO}" style="height:24px;object-fit:contain;opacity:.85">
     </div>
-    <div class="vr-sub">${label} · ${scans.length} scanner${scans.length!==1?'s':''}</div>
+    <div class="vr-sub">${label} · ${contarDispositivos(scans)}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       ${fTag('Técnico',rep.technicianName)} ${fTag('Inspector DNM',rep.inspectorName)}
     </div>
@@ -7876,6 +8029,22 @@ async function viewReportSupervisor(id) {
       <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px">${i+1}. ${escHtml(s.paso||'—')} <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span></div>
       ${(s.photoUrls?.length>0?s.photoUrls:(s.photos||[])).map(p=>`<img src="${p}" style="width:100%;border-radius:8px;margin:6px 0;display:block">`).join('')}
 
+      ${(s.producto==='totem') ? `
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">🗼 Tótem TVF</div>
+      <div style="font-size:12px;color:var(--text2)">
+        Serie miniPC: <strong style="color:var(--text)">${escHtml(s.serieMiniPC||s.serie||'—')}</strong>${s.modeloMiniPC?` (${escHtml(s.modeloMiniPC)})`:''} · Puesto: <strong style="color:var(--text)">${escHtml(s.puesto||'—')}</strong>
+        ${s.ipMiniPC?` · IP: <strong>${escHtml(s.ipMiniPC)}</strong>`:''}${s.macMiniPC?` · MAC: <strong>${escHtml(s.macMiniPC)}</strong>`:''}
+        ${s.serieCamara?`<br>Cámara: <strong>${escHtml(s.serieCamara)}</strong>${s.modeloCamara?` (${escHtml(s.modeloCamara)})`:''}`:''}
+        ${s.seriePantalla?`<br>Pantalla: <strong>${escHtml(s.seriePantalla)}</strong>${s.modeloPantalla?` (${escHtml(s.modeloPantalla)})`:''}`:''}
+        ${s.invDnd?` · N° Inv. DND: <strong>${escHtml(s.invDnd)}</strong>`:''}${s.invDnm?` · N° Inv. DNM: <strong>${escHtml(s.invDnm)}</strong>`:''}
+        ${s.equipoReemplazado?`<br>Reemplazo: <strong>${escHtml(s.equipoReemplazado)}</strong> — Retira: <span style="color:var(--warning)">${escHtml(s.mmRetira||'')} ${escHtml(s.serieRetira||'')}</span> → Nuevo: <span style="color:var(--accent)">${escHtml(s.mmNuevo||'')} ${escHtml(s.serieNuevo||'')}</span>`:''}
+      </div>` : (s.producto==='tablet') ? `
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">📱 Tablet</div>
+      <div style="font-size:12px;color:var(--text2)">
+        Serie: <strong style="color:var(--text)">${escHtml(s.serie||'—')}</strong> · Puesto: <strong style="color:var(--text)">${escHtml(s.puesto||'—')}</strong>
+        ${s.deviceId?` · Device ID: <strong>${escHtml(s.deviceId)}</strong>`:''}${s.ip?` · IP: <strong>${escHtml(s.ip)}</strong>`:''}${s.mac?` · MAC: <strong>${escHtml(s.mac)}</strong>`:''}
+        ${s.serieRetira?`<br>Retira: <span style="color:var(--warning)">${escHtml(s.serieRetira)}</span>${s.deviceIdRetira?` (${escHtml(s.deviceIdRetira)})`:''} → Nueva: <span style="color:var(--accent)">${escHtml(s.serieNuevo||'—')}</span>${s.deviceIdNuevo?` (${escHtml(s.deviceIdNuevo)})`:''}`:''}
+      </div>` : `
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">🖨 Scanner DESKO</div>
       <div style="font-size:12px;color:var(--text2)">
         ${s.scannerSerie?`Serie: <strong style="color:var(--text)">${escHtml(s.scannerSerie)}</strong> · `:''}
@@ -7890,10 +8059,10 @@ async function viewReportSupervisor(id) {
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">💻 PC</div>
       <div style="font-size:12px;color:var(--text2)">
         ${s.pcNombre?`Nombre: <strong>${escHtml(s.pcNombre)}</strong> · `:''}Serie PC: <strong>${escHtml(s.serie||'—')}</strong>
-      </div>
+      </div>`}
       ${s.lat?`<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px">📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?' — '+escHtml(s.address):''}</div>`:''}
       ${s.jiraTicket?`<div style="font-size:10px;color:var(--accent2);font-family:var(--mono);margin-top:2px">🎫 <a href="${JIRA_BASE_URL}/browse/${escHtml(s.jiraTicket)}" target="_blank" style="color:var(--accent2);text-decoration:underline">${escHtml(s.jiraTicket)}</a></div>`:''}
-      ${datosSistemaHtml(s.datosSistema)}
+      ${(!s.producto||s.producto==='scanner')?datosSistemaHtml(s.datosSistema):''}
 
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">✅ Checklists</div>
       ${s.checklistItems?checklistItemsHtml(s.checklistItems):(s.opType==='instalacion_nueva'||s.opType==='instalacion_reemplazo'?checklistInstalacionHtml(s.checklistInstalacion):checklistHtml(s.checklist))}
@@ -8119,7 +8288,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '07.07.2026-v256'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '07.07.2026-v257'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
