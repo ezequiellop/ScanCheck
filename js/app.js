@@ -7939,7 +7939,11 @@ async function renderSupervisor() {
     const cump = calcularCumplimientoVersiones(allScansVersion);
     const vCont = document.getElementById('sup-versiones-content');
     if (!versionesObjetivo) {
-      vCont.innerHTML = `<div class="empty-state"><p>Todavía no hay versión objetivo configurada (el monitor de GBG aún no corrió o no escribió datos).</p></div>`;
+      vCont.innerHTML = `<div class="empty-state"><p>Todavía no hay versión objetivo configurada (el monitor de GBG aún no corrió o no escribió datos).</p>
+        <a href="https://gbgamericas.my.site.com/support/s/article/AssureID-AcuFill-MedicScan-Downloads" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;background:var(--accent);color:#0a1628;text-decoration:none;margin-top:10px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar librerías (GBG)
+        </a></div>`;
     } else {
       const pct = (ok, total) => total > 0 ? Math.round((ok/total)*100) : 0;
       const sentinelPct = pct(cump.sentinelOk, cump.sentinelTotal);
@@ -7957,7 +7961,13 @@ async function renderSupervisor() {
 
       vCont.innerHTML = `
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
-          <h3 style="margin-bottom:4px">Versión objetivo actual</h3>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px">
+            <h3 style="margin:0">Versión objetivo actual</h3>
+            <a href="https://gbgamericas.my.site.com/support/s/article/AssureID-AcuFill-MedicScan-Downloads" target="_blank" rel="noopener" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;background:var(--accent);color:#0a1628;text-decoration:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Descargar librerías (GBG)
+            </a>
+          </div>
           <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Detectada en GBG el ${fechaActualizado}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <div style="background:var(--bg3);border-radius:10px;padding:12px">
@@ -8365,7 +8375,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '08.07.2026-v259'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '08.07.2026-v260'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
