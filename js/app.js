@@ -1883,7 +1883,17 @@ async function viewScan(id) {
       ${scan.invDnd?fTag('N° Inv. DND',scan.invDnd):''} ${scan.invDnm?fTag('N° Inv. DNM',scan.invDnm):''}
       ${scan.equipoReemplazado?fTag('Equipo reemplazado',scan.equipoReemplazado):''}
       ${scan.serieRetira?fTag('Retira',`${scan.mmRetira||''} ${scan.serieRetira}`):''} ${scan.serieNuevo?fTag('Nuevo',`${scan.mmNuevo||''} ${scan.serieNuevo}`):''}
-    </div>` : scan.producto==='tablet' ? `
+    </div>
+    ${scan.estadoMiniPC?`
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">🖥️ Estado miniPC (script)</div>
+    <div class="modal-fields">
+      ${scan.estadoMiniPC.cpu?fTag('CPU',`${scan.estadoMiniPC.cpu}${scan.estadoMiniPC.cores?` (${scan.estadoMiniPC.cores} cores)`:''}`):''}
+      ${scan.estadoMiniPC.ramTotal?fTag('RAM',`${scan.estadoMiniPC.ramUsada||'?'} / ${scan.estadoMiniPC.ramTotal} GB${scan.estadoMiniPC.ramPct?` (${scan.estadoMiniPC.ramPct}%)`:''}`):''}
+      ${scan.estadoMiniPC.discoTotal?fTag('Disco',`${scan.estadoMiniPC.discoUsado||'?'} / ${scan.estadoMiniPC.discoTotal}${scan.estadoMiniPC.discoPct?` (${scan.estadoMiniPC.discoPct})`:''}`):''}
+      ${scan.estadoMiniPC.so?fTag('SO',scan.estadoMiniPC.so):''}
+      ${scan.estadoMiniPC.kernel?fTag('Kernel',scan.estadoMiniPC.kernel):''}
+      ${scan.estadoMiniPC.capturadoEn?fTag('Capturado',scan.estadoMiniPC.capturadoEn):''}
+    </div>` : ''}` : scan.producto==='tablet' ? `
     <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">📱 Tablet</div>
     <div class="modal-fields">
       ${fTag('Serie Tablet', scan.serie)} ${scan.deviceId?fTag('Device ID',scan.deviceId):''}
@@ -2441,6 +2451,7 @@ function showTotemPage() {
   ['tchkr-otro','tchkm-otro'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
   ['tchkr-otro-wrap','tchkm-otro-wrap','totem-equipo-otro-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   const prev = document.getElementById('totem-qr-preview'); if (prev) prev.classList.add('hidden');
+  window._totemEstadoMiniPC = null; // se rellena si se escanea un QR del script con estado
   capturedPhotos = [];
   totemSetOpType('mantenimiento');
   showPage('new-totem');
@@ -2488,18 +2499,42 @@ window.startTotemQRScan = startTotemQRScan;
 
 // Llena el formulario de tótem desde los datos de una etiqueta {"t":"totem",...}
 function fillTotemFromEtiqueta(d) {
+  // Soporta dos formatos:
+  //  A) Generador de la app (claves largas): serieMiniPC, modeloMiniPC, ipMiniPC, macMiniPC...
+  //  B) Script de la miniPC (claves compactas): sn, mod, ip, mac + estado (cpu, rt, ru, ...)
+  const serieMiniPC  = d.serieMiniPC  ?? d.sn;
+  const modeloMiniPC = d.modeloMiniPC ?? d.mod;
+  const ipMiniPC     = d.ipMiniPC     ?? d.ip;
+  const macMiniPC    = d.macMiniPC    ?? d.mac;
+
   const map = {
     'totem-puesto': d.puesto,
-    'totem-serie-minipc': d.serieMiniPC, 'totem-modelo-minipc': d.modeloMiniPC,
-    'totem-ip-minipc': d.ipMiniPC, 'totem-mac-minipc': d.macMiniPC,
+    'totem-serie-minipc': serieMiniPC, 'totem-modelo-minipc': modeloMiniPC,
+    'totem-ip-minipc': ipMiniPC, 'totem-mac-minipc': macMiniPC,
     'totem-serie-camara': d.serieCamara, 'totem-modelo-camara': d.modeloCamara,
     'totem-serie-pantalla': d.seriePantalla, 'totem-modelo-pantalla': d.modeloPantalla,
     'totem-inv-dnd': d.invDnd, 'totem-inv-dnm': d.invDnm,
   };
   Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el && val) el.value = val; });
+
+  // Si el QR trae estado de la miniPC (viene del script), lo guardamos para
+  // adjuntarlo al registro cuando el técnico guarde el preventivo.
+  if (d.cpu || d.rt || d.dt) {
+    window._totemEstadoMiniPC = {
+      cpu: d.cpu || '', cores: d.cor || '',
+      ramTotal: d.rt || '', ramUsada: d.ru || '', ramPct: d.rp || '',
+      so: d.so || '', kernel: d.ker || '',
+      discoTotal: d.dt || '', discoUsado: d.du || '', discoLibre: d.dl || '', discoPct: d.dp || '',
+      capturadoEn: d.ts || '',
+    };
+    showToast('✓ Etiqueta + estado de miniPC escaneados', 'success');
+  } else {
+    window._totemEstadoMiniPC = null;
+    showToast('✓ Etiqueta escaneada', 'success');
+  }
+
   const prev = document.getElementById('totem-qr-preview'); if (prev) prev.classList.remove('hidden');
   if (currentPage !== 'new-totem') showPage('new-totem');
-  showToast('✓ Etiqueta escaneada', 'success');
 }
 
 async function saveTotem() {
@@ -2563,6 +2598,7 @@ async function saveTotem() {
     serie: serieMiniPC, // compat con pipeline existente (informes, renders, Jira)
     serieMiniPC,
     modeloMiniPC: val('totem-modelo-minipc'),
+    estadoMiniPC: window._totemEstadoMiniPC || null,
     ipMiniPC: val('totem-ip-minipc'),
     macMiniPC: val('totem-mac-minipc'),
     serieCamara: val('totem-serie-camara'),
@@ -6351,6 +6387,7 @@ async function saveReport() {
     serieMiniPC: s.serieMiniPC, modeloMiniPC: s.modeloMiniPC, ipMiniPC: s.ipMiniPC, macMiniPC: s.macMiniPC,
     serieCamara: s.serieCamara, modeloCamara: s.modeloCamara, seriePantalla: s.seriePantalla, modeloPantalla: s.modeloPantalla,
     equipoReemplazado: s.equipoReemplazado, mmRetira: s.mmRetira, mmNuevo: s.mmNuevo,
+    estadoMiniPC: s.estadoMiniPC || null,
     // Campos específicos de Tablet
     deviceId: s.deviceId, ip: s.ip, mac: s.mac, deviceIdRetira: s.deviceIdRetira, deviceIdNuevo: s.deviceIdNuevo,
     // Checklist autodescriptivo (tótem/tablet)
@@ -6748,6 +6785,14 @@ async function buildReportPDFDoc(rep) {
         if (s.invDnm) fields.push(['N° INV. DNM', s.invDnm]);
         if (s.equipoReemplazado) fields.push(['EQUIPO REEMPLAZADO', s.equipoReemplazado]);
         if (s.serieRetira) { fields.push(['RETIRA', `${s.mmRetira||''} ${s.serieRetira}`]); fields.push(['NUEVO', `${s.mmNuevo||''} ${s.serieNuevo||'—'}`]); }
+        if (s.estadoMiniPC) {
+          const e = s.estadoMiniPC;
+          if (e.cpu) fields.push(['CPU', `${e.cpu}${e.cores?` (${e.cores}c)`:''}`]);
+          if (e.ramTotal) fields.push(['RAM', `${e.ramUsada||'?'}/${e.ramTotal} GB${e.ramPct?` (${e.ramPct}%)`:''}`]);
+          if (e.discoTotal) fields.push(['DISCO', `${e.discoUsado||'?'}/${e.discoTotal}${e.discoPct?` (${e.discoPct})`:''}`]);
+          if (e.so) fields.push(['SO', e.so]);
+          if (e.kernel) fields.push(['KERNEL', e.kernel]);
+        }
       } else if (s.producto === 'tablet') {
         fields = [
           ['PUESTO',      s.puesto||'—'],
@@ -7465,7 +7510,7 @@ async function sendToJira() {
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}`:(s.producto==='tablet'?`Producto: Tablet\nSerie Tablet: ${s.serie}${s.deviceId?`\nDevice ID: ${s.deviceId}`:''}${s.ip?`\nIP: ${s.ip}`:''}${s.mac?`\nMAC: ${s.mac}`:''}${s.serieRetira?`\nRetira: ${s.serieRetira}${s.deviceIdRetira?` (Device ID: ${s.deviceIdRetira})`:''}\nNuevo: ${s.serieNuevo}${s.deviceIdNuevo?` (Device ID: ${s.deviceIdNuevo})`:''}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`)}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}${s.estadoMiniPC?`\nEstado miniPC: ${s.estadoMiniPC.cpu||''}${s.estadoMiniPC.ramTotal?` · RAM ${s.estadoMiniPC.ramUsada||'?'}/${s.estadoMiniPC.ramTotal}GB`:''}${s.estadoMiniPC.discoTotal?` · Disco ${s.estadoMiniPC.discoUsado||'?'}/${s.estadoMiniPC.discoTotal}`:''}${s.estadoMiniPC.so?` · ${s.estadoMiniPC.so}`:''}`:''}`:(s.producto==='tablet'?`Producto: Tablet\nSerie Tablet: ${s.serie}${s.deviceId?`\nDevice ID: ${s.deviceId}`:''}${s.ip?`\nIP: ${s.ip}`:''}${s.mac?`\nMAC: ${s.mac}`:''}${s.serieRetira?`\nRetira: ${s.serieRetira}${s.deviceIdRetira?` (Device ID: ${s.deviceIdRetira})`:''}\nNuevo: ${s.serieNuevo}${s.deviceIdNuevo?` (Device ID: ${s.deviceIdNuevo})`:''}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`)}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
             issuetype:{id:'10003'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
@@ -8038,6 +8083,7 @@ async function viewReportSupervisor(id) {
         ${s.seriePantalla?`<br>Pantalla: <strong>${escHtml(s.seriePantalla)}</strong>${s.modeloPantalla?` (${escHtml(s.modeloPantalla)})`:''}`:''}
         ${s.invDnd?` · N° Inv. DND: <strong>${escHtml(s.invDnd)}</strong>`:''}${s.invDnm?` · N° Inv. DNM: <strong>${escHtml(s.invDnm)}</strong>`:''}
         ${s.equipoReemplazado?`<br>Reemplazo: <strong>${escHtml(s.equipoReemplazado)}</strong> — Retira: <span style="color:var(--warning)">${escHtml(s.mmRetira||'')} ${escHtml(s.serieRetira||'')}</span> → Nuevo: <span style="color:var(--accent)">${escHtml(s.mmNuevo||'')} ${escHtml(s.serieNuevo||'')}</span>`:''}
+        ${s.estadoMiniPC?`<br><span style="color:var(--text3)">🖥️ miniPC:</span> ${s.estadoMiniPC.cpu?`${escHtml(s.estadoMiniPC.cpu)}`:''}${s.estadoMiniPC.ramTotal?` · RAM ${escHtml(s.estadoMiniPC.ramUsada||'?')}/${escHtml(s.estadoMiniPC.ramTotal)}GB${s.estadoMiniPC.ramPct?` (${escHtml(s.estadoMiniPC.ramPct)}%)`:''}`:''}${s.estadoMiniPC.discoTotal?` · Disco ${escHtml(s.estadoMiniPC.discoUsado||'?')}/${escHtml(s.estadoMiniPC.discoTotal)}${s.estadoMiniPC.discoPct?` (${escHtml(s.estadoMiniPC.discoPct)})`:''}`:''}${s.estadoMiniPC.so?` · ${escHtml(s.estadoMiniPC.so)}`:''}`:''}
       </div>` : (s.producto==='tablet') ? `
       <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 4px">📱 Tablet</div>
       <div style="font-size:12px;color:var(--text2)">
@@ -8288,7 +8334,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '07.07.2026-v257'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '07.07.2026-v258'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -8507,6 +8553,8 @@ function buildTotemExportRows(allScans) {
     'Serie Pantalla', 'Modelo/Marca Pantalla', 'N° Inv. DND', 'N° Inv. DNM',
     'Checklist OK', 'Checklist Detalle',
     'Equipo Reemplazado', 'Marca/Modelo Retira', 'Serie Retira', 'Marca/Modelo Nuevo', 'Serie Nuevo',
+    'CPU', 'CPU Cores', 'RAM Total (GB)', 'RAM Usada (GB)', 'RAM Uso %',
+    'SO', 'Kernel', 'Disco Total', 'Disco Usado', 'Disco Libre', 'Disco Uso %', 'Estado Capturado',
     'Latitud', 'Longitud', 'Dirección', 'Notas'
   ];
   const rows = [headers];
@@ -8514,6 +8562,7 @@ function buildTotemExportRows(allScans) {
     const d = new Date(s.timestamp);
     const items = s.checklistItems || [];
     const oks = items.filter(i => i.ok).length;
+    const e = s.estadoMiniPC || {};
     rows.push([
       d.toLocaleDateString('es-AR'), d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),
       s.technicianName || '', s.inspectorName || '', s.paso || '', s.puesto || '',
@@ -8526,6 +8575,8 @@ function buildTotemExportRows(allScans) {
       items.length ? `${oks}/${items.length}` : '',
       items.map(i => `${i.ok?'OK':'—'} ${i.label}`).join(' | '),
       s.equipoReemplazado || '', s.mmRetira || '', s.serieRetira || '', s.mmNuevo || '', s.serieNuevo || '',
+      e.cpu || '', e.cores || '', e.ramTotal || '', e.ramUsada || '', e.ramPct || '',
+      e.so || '', e.kernel || '', e.discoTotal || '', e.discoUsado || '', e.discoLibre || '', e.discoPct || '', e.capturadoEn || '',
       s.lat != null ? s.lat : '', s.lon != null ? s.lon : '', s.address || '', s.notas || ''
     ]);
   });
