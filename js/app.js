@@ -7973,7 +7973,7 @@ async function renderSupervisor() {
             <div style="background:var(--bg3);border-radius:10px;padding:12px">
               <div style="font-size:11px;color:var(--text3);text-transform:uppercase">Sentinel</div>
               <div style="font-size:18px;font-weight:700">v${escHtml(versionesObjetivo.sentinel||'—')}</div>
-              <div style="font-size:12px;color:var(--text3);margin-top:4px">${cump.sentinelOk}/${cump.sentinelTotal} PCs al día (${sentinelPct}%)</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:4px">Promedio ${sentinelPct}% (tolerancia 45 días)</div>
             </div>
             <div style="background:var(--bg3);border-radius:10px;padding:12px">
               <div style="font-size:11px;color:var(--text3);text-transform:uppercase">Library</div>
@@ -8375,7 +8375,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '08.07.2026-v260'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '08.07.2026-v261'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -8456,14 +8456,15 @@ function calcularCumplimientoVersiones(allScans) {
   };
 
   ultimas.forEach(s => {
-    const { sentinelOk, libraryOk, libraryScore } = evaluarCumplimientoVersion(s);
+    const { sentinelOk, sentinelScore, libraryOk, libraryScore } = evaluarCumplimientoVersion(s);
     const paso = (s.paso||'').trim() || '(Sin paso)';
     if (!resultado.porPaso.has(paso)) resultado.porPaso.set(paso, { sentinelOk:0, sentinelTotal:0, libraryOk:0, libraryTotal:0 });
     const pasoStats = resultado.porPaso.get(paso);
 
     if (sentinelOk !== null) {
       resultado.sentinelTotal++; pasoStats.sentinelTotal++;
-      if (sentinelOk) { resultado.sentinelOk++; pasoStats.sentinelOk++; }
+      const sScore = sentinelScore ?? (sentinelOk ? 1 : 0);
+      resultado.sentinelOk += sScore; pasoStats.sentinelOk += sScore;
     }
     if (libraryOk !== null) {
       resultado.libraryTotal++; pasoStats.libraryTotal++;
@@ -8542,12 +8543,34 @@ function versionEsActualOMasNueva(actual, objetivo) {
 }
 
 // Evalúa el cumplimiento de un scan contra las versiones objetivo vigentes.
-// Devuelve {sentinelOk, libraryOk, libraryScore} donde:
-// - sentinelOk: true/false/null (binario — Engine no cambia frecuentemente)
-// - libraryOk: true si libraryScore >= 0.5, false si no
-// - libraryScore: 0.0-1.0 con tolerancia de 90 días (fórmula lineal)
-//   0 días de retraso → 1.0 (100%), 45 días → 0.5 (50%), 90+ días → 0.0 (0%)
+// Devuelve {sentinelOk, sentinelScore, libraryOk, libraryScore} donde:
+// - sentinelScore / libraryScore: 0.0-1.0 con tolerancia de días (fórmula lineal)
+// - sentinelOk / libraryOk: true si score >= 0.5, false si no, null si sin dato
+// La tolerancia evita que el % de cumplimiento caiga de 100% a 0% de golpe
+// cuando GBG publica una versión nueva: baja en proporción a los días
+// transcurridos desde que se detectó la versión objetivo.
 const DOCLIB_TOLERANCIA_DIAS = 90;
+const SENTINEL_TOLERANCIA_DIAS = 45;
+
+// Días transcurridos desde que se detectó la versión objetivo actual en GBG.
+// Se usa como "antigüedad de la versión" para el decay de Sentinel.
+function diasDesdeVersionObjetivo() {
+  const secs = versionesObjetivo?.actualizadoEn?.seconds;
+  if (!secs) return null;
+  return (Date.now() - secs * 1000) / (1000 * 60 * 60 * 24);
+}
+
+function calcSentinelScore(scan) {
+  if (!versionesObjetivo?.sentinel) return null;
+  const esActual = versionEsActualOMasNueva(scan.assureEngine, versionesObjetivo.sentinel);
+  if (esActual === null) return null;   // sin dato de versión en el scan
+  if (esActual) return 1.0;             // al día o más nuevo → 100%
+  // Atrasado: el score decae según cuántos días hace que salió la versión objetivo.
+  // 0 días desde el lanzamiento → 1.0 (100%), 45+ días → 0.0. Lineal en el medio.
+  const diasVersion = diasDesdeVersionObjetivo();
+  if (diasVersion === null) return 0.0; // sin fecha de la versión = sin tolerancia
+  return Math.max(0, 1 - diasVersion / SENTINEL_TOLERANCIA_DIAS);
+}
 
 function calcLibraryScore(scan) {
   if (!versionesObjetivo?.library) return null;
@@ -8559,18 +8582,16 @@ function calcLibraryScore(scan) {
   const fechaActualizacion = scan.datosSistema?.docLibFecha || null;
   if (!fechaActualizacion) return 0.0; // sin fecha = sin dato = score mínimo
   const diasRetraso = (Date.now() - new Date(fechaActualizacion).getTime()) / (1000 * 60 * 60 * 24);
-  // Fecha de la versión objetivo (cuándo se publicó la versión actual)
-  // Como no tenemos esa fecha, usamos los días desde la última actualización del scan
-  // comparado con la tolerancia configurada
   return Math.max(0, 1 - diasRetraso / DOCLIB_TOLERANCIA_DIAS);
 }
 
 function evaluarCumplimientoVersion(scan) {
-  if (!versionesObjetivo) return { sentinelOk: null, libraryOk: null, libraryScore: null };
-  const sentinelOk = versionEsActualOMasNueva(scan.assureEngine, versionesObjetivo.sentinel);
+  if (!versionesObjetivo) return { sentinelOk: null, sentinelScore: null, libraryOk: null, libraryScore: null };
+  const sentinelScore = calcSentinelScore(scan);
+  const sentinelOk = sentinelScore === null ? null : sentinelScore >= 0.5;
   const libraryScore = calcLibraryScore(scan);
   const libraryOk = libraryScore === null ? null : libraryScore >= 0.5;
-  return { sentinelOk, libraryOk, libraryScore };
+  return { sentinelOk, sentinelScore, libraryOk, libraryScore };
 }
 
 const SCANNER_ESTADO_LABELS = {
@@ -8677,9 +8698,11 @@ function buildExportRows(allScans) {
     const ck = s.checklist || {};
     const fk = s.actaReemplazo?.fallaChecklist;
     const fallaResumen = fk ? Object.keys(FALLA_LABELS).filter(k=>fk[k]).map(k=>FALLA_LABELS[k]).concat(fk.otro?[`Otro: ${fk.otroTexto||''}`]:[]).join(' | ') : '';
-    // Cumplimiento de versión: "Sí"/"No" si hay dato para comparar, vacío si no aplica
-    // (sin versión objetivo configurada, o el scan no tiene esa versión registrada).
-    const { sentinelOk, libraryOk, libraryScore } = evaluarCumplimientoVersion(s);
+    // Cumplimiento de versión para Sheets: "Sí"/"No" según la versión EXACTA
+    // (comparación directa, sin la tolerancia con decay que usa la métrica de la app).
+    // Así la columna refleja el estado real de cada PC, no el % de la ventana de gracia.
+    const { libraryOk } = evaluarCumplimientoVersion(s);
+    const sentinelExacto = versionEsActualOMasNueva(s.assureEngine, versionesObjetivo?.sentinel);
     const cumplimientoLabel = (ok) => ok === null ? '' : (ok ? 'Sí' : 'No');
     return [
       s.timestamp ? new Date(s.timestamp).toLocaleString('es-AR') : '',
@@ -8698,7 +8721,7 @@ function buildExportRows(allScans) {
       s.assureEngine || legacy.engine || '',
       s.assureDocLib || legacy.docLib || '',
       s.assureLicKey || legacy.licKey || '',
-      cumplimientoLabel(sentinelOk),
+      cumplimientoLabel(sentinelExacto),
       cumplimientoLabel(libraryOk),
       s.lat != null ? s.lat : '',
       s.lon != null ? s.lon : '',
