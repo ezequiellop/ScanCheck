@@ -11,7 +11,11 @@ import {
   fbSaveServiceReport, fbGetMyServiceReports, fbGetAllServiceReports,
   fbSoftDeleteServiceReport, fbRestoreServiceReport, fbHardDeleteServiceReport, fbGetDeletedServiceReports,
   fbSaveViaticoRendicion, fbUpdateViaticoRendicion, fbGetMyViaticos, fbGetAllViaticos,
-  fbSoftDeleteViatico, fbRestoreViatico, fbHardDeleteViatico, fbGetDeletedViaticos
+  fbSoftDeleteViatico, fbRestoreViatico, fbHardDeleteViatico, fbGetDeletedViaticos,
+  fbGetFlotaParametros, fbSaveFlotaParametros,
+  fbSaveFlotaVehiculo, fbGetFlotaVehiculos, fbDeleteFlotaVehiculo,
+  fbSaveFlotaGrua, fbGetFlotaGruas, fbDeleteFlotaGrua,
+  fbSaveFlotaEvento, fbGetFlotaEventos, fbDeleteFlotaEvento
 } from './firebase.js';
 
 // ======== DANAIDE LOGO (embedded) ========
@@ -479,6 +483,7 @@ function updateUserUI() {
   document.getElementById('menu-user-email').textContent = currentUser.email;
   document.getElementById('menu-user-role').textContent = currentUser.role === 'supervisor' ? 'Supervisor' : 'Técnico';
   if (currentUser.role === 'supervisor') document.getElementById('btn-supervisor-menu').classList.remove('hidden');
+  if (currentUser.role === 'supervisor') document.getElementById('btn-flota-menu').classList.remove('hidden');
   // Inject Danaide logo into header
   const logoWrap = document.getElementById('header-logo');
   if (logoWrap && DANAIDE_LOGO) {
@@ -965,7 +970,7 @@ function getWatermarkLines() {
 const pageTitles = {
   'home':'Inicio','new-scan':'Nuevo Registro','report':'Informe del Día',
   'view-report':'Ver Informe','history':'Historial',
-  'supervisor':'Panel Supervisor','viajes':'Mis Viajes'
+  'supervisor':'Panel Supervisor','viajes':'Mis Viajes','flota':'Gestión de Flota'
 , 'new-totem': 'Registro de Tótem', 'new-tablet': 'Registro de Tablet'};
 
 function showPage(name, addHistory=true) {
@@ -2958,6 +2963,413 @@ async function saveTablet() {
 }
 window.saveTablet = saveTablet;
 // ── FIN MÓDULO TABLET ─────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// ── GESTIÓN DE FLOTA ──────────────────────────────────────────
+// Sección solo para administrador (currentUser.role==='supervisor').
+// Vehículos, hidrogrúas (equipos independientes), eventos (combustible,
+// peaje, service, avería) y parámetros de amortización editables.
+// ══════════════════════════════════════════════════════════════
+
+// Parámetros por defecto (editables desde la app). Vida útil híbrida:
+// se amortiza por lo que ocurra primero (años o km/horas).
+const FLOTA_PARAMS_DEFAULT = {
+  tiposVehiculo: {
+    auto:          { label: 'Auto',                    anios: 6,  km: 200000, residualPct: 25 },
+    utilitario:    { label: 'Utilitario',              anios: 7,  km: 250000, residualPct: 20 },
+    furgon:        { label: 'Furgón grande',           anios: 8,  km: 350000, residualPct: 20 },
+    camioneta_grua:{ label: 'Camioneta c/ hidrogrúa',  anios: 8,  km: 300000, residualPct: 30 },
+    camion_grua:   { label: 'Camión c/ hidrogrúa',     anios: 12, km: 600000, residualPct: 25 },
+  },
+  grua: { anios: 15, horas: 10000, residualPct: 20 },
+  combustible: { nafta: 0, gasoil: 0, actualizado: '' }, // precio $/litro, editable
+  serviceIntervalos: {
+    // km para vehículos, horas para grúas
+    autoKm: 10000, utilitarioKm: 10000, furgonKm: 15000, camionetaKm: 15000, camionKm: 20000,
+    gruaHoras: 250,
+  },
+};
+let _flotaParams = null;
+let _flotaVehiculos = [];
+let _flotaGruas = [];
+
+function showFlotaPage() {
+  if (currentUser.role !== 'supervisor') { showToast('Acceso solo para administrador', 'error'); return; }
+  showPage('flota');
+  flotaTab('vehiculos', document.getElementById('flota-tab-vehiculos'));
+  cargarFlota();
+}
+window.showFlotaPage = showFlotaPage;
+
+function flotaTab(tab, btn) {
+  ['vehiculos','gruas','alarmas','parametros'].forEach(t => {
+    const panel = document.getElementById('flota-' + t);
+    if (panel) panel.classList.toggle('hidden', t !== tab);
+  });
+  document.querySelectorAll('#page-flota .sup-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab === 'parametros') renderFlotaParametros();
+  if (tab === 'alarmas') renderFlotaAlarmas();
+}
+window.flotaTab = flotaTab;
+
+async function cargarFlota() {
+  const vc = document.getElementById('flota-vehiculos-content');
+  if (vc) vc.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">Cargando...</div>';
+  try {
+    _flotaParams = (await fbGetFlotaParametros()) || FLOTA_PARAMS_DEFAULT;
+    // Completar claves que falten con los defaults (para params viejos)
+    _flotaParams = { ...FLOTA_PARAMS_DEFAULT, ..._flotaParams,
+      tiposVehiculo: { ...FLOTA_PARAMS_DEFAULT.tiposVehiculo, ...(_flotaParams.tiposVehiculo||{}) } };
+    _flotaVehiculos = await fbGetFlotaVehiculos();
+    _flotaGruas = await fbGetFlotaGruas();
+    renderFlotaVehiculos();
+    renderFlotaGruas();
+  } catch(e) {
+    if (vc) vc.innerHTML = `<div style="text-align:center;padding:30px;color:#e55">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// ── Parámetros editables ──
+function renderFlotaParametros() {
+  const cont = document.getElementById('flota-parametros-content');
+  if (!cont) return;
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  const filaTipo = (key, t) => `
+    <tr>
+      <td style="padding:8px;font-size:12px;color:var(--text)">${escHtml(t.label)}</td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-anios" value="${t.anios}" style="width:60px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-km" value="${t.km}" style="width:80px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-res" value="${t.residualPct}" style="width:50px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+    </tr>`;
+  cont.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <h3 style="margin:0 0 4px">Vida útil por tipo de vehículo</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">La amortización corre por lo que ocurra primero: años o km. Residual = % del valor de compra que se recupera al final.</div>
+      <table style="width:100%;border-collapse:collapse">
+        <tr style="text-align:left"><th style="font-size:10px;color:var(--text3);padding:4px">Tipo</th><th style="font-size:10px;color:var(--text3);padding:4px">Años</th><th style="font-size:10px;color:var(--text3);padding:4px">Km</th><th style="font-size:10px;color:var(--text3);padding:4px">Res.%</th></tr>
+        ${Object.entries(p.tiposVehiculo).map(([k,t]) => filaTipo(k,t)).join('')}
+      </table>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px">Hidrogrúa (amortización por horas)</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Años</label><input type="number" id="fp-grua-anios" value="${p.grua.anios}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Horas</label><input type="number" id="fp-grua-horas" value="${p.grua.horas}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Res.%</label><input type="number" id="fp-grua-res" value="${p.grua.residualPct}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+      </div>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px">Precio de combustible ($/litro)</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Nafta</label><input type="number" step="0.01" id="fp-nafta" value="${p.combustible?.nafta||0}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Gasoil</label><input type="number" step="0.01" id="fp-gasoil" value="${p.combustible?.gasoil||0}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px">Actualización manual. A futuro se automatizará con precios de referencia YPF.</div>
+    </div>
+    <button class="btn-primary" style="width:100%" onclick="guardarFlotaParametros()">Guardar parámetros</button>`;
+}
+
+async function guardarFlotaParametros() {
+  const num = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const p = JSON.parse(JSON.stringify(_flotaParams || FLOTA_PARAMS_DEFAULT));
+  Object.keys(p.tiposVehiculo).forEach(k => {
+    p.tiposVehiculo[k].anios = num(`fp-${k}-anios`);
+    p.tiposVehiculo[k].km = num(`fp-${k}-km`);
+    p.tiposVehiculo[k].residualPct = num(`fp-${k}-res`);
+  });
+  p.grua.anios = num('fp-grua-anios');
+  p.grua.horas = num('fp-grua-horas');
+  p.grua.residualPct = num('fp-grua-res');
+  p.combustible = { nafta: num('fp-nafta'), gasoil: num('fp-gasoil'), actualizado: new Date().toISOString() };
+  try {
+    await fbSaveFlotaParametros(p);
+    _flotaParams = p;
+    showToast('✓ Parámetros guardados', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.guardarFlotaParametros = guardarFlotaParametros;
+
+// ── FIN GESTIÓN DE FLOTA (parte 1) ────────────────────────────
+
+// ── Vehículos ──
+function renderFlotaVehiculos() {
+  const cont = document.getElementById('flota-vehiculos-content');
+  if (!cont) return;
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  const tipoLabel = t => p.tiposVehiculo[t]?.label || t;
+  const lista = _flotaVehiculos.length ? _flotaVehiculos.map(v => {
+    const grua = v.gruaId ? _flotaGruas.find(g => g.fbId === v.gruaId) : null;
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="font-weight:700;color:var(--text);font-size:15px">${escHtml(v.marca)} ${escHtml(v.modelo)} <span style="font-size:12px;color:var(--accent)">${escHtml(v.patente)}</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${escHtml(tipoLabel(v.tipo))} · Año ${escHtml(v.anio||'—')} · ${(v.kmActual||v.kmInicial||0).toLocaleString('es-AR')} km</div>
+          ${grua?`<div style="font-size:11px;color:var(--text3);margin-top:2px">🏗️ ${escHtml(grua.codigo||grua.marca||'Grúa')} asignada</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-ghost small" onclick="abrirEventoFlota('vehiculo','${v.fbId}')">➕ Evento</button>
+          <button class="btn-ghost small" onclick="editarVehiculo('${v.fbId}')">✏️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No hay vehículos cargados todavía.</div>';
+  cont.innerHTML = `
+    <button class="btn-primary" style="width:100%;margin-bottom:14px" onclick="editarVehiculo()">➕ Agregar vehículo</button>
+    ${lista}`;
+}
+
+// ── Grúas ──
+function renderFlotaGruas() {
+  const cont = document.getElementById('flota-gruas-content');
+  if (!cont) return;
+  const fuenteLabel = { horometro: 'Horómetro propio', pto: 'PTO del camión', manual: 'Manual' };
+  const lista = _flotaGruas.length ? _flotaGruas.map(g => {
+    const veh = g.vehiculoId ? _flotaVehiculos.find(v => v.fbId === g.vehiculoId) : null;
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="font-weight:700;color:var(--text);font-size:15px">${escHtml(g.codigo||'Grúa')} <span style="font-size:12px;color:var(--text3)">${escHtml(g.marca||'')} ${escHtml(g.modelo||'')}</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${(g.horasActuales||g.horasIniciales||0).toLocaleString('es-AR')} hs · ${escHtml(fuenteLabel[g.fuenteHoras]||g.fuenteHoras||'—')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${veh?`🚗 En ${escHtml(veh.patente)}`:'Sin asignar'}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-ghost small" onclick="abrirEventoFlota('grua','${g.fbId}')">➕ Evento</button>
+          <button class="btn-ghost small" onclick="editarGrua('${g.fbId}')">✏️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No hay hidrogrúas cargadas todavía.</div>';
+  cont.innerHTML = `
+    <button class="btn-primary" style="width:100%;margin-bottom:14px" onclick="editarGrua()">➕ Agregar hidrogrúa</button>
+    ${lista}`;
+}
+
+// ── Alarmas de service (placeholder hasta la parte de eventos) ──
+function renderFlotaAlarmas() {
+  const cont = document.getElementById('flota-alarmas-content');
+  if (!cont) return;
+  cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Las alarmas de service se calcularán a partir de los eventos cargados.</div>';
+}
+
+// ── Alta / edición de vehículo ──
+function editarVehiculo(fbId) {
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  const v = fbId ? _flotaVehiculos.find(x => x.fbId === fbId) : {};
+  const esNuevo = !fbId;
+  const tiposOpts = Object.entries(p.tiposVehiculo).map(([k,t]) =>
+    `<option value="${k}" ${v.tipo===k?'selected':''}>${escHtml(t.label)}</option>`).join('');
+  // Grúas disponibles: sin asignar, o la que ya tiene este vehículo
+  const gruasOpts = ['<option value="">— Ninguna —</option>'].concat(
+    _flotaGruas.filter(g => !g.vehiculoId || g.vehiculoId === fbId)
+      .map(g => `<option value="${g.fbId}" ${v.gruaId===g.fbId?'selected':''}>${escHtml(g.codigo||g.marca||'Grúa')}</option>`)
+  ).join('');
+
+  const inp = (id, label, val='', type='text', ph='') =>
+    `<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <input type="${type}" id="${id}" value="${val!=null?String(val).replace(/"/g,'&quot;'):''}" placeholder="${ph}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px">${esNuevo?'Agregar':'Editar'} vehículo</div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Tipo de vehículo *</label>
+      <select id="fv-tipo" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${tiposOpts}</select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${inp('fv-marca','Marca *', v.marca)}
+      ${inp('fv-modelo','Modelo *', v.modelo)}
+      ${inp('fv-patente','Patente *', v.patente, 'text', 'AB123CD')}
+      ${inp('fv-anio','Año', v.anio, 'number', '2023')}
+      ${inp('fv-km-inicial','Km inicial', v.kmInicial, 'number')}
+      ${inp('fv-km-actual','Km actual', v.kmActual ?? v.kmInicial, 'number')}
+      ${inp('fv-valor','Valor de compra $', v.valorCompra, 'number')}
+      ${inp('fv-fecha-alta','Fecha de alta', v.fechaAlta || new Date().toISOString().slice(0,10), 'date')}
+      ${inp('fv-seguro','Seguro $/mes', v.seguroMensual, 'number')}
+      ${inp('fv-patente-costo','Patente $/año', v.patenteAnual, 'number')}
+    </div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Hidrogrúa asignada</label>
+      <select id="fv-grua" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${gruasOpts}</select></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cancelar</button>
+      ${!esNuevo?`<button class="btn-ghost" style="color:var(--danger)" onclick="borrarVehiculo('${fbId}')">🗑️</button>`:''}
+      <button class="btn-primary" style="flex:2" onclick="guardarVehiculo('${fbId||''}')">Guardar</button>
+    </div>`;
+  openModalFlota();
+}
+window.editarVehiculo = editarVehiculo;
+
+// Helper para abrir el modal de flota (mismo patrón que el resto de la app)
+function openModalFlota() { document.getElementById('modal-flota').classList.remove('hidden'); }
+
+async function guardarVehiculo(fbId) {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const num = id => { const n = parseFloat(val(id)); return isNaN(n) ? 0 : n; };
+  const patente = val('fv-patente').toUpperCase();
+  if (!val('fv-marca') || !val('fv-modelo') || !patente) {
+    showToast('Completá marca, modelo y patente', 'error'); return;
+  }
+  const gruaId = val('fv-grua') || null;
+  const vehiculo = {
+    tipo: val('fv-tipo'),
+    marca: val('fv-marca'), modelo: val('fv-modelo'), patente,
+    anio: val('fv-anio'),
+    kmInicial: num('fv-km-inicial'), kmActual: num('fv-km-actual') || num('fv-km-inicial'),
+    valorCompra: num('fv-valor'),
+    fechaAlta: val('fv-fecha-alta'),
+    seguroMensual: num('fv-seguro'), patenteAnual: num('fv-patente-costo'),
+    gruaId,
+    estado: 'activo',
+  };
+  if (fbId) vehiculo.fbId = fbId;
+  try {
+    const savedId = await fbSaveFlotaVehiculo(vehiculo);
+    // Sincronizar la asignación de la grúa (relación bidireccional + historial)
+    await _sincronizarAsignacionGrua(savedId, gruaId, fbId);
+    showToast('✓ Vehículo guardado', 'success');
+    closeModal('modal-flota');
+    await cargarFlota();
+  } catch(e) {
+    showToast('Error al guardar: ' + e.message, 'error');
+  }
+}
+window.guardarVehiculo = guardarVehiculo;
+
+// Mantiene la relación vehículo↔grúa consistente y registra el historial de
+// asignaciones en la grúa (para conservarlo al reinstalarla en otro chasis).
+async function _sincronizarAsignacionGrua(vehiculoId, nuevaGruaId, vehiculoIdPrevio) {
+  // Grúa que tenía antes este vehículo (si cambió)
+  const gruaPrevia = _flotaGruas.find(g => g.vehiculoId === vehiculoIdPrevio);
+  if (gruaPrevia && gruaPrevia.fbId !== nuevaGruaId) {
+    await fbSaveFlotaGrua({ fbId: gruaPrevia.fbId, vehiculoId: null });
+  }
+  // Asignar la nueva grúa a este vehículo
+  if (nuevaGruaId) {
+    const grua = _flotaGruas.find(g => g.fbId === nuevaGruaId);
+    const historial = (grua?.historialAsignaciones || []).slice();
+    if (!grua?.vehiculoId || grua.vehiculoId !== vehiculoId) {
+      historial.push({ vehiculoId, desde: new Date().toISOString() });
+    }
+    await fbSaveFlotaGrua({ fbId: nuevaGruaId, vehiculoId, historialAsignaciones: historial });
+  }
+}
+
+async function borrarVehiculo(fbId) {
+  if (!confirm('¿Dar de baja este vehículo? Se puede restaurar desde la base de datos.')) return;
+  try {
+    await fbDeleteFlotaVehiculo(fbId);
+    // Liberar la grúa asignada
+    const grua = _flotaGruas.find(g => g.vehiculoId === fbId);
+    if (grua) await fbSaveFlotaGrua({ fbId: grua.fbId, vehiculoId: null });
+    showToast('Vehículo dado de baja', 'success');
+    closeModal('modal-flota');
+    await cargarFlota();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.borrarVehiculo = borrarVehiculo;
+// ── Alta / edición de hidrogrúa ──
+function editarGrua(fbId) {
+  const g = fbId ? _flotaGruas.find(x => x.fbId === fbId) : {};
+  const esNuevo = !fbId;
+  const fuenteOpts = [
+    ['horometro','Horómetro propio (bomba con motor naftero)'],
+    ['pto','PTO del camión (sin horómetro propio)'],
+    ['manual','Manual / estimado'],
+  ].map(([k,l]) => `<option value="${k}" ${g.fuenteHoras===k?'selected':''}>${l}</option>`).join('');
+  // Vehículos disponibles para asignar
+  const vehOpts = ['<option value="">— Sin asignar —</option>'].concat(
+    _flotaVehiculos.map(v => `<option value="${v.fbId}" ${g.vehiculoId===v.fbId?'selected':''}>${escHtml(v.patente)} (${escHtml(v.marca)} ${escHtml(v.modelo)})</option>`)
+  ).join('');
+
+  const inp = (id, label, val='', type='text', ph='') =>
+    `<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <input type="${type}" id="${id}" value="${val!=null?String(val).replace(/"/g,'&quot;'):''}" placeholder="${ph}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px">${esNuevo?'Agregar':'Editar'} hidrogrúa</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${inp('fg-codigo','Código / Nombre *', g.codigo, 'text', 'Grúa 01')}
+      ${inp('fg-capacidad','Capacidad', g.capacidad, 'text', 'Ej: 3 tn')}
+      ${inp('fg-marca','Marca', g.marca)}
+      ${inp('fg-modelo','Modelo', g.modelo)}
+      ${inp('fg-horas-inicial','Horas iniciales', g.horasIniciales, 'number')}
+      ${inp('fg-horas-actual','Horas actuales', g.horasActuales ?? g.horasIniciales, 'number')}
+      ${inp('fg-valor','Valor de compra $', g.valorCompra, 'number')}
+      ${inp('fg-fecha-alta','Fecha de alta', g.fechaAlta || new Date().toISOString().slice(0,10), 'date')}
+    </div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Fuente de horas de uso *</label>
+      <select id="fg-fuente" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${fuenteOpts}</select></div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Vehículo asignado</label>
+      <select id="fg-vehiculo" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${vehOpts}</select></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cancelar</button>
+      ${!esNuevo?`<button class="btn-ghost" style="color:var(--danger)" onclick="borrarGrua('${fbId}')">🗑️</button>`:''}
+      <button class="btn-primary" style="flex:2" onclick="guardarGrua('${fbId||''}')">Guardar</button>
+    </div>`;
+  openModalFlota();
+}
+window.editarGrua = editarGrua;
+
+async function guardarGrua(fbId) {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const num = id => { const n = parseFloat(val(id)); return isNaN(n) ? 0 : n; };
+  if (!val('fg-codigo')) { showToast('Ingresá el código/nombre de la grúa', 'error'); return; }
+  const nuevoVehiculoId = val('fg-vehiculo') || null;
+  const gruaPrevia = fbId ? _flotaGruas.find(g => g.fbId === fbId) : null;
+
+  const grua = {
+    codigo: val('fg-codigo'), capacidad: val('fg-capacidad'),
+    marca: val('fg-marca'), modelo: val('fg-modelo'),
+    horasIniciales: num('fg-horas-inicial'), horasActuales: num('fg-horas-actual') || num('fg-horas-inicial'),
+    valorCompra: num('fg-valor'), fechaAlta: val('fg-fecha-alta'),
+    fuenteHoras: val('fg-fuente'),
+    vehiculoId: nuevoVehiculoId,
+  };
+  // Historial de asignaciones: si cambió el vehículo, registrarlo
+  const historial = (gruaPrevia?.historialAsignaciones || []).slice();
+  if (nuevoVehiculoId && gruaPrevia?.vehiculoId !== nuevoVehiculoId) {
+    historial.push({ vehiculoId: nuevoVehiculoId, desde: new Date().toISOString() });
+  }
+  grua.historialAsignaciones = historial;
+  if (fbId) grua.fbId = fbId;
+
+  try {
+    const savedId = await fbSaveFlotaGrua(grua);
+    // Mantener la relación desde el lado del vehículo (gruaId)
+    // Liberar el vehículo anterior si cambió
+    if (gruaPrevia?.vehiculoId && gruaPrevia.vehiculoId !== nuevoVehiculoId) {
+      const vPrev = _flotaVehiculos.find(v => v.fbId === gruaPrevia.vehiculoId);
+      if (vPrev) await fbSaveFlotaVehiculo({ fbId: vPrev.fbId, gruaId: null });
+    }
+    // Asignar al nuevo vehículo
+    if (nuevoVehiculoId) {
+      await fbSaveFlotaVehiculo({ fbId: nuevoVehiculoId, gruaId: savedId });
+    }
+    showToast('✓ Hidrogrúa guardada', 'success');
+    closeModal('modal-flota');
+    await cargarFlota();
+  } catch(e) {
+    showToast('Error al guardar: ' + e.message, 'error');
+  }
+}
+window.guardarGrua = guardarGrua;
+
+async function borrarGrua(fbId) {
+  if (!confirm('¿Dar de baja esta hidrogrúa?')) return;
+  try {
+    const grua = _flotaGruas.find(g => g.fbId === fbId);
+    if (grua?.vehiculoId) {
+      const v = _flotaVehiculos.find(x => x.fbId === grua.vehiculoId);
+      if (v) await fbSaveFlotaVehiculo({ fbId: v.fbId, gruaId: null });
+    }
+    await fbDeleteFlotaGrua(fbId);
+    showToast('Hidrogrúa dada de baja', 'success');
+    closeModal('modal-flota');
+    await cargarFlota();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.borrarGrua = borrarGrua;
+function abrirEventoFlota(tipoRef, refId) { showToast('Carga de eventos — próxima parte', ''); }
+window.abrirEventoFlota = abrirEventoFlota;
 
 // ── GENERADOR DE ETIQUETAS QR (supervisor) ────────────────────
 // Genera el QR de identificación de un equipo (tótem/tablet) para
@@ -8375,7 +8787,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '08.07.2026-v261'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '08.07.2026-v262'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';

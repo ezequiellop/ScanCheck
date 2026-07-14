@@ -405,6 +405,88 @@ export async function fbGetDeletedServiceReports() {
 }
 
 // ── VIÁTICOS: rendiciones y gastos ────────────────────────────
+// ── GESTIÓN DE FLOTA ──────────────────────────────────────────
+// Vehículos, grúas, eventos y parámetros de amortización.
+
+// Parámetros (documento único config/flota_parametros con vida útil por tipo)
+export async function fbGetFlotaParametros() {
+  const ref = doc(db, "config", "flota_parametros");
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+}
+export async function fbSaveFlotaParametros(data) {
+  await setDoc(doc(db, "config", "flota_parametros"), data, { merge: true });
+}
+
+// Vehículos
+export async function fbSaveFlotaVehiculo(v) {
+  if (v.fbId) {
+    const { fbId, ...data } = v;
+    await updateDoc(doc(db, "flotaVehiculos", fbId), data);
+    return fbId;
+  }
+  const ref = await addDoc(collection(db, "flotaVehiculos"), v);
+  return ref.id;
+}
+export async function fbGetFlotaVehiculos() {
+  const q = query(collection(db, "flotaVehiculos"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .filter(v => !v.eliminado)
+    .sort((a,b) => (a.patente||'').localeCompare(b.patente||''));
+}
+export async function fbDeleteFlotaVehiculo(fbId) {
+  await updateDoc(doc(db, "flotaVehiculos", fbId), { eliminado: true, eliminadoEn: serverTimestamp() });
+}
+
+// Grúas (equipos independientes)
+export async function fbSaveFlotaGrua(g) {
+  if (g.fbId) {
+    const { fbId, ...data } = g;
+    await updateDoc(doc(db, "flotaGruas", fbId), data);
+    return fbId;
+  }
+  const ref = await addDoc(collection(db, "flotaGruas"), g);
+  return ref.id;
+}
+export async function fbGetFlotaGruas() {
+  const q = query(collection(db, "flotaGruas"));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .filter(g => !g.eliminado)
+    .sort((a,b) => (a.codigo||'').localeCompare(b.codigo||''));
+}
+export async function fbDeleteFlotaGrua(fbId) {
+  await updateDoc(doc(db, "flotaGruas", fbId), { eliminado: true, eliminadoEn: serverTimestamp() });
+}
+
+// Eventos (combustible, peaje, service, avería, lecturas)
+export async function fbSaveFlotaEvento(e) {
+  if (e.fbId) {
+    const { fbId, ...data } = e;
+    await updateDoc(doc(db, "flotaEventos", fbId), data);
+    return fbId;
+  }
+  const ref = await addDoc(collection(db, "flotaEventos"), e);
+  return ref.id;
+}
+export async function fbGetFlotaEventos(filtroRef) {
+  // filtroRef opcional: { tipoRef:'vehiculo'|'grua', refId }
+  let q;
+  if (filtroRef && filtroRef.refId) {
+    q = query(collection(db, "flotaEventos"), where("refId","==",filtroRef.refId));
+  } else {
+    q = query(collection(db, "flotaEventos"));
+  }
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .filter(e => !e.eliminado)
+    .sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+}
+export async function fbDeleteFlotaEvento(fbId) {
+  await updateDoc(doc(db, "flotaEventos", fbId), { eliminado: true, eliminadoEn: serverTimestamp() });
+}
+
 export async function fbSaveViaticoRendicion(rendicion) {
   const ref = await addDoc(collection(db, "viaticos"), rendicion);
   return ref.id;
