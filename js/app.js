@@ -3109,6 +3109,7 @@ function renderFlotaVehiculos() {
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn-ghost small" onclick="abrirEventoFlota('vehiculo','${v.fbId}')">➕ Evento</button>
+          <button class="btn-ghost small" onclick="verEventosFlota('vehiculo','${v.fbId}')">📋 Historial</button>
           <button class="btn-ghost small" onclick="editarVehiculo('${v.fbId}')">✏️</button>
         </div>
       </div>
@@ -3135,6 +3136,7 @@ function renderFlotaGruas() {
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn-ghost small" onclick="abrirEventoFlota('grua','${g.fbId}')">➕ Evento</button>
+          <button class="btn-ghost small" onclick="verEventosFlota('grua','${g.fbId}')">📋 Historial</button>
           <button class="btn-ghost small" onclick="editarGrua('${g.fbId}')">✏️</button>
         </div>
       </div>
@@ -3186,6 +3188,11 @@ function editarVehiculo(fbId) {
       ${inp('fv-seguro','Seguro $/mes', v.seguroMensual, 'number')}
       ${inp('fv-patente-costo','Patente $/año', v.patenteAnual, 'number')}
     </div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Combustible *</label>
+      <select id="fv-combustible" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+        <option value="nafta" ${v.combustible==='nafta'?'selected':''}>Nafta</option>
+        <option value="gasoil" ${v.combustible==='gasoil'||!v.combustible?'selected':''}>Gasoil / Diésel</option>
+      </select></div>
     <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Hidrogrúa asignada</label>
       <select id="fv-grua" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${gruasOpts}</select></div>
     <div style="display:flex;gap:8px;margin-top:16px">
@@ -3210,6 +3217,7 @@ async function guardarVehiculo(fbId) {
   const gruaId = val('fv-grua') || null;
   const vehiculo = {
     tipo: val('fv-tipo'),
+    combustible: val('fv-combustible') || 'gasoil',
     marca: val('fv-marca'), modelo: val('fv-modelo'), patente,
     anio: val('fv-anio'),
     kmInicial: num('fv-km-inicial'), kmActual: num('fv-km-actual') || num('fv-km-inicial'),
@@ -3416,6 +3424,11 @@ function abrirEventoFlota(tipoRef, refId) {
   document.getElementById('fe-fecha').value = new Date().toISOString().slice(0,10);
   window._flotaEventoTipo = tiposEvento[0][0];
   window._flotaEventoEsGrua = esGrua;
+  // Precio de combustible configurado según el tipo del vehículo (para autocompletar)
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  const tipoComb = esGrua ? null : (ref.combustible || 'gasoil');
+  window._flotaEventoPrecioComb = tipoComb ? (p.combustible?.[tipoComb] || 0) : 0;
+  window._flotaEventoTipoComb = tipoComb;
   flotaEventoSetTipo(tiposEvento[0][0]);
   openModalFlota();
 }
@@ -3437,10 +3450,15 @@ function flotaEventoSetTipo(tipo) {
 
   let html = '';
   if (tipo === 'combustible') {
+    const precioConf = window._flotaEventoPrecioComb || 0;
+    const tipoComb = window._flotaEventoTipoComb || 'gasoil';
+    const labelComb = tipoComb === 'nafta' ? 'Nafta' : 'Gasoil';
     html = `
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Combustible del vehículo: <strong style="color:var(--accent)">${labelComb}</strong>${precioConf?` · precio configurado $${precioConf}/L`:' · sin precio configurado en Parámetros'}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${inp('fe-litros','Litros cargados *','number','Ej: 45')}
-        ${inp('fe-precio-litro','Precio $/litro *','number','Ej: 2119')}
+        <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Precio $/litro *</label>
+          <input type="number" id="fe-precio-litro" value="${precioConf||''}" placeholder="Ej: 2119" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>
       </div>
       ${inp('fe-monto','Monto total $ (si no, se calcula)','number')}
       ${lecturaCampo}
@@ -3551,6 +3569,87 @@ async function guardarEventoFlota(tipoRef, refId) {
   }
 }
 window.guardarEventoFlota = guardarEventoFlota;
+
+// ── Historial de eventos de una unidad ──
+const FLOTA_EVENTO_LABELS = {
+  combustible: '⛽ Combustible', peaje: '🛣️ Peaje', service: '🔧 Service',
+  averia: '⚠️ Avería', reparacion: '🛠️ Reparación', lectura: '📊 Lectura'
+};
+
+async function verEventosFlota(tipoRef, refId) {
+  const esGrua = tipoRef === 'grua';
+  const ref = esGrua ? _flotaGruas.find(g => g.fbId === refId) : _flotaVehiculos.find(v => v.fbId === refId);
+  if (!ref) { showToast('No se encontró el equipo', 'error'); return; }
+  const nombre = esGrua ? (ref.codigo || 'Grúa') : `${ref.patente} (${ref.marca} ${ref.modelo})`;
+  const unidad = esGrua ? 'hs' : 'km';
+
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `<div style="font-size:16px;font-weight:700;margin-bottom:4px">Historial de eventos</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(nombre)}</div>
+    <div id="fe-hist-list" style="text-align:center;color:var(--text3);padding:20px">Cargando…</div>
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closeModal('modal-flota')">Cerrar</button>`;
+  openModalFlota();
+
+  try {
+    const eventos = await fbGetFlotaEventos({ tipoRef, refId });
+    const lista = document.getElementById('fe-hist-list');
+    if (!eventos.length) {
+      lista.innerHTML = '<div style="color:var(--text3);padding:20px">No hay eventos registrados todavía.</div>';
+      return;
+    }
+    // Resumen de costos por tipo
+    const totalPorTipo = {};
+    let totalGeneral = 0;
+    eventos.forEach(e => {
+      const m = parseFloat(e.monto) || 0;
+      totalPorTipo[e.tipo] = (totalPorTipo[e.tipo] || 0) + m;
+      totalGeneral += m;
+    });
+    const resumen = Object.entries(totalPorTipo)
+      .map(([t,m]) => `${FLOTA_EVENTO_LABELS[t]||t}: $${m.toLocaleString('es-AR')}`)
+      .join(' · ');
+
+    lista.style.textAlign = 'left';
+    lista.innerHTML = `
+      <div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px">
+        <div style="color:var(--text3);margin-bottom:4px">Total registrado: <strong style="color:var(--accent);font-size:14px">$${totalGeneral.toLocaleString('es-AR')}</strong></div>
+        <div style="color:var(--text3)">${resumen}</div>
+      </div>
+      ${eventos.map(e => {
+        const fechaF = e.fecha ? new Date(e.fecha+'T12:00:00').toLocaleDateString('es-AR') : '';
+        const lect = e.km != null ? `${e.km.toLocaleString('es-AR')} km` : (e.horas != null ? `${e.horas.toLocaleString('es-AR')} hs` : '');
+        const monto = e.monto ? `$${parseFloat(e.monto).toLocaleString('es-AR')}` : '';
+        const detalleComb = e.tipo==='combustible' && e.litros ? ` · ${e.litros} L × $${e.precioLitro}` : '';
+        return `<div style="border-bottom:1px solid var(--border);padding:9px 0;font-size:13px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div>
+              <strong>${FLOTA_EVENTO_LABELS[e.tipo]||e.tipo}</strong> <span style="color:var(--text3)">${fechaF}</span>
+              ${e.descripcion?`<div style="color:var(--text2);font-size:12px">${escHtml(e.descripcion)}</div>`:''}
+              <div style="color:var(--text3);font-size:11px">${lect}${detalleComb}${e.proximoService?` · próx. service: ${e.proximoService.toLocaleString('es-AR')} ${unidad}`:''}</div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <div style="font-weight:600">${monto}</div>
+              ${e.fotoUrl?`<a href="${e.fotoUrl}" target="_blank" style="font-size:11px;color:var(--accent)">📄 factura</a>`:''}
+              <button class="btn-ghost small" style="color:var(--danger);padding:2px 6px;margin-top:2px" onclick="borrarEventoFlota('${e.fbId}','${tipoRef}','${refId}')">🗑️</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}`;
+  } catch(e) {
+    document.getElementById('fe-hist-list').innerHTML = `<div style="color:var(--danger);padding:20px">Error al cargar: ${e.message}</div>`;
+  }
+}
+window.verEventosFlota = verEventosFlota;
+
+async function borrarEventoFlota(fbId, tipoRef, refId) {
+  if (!confirm('¿Borrar este evento?')) return;
+  try {
+    await fbDeleteFlotaEvento(fbId);
+    showToast('Evento borrado', 'success');
+    verEventosFlota(tipoRef, refId); // recargar el historial
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+window.borrarEventoFlota = borrarEventoFlota;
 window.abrirEventoFlota = abrirEventoFlota;
 
 // ── GENERADOR DE ETIQUETAS QR (supervisor) ────────────────────
@@ -8969,7 +9068,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '14.07.2026-v263'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '14.07.2026-v264'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
