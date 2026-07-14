@@ -3368,7 +3368,189 @@ async function borrarGrua(fbId) {
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 window.borrarGrua = borrarGrua;
-function abrirEventoFlota(tipoRef, refId) { showToast('Carga de eventos — próxima parte', ''); }
+// ── Carga de eventos (combustible, peaje, service, avería, lectura) ──
+let _flotaEventoFoto = null; // dataUrl de la foto de factura (opcional)
+
+function abrirEventoFlota(tipoRef, refId) {
+  _flotaEventoFoto = null;
+  const esGrua = tipoRef === 'grua';
+  const ref = esGrua ? _flotaGruas.find(g => g.fbId === refId) : _flotaVehiculos.find(v => v.fbId === refId);
+  if (!ref) { showToast('No se encontró el equipo', 'error'); return; }
+  const nombre = esGrua ? (ref.codigo || 'Grúa') : `${ref.patente} (${ref.marca} ${ref.modelo})`;
+  const unidadContador = esGrua ? 'Horas' : 'Km';
+  const contadorActual = esGrua ? (ref.horasActuales ?? ref.horasIniciales ?? 0) : (ref.kmActual ?? ref.kmInicial ?? 0);
+
+  // Tipos de evento según sea vehículo o grúa
+  const tiposEvento = esGrua
+    ? [['service','🔧 Service'],['averia','⚠️ Avería'],['reparacion','🛠️ Reparación'],['lectura','📊 Lectura de horómetro']]
+    : [['combustible','⛽ Combustible'],['peaje','🛣️ Peaje'],['service','🔧 Service'],['averia','⚠️ Avería'],['reparacion','🛠️ Reparación'],['lectura','📊 Lectura de odómetro']];
+  const tipoBtns = tiposEvento.map(([k,l],i) =>
+    `<button class="op-btn ${i===0?'active':''}" id="fe-tipo-${k}" onclick="flotaEventoSetTipo('${k}')">${l}</button>`).join('');
+
+  const inp = (id, label, type='text', ph='') =>
+    `<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <input type="${type}" id="${id}" placeholder="${ph}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Nuevo evento</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(nombre)} · ${contadorActual.toLocaleString('es-AR')} ${unidadContador.toLowerCase()}</div>
+
+    <div class="op-type-row" style="flex-wrap:wrap;margin-bottom:12px">${tipoBtns}</div>
+
+    ${inp('fe-fecha','Fecha *','date')}
+    <div id="fe-campos"></div>
+
+    <div style="margin:12px 0">
+      <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:6px">Foto de factura (opcional)</label>
+      <div id="fe-foto-preview"></div>
+      <button class="btn-ghost small" onclick="document.getElementById('fe-foto-input').click()">📷 Adjuntar factura</button>
+      <input type="file" id="fe-foto-input" accept="image/*" class="hidden" onchange="flotaEventoFoto(event)">
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cancelar</button>
+      <button class="btn-primary" style="flex:2" onclick="guardarEventoFlota('${tipoRef}','${refId}')">Guardar evento</button>
+    </div>`;
+  // Fecha por defecto: hoy
+  document.getElementById('fe-fecha').value = new Date().toISOString().slice(0,10);
+  window._flotaEventoTipo = tiposEvento[0][0];
+  window._flotaEventoEsGrua = esGrua;
+  flotaEventoSetTipo(tiposEvento[0][0]);
+  openModalFlota();
+}
+window.abrirEventoFlota = abrirEventoFlota;
+
+function flotaEventoSetTipo(tipo) {
+  window._flotaEventoTipo = tipo;
+  document.querySelectorAll('#modal-flota-content .op-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('fe-tipo-' + tipo);
+  if (btn) btn.classList.add('active');
+
+  const esGrua = window._flotaEventoEsGrua;
+  const unidad = esGrua ? 'horas' : 'km';
+  const campos = document.getElementById('fe-campos');
+  const inp = (id, label, type='text', ph='') =>
+    `<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <input type="${type}" id="${id}" placeholder="${ph}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
+  const lecturaCampo = inp('fe-lectura', `Lectura de ${unidad} (odómetro/horómetro)`, 'number', `Ej: ${esGrua?'1200':'85000'}`);
+
+  let html = '';
+  if (tipo === 'combustible') {
+    html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${inp('fe-litros','Litros cargados *','number','Ej: 45')}
+        ${inp('fe-precio-litro','Precio $/litro *','number','Ej: 2119')}
+      </div>
+      ${inp('fe-monto','Monto total $ (si no, se calcula)','number')}
+      ${lecturaCampo}
+      ${inp('fe-desc','Estación / observaciones','text')}`;
+  } else if (tipo === 'peaje') {
+    html = `${inp('fe-monto','Monto $ *','number')}${inp('fe-desc','Descripción (ruta/peaje)','text')}${lecturaCampo}`;
+  } else if (tipo === 'service') {
+    html = `
+      ${inp('fe-monto','Costo del service $ *','number')}
+      ${lecturaCampo}
+      ${inp('fe-desc','Trabajos realizados *','text')}
+      ${inp('fe-proximo', `Próximo service (${unidad})`, 'number', 'Ej: dentro de 10000')}`;
+  } else if (tipo === 'averia' || tipo === 'reparacion') {
+    html = `${inp('fe-monto','Costo $','number')}${lecturaCampo}${inp('fe-desc','Descripción de la ' + (tipo==='averia'?'avería':'reparación') + ' *','text')}`;
+  } else if (tipo === 'lectura') {
+    html = lecturaCampo;
+  }
+  campos.innerHTML = html;
+}
+window.flotaEventoSetTipo = flotaEventoSetTipo;
+
+function flotaEventoFoto(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _flotaEventoFoto = e.target.result;
+    document.getElementById('fe-foto-preview').innerHTML =
+      `<img src="${_flotaEventoFoto}" style="max-width:120px;border-radius:8px;margin-bottom:6px;display:block">`;
+  };
+  reader.readAsDataURL(file);
+}
+window.flotaEventoFoto = flotaEventoFoto;
+
+async function guardarEventoFlota(tipoRef, refId) {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const num = id => { const n = parseFloat(val(id)); return isNaN(n) ? 0 : n; };
+  const tipo = window._flotaEventoTipo;
+  const esGrua = window._flotaEventoEsGrua;
+  const fecha = val('fe-fecha');
+  if (!fecha) { showToast('Ingresá la fecha', 'error'); return; }
+
+  // Validaciones por tipo
+  if (tipo === 'combustible' && (!num('fe-litros') || !num('fe-precio-litro'))) {
+    showToast('Completá litros y precio por litro', 'error'); return;
+  }
+  if (tipo === 'peaje' && !num('fe-monto')) { showToast('Ingresá el monto del peaje', 'error'); return; }
+  if (tipo === 'service' && (!num('fe-monto') || !val('fe-desc'))) { showToast('Completá costo y trabajos del service', 'error'); return; }
+  if ((tipo === 'averia' || tipo === 'reparacion') && !val('fe-desc')) { showToast('Describí la ' + (tipo==='averia'?'avería':'reparación'), 'error'); return; }
+  if (tipo === 'lectura' && !num('fe-lectura')) { showToast('Ingresá la lectura', 'error'); return; }
+
+  // Monto de combustible: usar el ingresado o calcular litros × precio
+  let monto = num('fe-monto');
+  if (tipo === 'combustible' && !monto) monto = num('fe-litros') * num('fe-precio-litro');
+
+  const evento = {
+    tipoRef, refId,
+    tipo, fecha,
+    monto,
+    descripcion: val('fe-desc'),
+    creadoPor: currentUser.id,
+    creadoEn: new Date().toISOString(),
+  };
+  // Lectura de km/horas
+  const lectura = num('fe-lectura');
+  if (lectura) evento[esGrua ? 'horas' : 'km'] = lectura;
+  // Campos de combustible
+  if (tipo === 'combustible') {
+    evento.litros = num('fe-litros');
+    evento.precioLitro = num('fe-precio-litro');
+  }
+  // Próximo service
+  if (tipo === 'service' && num('fe-proximo')) {
+    evento.proximoService = num('fe-proximo');
+  }
+
+  try {
+    const fbId = await fbSaveFlotaEvento(evento);
+    // Subir foto de factura a R2 si hay
+    if (_flotaEventoFoto) {
+      try {
+        const urls = await uploadPhotosToR2('flota_' + fbId, [_flotaEventoFoto]);
+        if (urls.length) await fbSaveFlotaEvento({ fbId, fotoUrl: urls[0] });
+      } catch(e) { console.warn('R2 evento flota:', e.message); }
+    }
+    // Actualizar el contador (km/horas) del equipo si la lectura es mayor
+    if (lectura) {
+      if (esGrua) {
+        const g = _flotaGruas.find(x => x.fbId === refId);
+        if (g && lectura > (g.horasActuales || 0)) await fbSaveFlotaGrua({ fbId: refId, horasActuales: lectura });
+      } else {
+        const v = _flotaVehiculos.find(x => x.fbId === refId);
+        if (v && lectura > (v.kmActual || 0)) await fbSaveFlotaVehiculo({ fbId: refId, kmActual: lectura });
+      }
+    }
+    // Registrar el último service para las alarmas
+    if (tipo === 'service' && lectura) {
+      const patch = { ultimoServiceEn: lectura, ultimoServiceFecha: fecha };
+      if (num('fe-proximo')) patch.proximoServiceEn = num('fe-proximo');
+      if (esGrua) await fbSaveFlotaGrua({ fbId: refId, ...patch });
+      else await fbSaveFlotaVehiculo({ fbId: refId, ...patch });
+    }
+    showToast('✓ Evento registrado', 'success');
+    closeModal('modal-flota');
+    await cargarFlota();
+  } catch(e) {
+    showToast('Error al guardar: ' + e.message, 'error');
+  }
+}
+window.guardarEventoFlota = guardarEventoFlota;
 window.abrirEventoFlota = abrirEventoFlota;
 
 // ── GENERADOR DE ETIQUETAS QR (supervisor) ────────────────────
@@ -8787,7 +8969,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '08.07.2026-v262'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '14.07.2026-v263'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
