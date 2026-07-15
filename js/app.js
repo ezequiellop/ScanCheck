@@ -3120,12 +3120,64 @@ window.guardarFlotaParametros = guardarFlotaParametros;
 // ── FIN GESTIÓN DE FLOTA (parte 1) ────────────────────────────
 
 // ── Vehículos ──
+let _flotaFiltro = '';
+
 function renderFlotaVehiculos() {
   const cont = document.getElementById('flota-vehiculos-content');
   if (!cont) return;
+  // El buscador se dibuja una sola vez y la lista se refresca aparte, para que
+  // el input no pierda el foco mientras el técnico escribe.
+  cont.innerHTML = `
+    <button class="btn-primary" style="width:100%;margin-bottom:8px" onclick="editarVehiculo()">➕ Agregar vehículo</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn-ghost small" style="flex:1" onclick="importarDesdeGeotab()">📥 Importar de Geotab</button>
+      <button class="btn-ghost small" style="flex:1" onclick="actualizarContadoresGeotab()">🔄 Actualizar km/horas</button>
+    </div>
+    <div style="position:relative;margin-bottom:10px">
+      <input type="search" id="flota-buscar" value="${escHtml(_flotaFiltro)}" oninput="filtrarFlotaVehiculos()"
+        placeholder="🔍 Buscar por patente, marca o modelo…"
+        style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+    </div>
+    <div id="flota-vehiculos-lista"></div>`;
+  renderFlotaVehiculosLista();
+}
+
+function filtrarFlotaVehiculos() {
+  _flotaFiltro = document.getElementById('flota-buscar')?.value || '';
+  renderFlotaVehiculosLista();
+}
+window.filtrarFlotaVehiculos = filtrarFlotaVehiculos;
+
+function renderFlotaVehiculosLista() {
+  const cont = document.getElementById('flota-vehiculos-lista');
+  if (!cont) return;
   const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
   const tipoLabel = t => p.tiposVehiculo[t]?.label || t;
-  const lista = _flotaVehiculos.length ? _flotaVehiculos.map(v => {
+
+  // Filtrado: patente, marca, modelo o tipo. Ignora mayúsculas y espacios,
+  // así "ab123cd" y "AB 123 CD" encuentran lo mismo.
+  const q = _flotaFiltro.trim().toLowerCase().replace(/\s+/g, '');
+  const filtrados = q
+    ? _flotaVehiculos.filter(v => {
+        const texto = `${v.patente||''}${v.marca||''}${v.modelo||''}${tipoLabel(v.tipo)||''}`.toLowerCase().replace(/\s+/g, '');
+        return texto.includes(q);
+      })
+    : _flotaVehiculos;
+
+  if (!_flotaVehiculos.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No hay vehículos cargados todavía.</div>';
+    return;
+  }
+  if (!filtrados.length) {
+    cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Ningún vehículo coincide con "${escHtml(_flotaFiltro)}".</div>`;
+    return;
+  }
+
+  const contador = q
+    ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${filtrados.length} de ${_flotaVehiculos.length} unidades</div>`
+    : `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${_flotaVehiculos.length} unidades</div>`;
+
+  cont.innerHTML = contador + filtrados.map(v => {
     const grua = v.gruaId ? _flotaGruas.find(g => g.fbId === v.gruaId) : null;
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -3142,14 +3194,7 @@ function renderFlotaVehiculos() {
         </div>
       </div>
     </div>`;
-  }).join('') : '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No hay vehículos cargados todavía.</div>';
-  cont.innerHTML = `
-    <button class="btn-primary" style="width:100%;margin-bottom:8px" onclick="editarVehiculo()">➕ Agregar vehículo</button>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn-ghost small" style="flex:1" onclick="importarDesdeGeotab()">📥 Importar de Geotab</button>
-      <button class="btn-ghost small" style="flex:1" onclick="actualizarContadoresGeotab()">🔄 Actualizar km/horas</button>
-    </div>
-    ${lista}`;
+  }).join('');
 }
 
 // ── Grúas ──
@@ -3296,6 +3341,17 @@ function calcCostosUnidad(u, esGrua, p) {
   };
 }
 
+let _flotaFiltroCostos = '';
+
+function filtrarFlotaCostos() {
+  _flotaFiltroCostos = document.getElementById('flota-buscar-costos')?.value || '';
+  renderFlotaCostos();
+  // Devolver el foco al buscador (renderFlotaCostos redibuja todo el panel)
+  const inp = document.getElementById('flota-buscar-costos');
+  if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+window.filtrarFlotaCostos = filtrarFlotaCostos;
+
 function renderFlotaCostos() {
   const cont = document.getElementById('flota-costos-content');
   if (!cont) return;
@@ -3311,12 +3367,20 @@ function renderFlotaCostos() {
   const unidades = [
     ..._flotaVehiculos.map(v => ({ u: v, esGrua: false, nombre: `${v.patente} — ${v.marca} ${v.modelo}`, unidad: 'km' })),
     ..._flotaGruas.map(g => ({ u: g, esGrua: true, nombre: g.codigo || 'Grúa', unidad: 'hora' })),
-  ].map(x => ({ ...x, c: calcCostosUnidad(x.u, x.esGrua, p) }));
+  ].map(x => ({ ...x, c: calcCostosUnidad(x.u, x.esGrua, p) }))
+   // Ordenadas por vida útil consumida: las más cerca de renovación, primero
+   .sort((a,b) => b.c.pctVida - a.c.pctVida);
 
-  // Totales de la flota
+  // Totales de la flota (siempre sobre TODAS las unidades, no sobre el filtro)
   const totalGastado = unidades.reduce((a,x) => a + x.c.totalReal, 0);
   const totalAmort = unidades.reduce((a,x) => a + x.c.amortAcumulada, 0);
   const totalValorActual = unidades.reduce((a,x) => a + x.c.valorActual, 0);
+
+  // Filtro por patente / marca / modelo
+  const q = (_flotaFiltroCostos || '').trim().toLowerCase().replace(/\s+/g, '');
+  const visibles = q
+    ? unidades.filter(x => x.nombre.toLowerCase().replace(/\s+/g, '').includes(q))
+    : unidades;
 
   const barra = (pct, color) =>
     `<div style="height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:5px">
@@ -3338,9 +3402,16 @@ function renderFlotaCostos() {
       </div>
     </div>
 
-    <button class="btn-ghost" style="width:100%;margin-bottom:14px" onclick="exportarFlotaSheets()">📊 Exportar a Google Sheets (Flota DND)</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px" onclick="exportarFlotaSheets()">📊 Exportar a Google Sheets (Flota DND)</button>
 
-    ${unidades.map(({u, esGrua, nombre, unidad, c}) => {
+    <input type="search" id="flota-buscar-costos" value="${escHtml(_flotaFiltroCostos||'')}" oninput="filtrarFlotaCostos()"
+      placeholder="🔍 Buscar por patente, marca o modelo…"
+      style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;margin-bottom:6px">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+      ${q ? `${visibles.length} de ${unidades.length} unidades` : `${unidades.length} unidades`} · ordenadas por vida útil consumida
+    </div>
+
+    ${visibles.map(({u, esGrua, nombre, unidad, c}) => {
       const sinDatos = c.recorrido <= 0;
       const colorVida = c.pctVida >= 85 ? 'var(--danger)' : (c.pctVida >= 60 ? 'var(--warning)' : 'var(--accent)');
       return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
@@ -9723,7 +9794,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '15.07.2026-v267'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '15.07.2026-v268'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
