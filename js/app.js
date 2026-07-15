@@ -3131,7 +3131,8 @@ function renderFlotaVehiculos() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1">
           <div style="font-weight:700;color:var(--text);font-size:15px">${escHtml(v.marca)} ${escHtml(v.modelo)} <span style="font-size:12px;color:var(--accent)">${escHtml(v.patente)}</span></div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">${escHtml(tipoLabel(v.tipo))} · Año ${escHtml(v.anio||'—')} · ${(v.kmActual||v.kmInicial||0).toLocaleString('es-AR')} km</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${escHtml(tipoLabel(v.tipo))} · Año ${escHtml(v.anio||'—')} · ${(v.kmActual||v.kmInicial||0).toLocaleString('es-AR')} km${v.horasMotorActual?` · ${v.horasMotorActual.toLocaleString('es-AR')} hs motor`:''}</div>
+          ${v.geotabId?`<div style="font-size:11px;color:var(--accent);margin-top:2px">📡 Geotab${v.geotabActualizado?` · actualizado ${new Date(v.geotabActualizado).toLocaleDateString('es-AR')}`:''}</div>`:''}
           ${grua?`<div style="font-size:11px;color:var(--text3);margin-top:2px">🏗️ ${escHtml(grua.codigo||grua.marca||'Grúa')} asignada</div>`:''}
         </div>
         <div style="display:flex;gap:6px">
@@ -3143,7 +3144,11 @@ function renderFlotaVehiculos() {
     </div>`;
   }).join('') : '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No hay vehículos cargados todavía.</div>';
   cont.innerHTML = `
-    <button class="btn-primary" style="width:100%;margin-bottom:14px" onclick="editarVehiculo()">➕ Agregar vehículo</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:8px" onclick="editarVehiculo()">➕ Agregar vehículo</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn-ghost small" style="flex:1" onclick="importarDesdeGeotab()">📥 Importar de Geotab</button>
+      <button class="btn-ghost small" style="flex:1" onclick="actualizarContadoresGeotab()">🔄 Actualizar km/horas</button>
+    </div>
     ${lista}`;
 }
 
@@ -3590,6 +3595,198 @@ function renderFlotaAlarmas() {
       <span style="opacity:.7">* Sin service registrado: se cuenta desde el alta de la unidad.</span>
     </div>`;
 }
+
+// ══════════════════════════════════════════════════════════════
+// ── INTEGRACIÓN GEOTAB ────────────────────────────────────────
+// La flota está monitoreada por Geotab. El Worker scancheck-geotab-proxy
+// expone los vehículos con su odómetro y horas de motor actuales (las
+// credenciales de Geotab viven en el Worker, nunca en el cliente).
+// Se usa para dos cosas:
+//   1. Importar las unidades (evita cargar 67 vehículos a mano)
+//   2. Actualizar los contadores (km y horas) sin carga manual
+// El vínculo entre una unidad de Geotab y un vehículo de la app es geotabId.
+// ══════════════════════════════════════════════════════════════
+const GEOTAB_PROXY_URL = 'https://scancheck-geotab-proxy.elopapa.workers.dev';
+let _geotabUnidades = [];
+
+// Sugiere el tipo de vehículo a partir del texto de la ficha de Geotab.
+// Es solo una ayuda para no elegir 67 veces a mano: el admin puede cambiarlo.
+function sugerirTipoVehiculo(texto) {
+  const t = (texto || '').toLowerCase();
+  if (/1938|atego|accelo|camion|camión/.test(t)) return 'camion_grua';
+  if (/daily|iveco/.test(t)) return 'camion_grua';
+  if (/hilux|amarok|ranger|s10|frontier|toyota/.test(t)) return 'camioneta_grua';
+  if (/sprinter|master|ducato|boxer|furgon|furgón/.test(t)) return 'furgon';
+  if (/kangoo|partner|berlingo|fiorino|combo/.test(t)) return 'utilitario';
+  if (/kwid|onix|argo|cronos|gol|corolla|etios/.test(t)) return 'auto';
+  return 'utilitario';
+}
+
+async function importarDesdeGeotab() {
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `<div style="font-size:16px;font-weight:700;margin-bottom:10px">Importar desde Geotab</div>
+    <div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Consultando Geotab…<br><span style="font-size:11px">Puede tardar unos segundos con toda la flota.</span></div>`;
+  openModalFlota();
+
+  try {
+    const res = await fetch(`${GEOTAB_PROXY_URL}/vehiculos?dias=30`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Respuesta inesperada de Geotab');
+    _geotabUnidades = data.unidades || [];
+
+    // Separar las que ya están en la app (por geotabId o patente)
+    const yaCargadas = new Set();
+    _flotaVehiculos.forEach(v => {
+      if (v.geotabId) yaCargadas.add(v.geotabId);
+      if (v.patente) yaCargadas.add(v.patente.toUpperCase().trim());
+    });
+    const nuevas = _geotabUnidades.filter(u => !yaCargadas.has(u.deviceId) && !yaCargadas.has(u.patente));
+    const existentes = _geotabUnidades.length - nuevas.length;
+
+    const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+    const tiposOpts = (sel) => Object.entries(p.tiposVehiculo)
+      .map(([k,t]) => `<option value="${k}" ${sel===k?'selected':''}>${escHtml(t.label)}</option>`).join('');
+
+    cont.innerHTML = `
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">Importar desde Geotab</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+        ${data.total} unidades en Geotab · ${data.conDatos} con contador · ${existentes} ya cargadas
+      </div>
+
+      ${nuevas.length === 0 ? `
+        <div style="text-align:center;padding:20px;color:var(--accent);font-size:13px">✓ Todas las unidades de Geotab ya están cargadas.</div>
+      ` : `
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">
+          Se importan patente, VIN, odómetro y horas de motor. El tipo viene sugerido según la ficha de Geotab — revisalo.
+          Después completá valor de compra y costos fijos editando cada unidad.
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="btn-ghost small" onclick="geotabMarcarTodas(true)">Seleccionar todas</button>
+          <button class="btn-ghost small" onclick="geotabMarcarTodas(false)">Ninguna</button>
+        </div>
+        <div style="max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px">
+          ${nuevas.map((u,i) => `
+            <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 4px;border-bottom:1px solid var(--border)">
+              <input type="checkbox" class="gt-check" id="gt-ck-${i}" checked style="margin-top:3px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:13px">${escHtml(u.patente || u.nombre || '(sin patente)')}</div>
+                <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis">
+                  ${u.comentario ? escHtml(u.comentario.slice(0,60)) : (u.vin ? 'VIN ' + escHtml(u.vin) : '—')}
+                </div>
+                <div style="font-size:11px;color:var(--text3)">
+                  ${u.odometroKm != null ? `${u.odometroKm.toLocaleString('es-AR')} km` : '<span style="color:var(--warning)">sin odómetro</span>'}
+                  ${u.horasMotor != null ? ` · ${u.horasMotor.toLocaleString('es-AR')} hs motor` : ''}
+                </div>
+                <select id="gt-tipo-${i}" style="width:100%;margin-top:4px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+                  ${tiposOpts(sugerirTipoVehiculo((u.comentario||'') + ' ' + (u.nombre||'')))}
+                </select>
+              </div>
+            </div>`).join('')}
+        </div>
+      `}
+
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cerrar</button>
+        ${nuevas.length ? `<button class="btn-primary" style="flex:2" onclick="confirmarImportGeotab()">Importar seleccionadas</button>` : ''}
+      </div>`;
+
+    window._geotabNuevas = nuevas;
+  } catch(e) {
+    cont.innerHTML = `<div style="font-size:16px;font-weight:700;margin-bottom:10px">Importar desde Geotab</div>
+      <div style="color:var(--danger);font-size:13px;padding:12px 0">Error: ${escHtml(e.message)}</div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6">
+        Verificá que el Worker <strong>scancheck-geotab-proxy</strong> esté publicado y que tenga cargadas las variables
+        GEOTAB_DATABASE, GEOTAB_USER y GEOTAB_PASSWORD.
+      </div>
+      <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="closeModal('modal-flota')">Cerrar</button>`;
+  }
+}
+window.importarDesdeGeotab = importarDesdeGeotab;
+
+function geotabMarcarTodas(valor) {
+  document.querySelectorAll('.gt-check').forEach(c => { c.checked = valor; });
+}
+window.geotabMarcarTodas = geotabMarcarTodas;
+
+async function confirmarImportGeotab() {
+  const nuevas = window._geotabNuevas || [];
+  const aImportar = [];
+  nuevas.forEach((u,i) => {
+    if (document.getElementById('gt-ck-'+i)?.checked) {
+      aImportar.push({ u, tipo: document.getElementById('gt-tipo-'+i)?.value || 'utilitario' });
+    }
+  });
+  if (!aImportar.length) { showToast('No seleccionaste ninguna unidad', 'error'); return; }
+
+  const cont = document.getElementById('modal-flota-content');
+  cont.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">Importando 0/${aImportar.length}…</div>`;
+  let ok = 0;
+  for (const { u, tipo } of aImportar) {
+    try {
+      // Marca/modelo: se intenta separar del comentario de la ficha de Geotab
+      const partes = (u.comentario || '').split(/\s+/).filter(Boolean);
+      const marca = partes[1] || '';   // el comentario suele arrancar con la patente
+      const modelo = partes.slice(2, 5).join(' ') || '';
+      await fbSaveFlotaVehiculo({
+        geotabId: u.deviceId,
+        tipo,
+        marca, modelo, anio: '',
+        patente: u.patente || u.nombre || '',
+        vin: u.vin || '',
+        kmInicial: u.odometroKm ?? 0,
+        kmActual: u.odometroKm ?? 0,
+        horasMotorActual: u.horasMotor ?? 0,
+        valorCompra: 0,
+        fechaAlta: new Date().toISOString().slice(0,10),
+        seguroMensual: 0, patenteAnual: 0,
+        combustible: 'gasoil',
+        gruaId: null,
+        estado: 'activo',
+      });
+      ok++;
+      cont.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">Importando ${ok}/${aImportar.length}…</div>`;
+    } catch(e) { console.warn('Import', u.patente, e.message); }
+  }
+  showToast(`✓ ${ok} unidades importadas`, 'success');
+  closeModal('modal-flota');
+  await cargarFlota();
+}
+window.confirmarImportGeotab = confirmarImportGeotab;
+
+// Actualiza km y horas de motor de las unidades vinculadas a Geotab.
+async function actualizarContadoresGeotab() {
+  const vinculados = _flotaVehiculos.filter(v => v.geotabId);
+  if (!vinculados.length) { showToast('No hay vehículos vinculados a Geotab. Usá "Importar de Geotab".', 'error'); return; }
+  showToast('Consultando Geotab…', '');
+  try {
+    const res = await fetch(`${GEOTAB_PROXY_URL}/vehiculos?dias=30`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Respuesta inesperada');
+    const porId = {};
+    (data.unidades || []).forEach(u => { porId[u.deviceId] = u; });
+
+    let actualizados = 0, sinDatos = 0;
+    for (const v of vinculados) {
+      const u = porId[v.geotabId];
+      if (!u || u.odometroKm == null) { sinDatos++; continue; }
+      const patch = {};
+      // Solo avanzar el contador (nunca retroceder por una lectura vieja)
+      if (u.odometroKm > (v.kmActual || 0)) patch.kmActual = u.odometroKm;
+      if (u.horasMotor != null && u.horasMotor > (v.horasMotorActual || 0)) patch.horasMotorActual = u.horasMotor;
+      if (Object.keys(patch).length) {
+        patch.geotabActualizado = new Date().toISOString();
+        await fbSaveFlotaVehiculo({ fbId: v.fbId, ...patch });
+        actualizados++;
+      }
+    }
+    showToast(`✓ ${actualizados} unidades actualizadas${sinDatos?` · ${sinDatos} sin datos recientes`:''}`, 'success');
+    await cargarFlota();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+window.actualizarContadoresGeotab = actualizarContadoresGeotab;
+// ── FIN INTEGRACIÓN GEOTAB ────────────────────────────────────
 
 // ── Alta / edición de vehículo ──
 function editarVehiculo(fbId) {
@@ -9526,7 +9723,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '14.07.2026-v266'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '15.07.2026-v267'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
