@@ -2992,6 +2992,7 @@ const FLOTA_PARAMS_DEFAULT = {
 let _flotaParams = null;
 let _flotaVehiculos = [];
 let _flotaGruas = [];
+let _flotaEventos = [];
 
 function showFlotaPage() {
   if (currentUser.role !== 'supervisor') { showToast('Acceso solo para administrador', 'error'); return; }
@@ -3002,7 +3003,7 @@ function showFlotaPage() {
 window.showFlotaPage = showFlotaPage;
 
 function flotaTab(tab, btn) {
-  ['vehiculos','gruas','alarmas','parametros'].forEach(t => {
+  ['vehiculos','gruas','alarmas','costos','parametros'].forEach(t => {
     const panel = document.getElementById('flota-' + t);
     if (panel) panel.classList.toggle('hidden', t !== tab);
   });
@@ -3010,6 +3011,7 @@ function flotaTab(tab, btn) {
   if (btn) btn.classList.add('active');
   if (tab === 'parametros') renderFlotaParametros();
   if (tab === 'alarmas') renderFlotaAlarmas();
+  if (tab === 'costos') renderFlotaCostos();
 }
 window.flotaTab = flotaTab;
 
@@ -3023,6 +3025,7 @@ async function cargarFlota() {
       tiposVehiculo: { ...FLOTA_PARAMS_DEFAULT.tiposVehiculo, ...(_flotaParams.tiposVehiculo||{}) } };
     _flotaVehiculos = await fbGetFlotaVehiculos();
     _flotaGruas = await fbGetFlotaGruas();
+    _flotaEventos = await fbGetFlotaEventos(); // todos, para calcular costos
     renderFlotaVehiculos();
     renderFlotaGruas();
   } catch(e) {
@@ -3208,6 +3211,312 @@ function calcChequeosService(unidad, esGrua, p) {
   }
   return chequeos;
 }
+
+// ── Cálculo de costos y amortización ──────────────────────────
+// Costo real: sale de los eventos cargados (combustible, peajes, service,
+// averías, reparaciones) dividido por el recorrido real desde el alta.
+// Amortización HÍBRIDA (años + km/horas, lo que se cumpla primero): si la unidad
+// hace pocos km al año, se deprecia antes por antigüedad que por uso, así que se
+// proyectan los km que llegará a hacer en su vida útil en años y se amortiza
+// sobre ese total (que puede ser menor a la vida útil en km).
+function calcCostosUnidad(u, esGrua, p) {
+  const evs = _flotaEventos.filter(e => e.refId === u.fbId);
+  const t = esGrua ? (p.grua || {}) : (p.tiposVehiculo?.[u.tipo] || {});
+
+  // Recorrido real desde el alta
+  const recorrido = esGrua
+    ? Math.max(0, (u.horasActuales || 0) - (u.horasIniciales || 0))
+    : Math.max(0, (u.kmActual || 0) - (u.kmInicial || 0));
+
+  // Antigüedad
+  const aniosTranscurridos = u.fechaAlta
+    ? Math.max(0, (Date.now() - new Date(u.fechaAlta + 'T12:00:00').getTime()) / (1000*60*60*24*365.25))
+    : 0;
+
+  // Costos reales por rubro
+  const porTipo = { combustible: 0, peaje: 0, service: 0, averia: 0, reparacion: 0 };
+  let litros = 0;
+  evs.forEach(e => {
+    const m = parseFloat(e.monto) || 0;
+    if (porTipo[e.tipo] !== undefined) porTipo[e.tipo] += m;
+    if (e.tipo === 'combustible') litros += parseFloat(e.litros) || 0;
+  });
+  const totalReal = Object.values(porTipo).reduce((a,b) => a+b, 0);
+
+  // Amortización
+  const valorCompra = u.valorCompra || 0;
+  const residual = valorCompra * ((t.residualPct || 0) / 100);
+  const depreciable = Math.max(0, valorCompra - residual);
+  const vidaUtilUso = esGrua ? (t.horas || 0) : (t.km || 0);   // km u horas de vida útil
+  const vidaUtilAnios = t.anios || 0;
+
+  // Uso proyectado hasta el fin de la vida útil (criterio híbrido)
+  const usoPorAnio = aniosTranscurridos > 0.08 && recorrido > 0 ? recorrido / aniosTranscurridos : 0;
+  let usoProyectado = vidaUtilUso;
+  if (usoPorAnio > 0 && vidaUtilAnios > 0) {
+    usoProyectado = Math.min(vidaUtilUso || Infinity, usoPorAnio * vidaUtilAnios);
+  }
+  if (!usoProyectado || !isFinite(usoProyectado)) usoProyectado = vidaUtilUso;
+  const amortPorUso = usoProyectado > 0 ? depreciable / usoProyectado : 0;
+
+  // Vida útil consumida: el mayor entre uso y antigüedad
+  const pctUso = vidaUtilUso > 0 ? (recorrido / vidaUtilUso) * 100 : 0;
+  const pctAnios = vidaUtilAnios > 0 ? (aniosTranscurridos / vidaUtilAnios) * 100 : 0;
+  const pctVida = Math.min(100, Math.max(pctUso, pctAnios));
+  const criterioVida = pctAnios >= pctUso ? 'antigüedad' : (esGrua ? 'horas' : 'km');
+  const amortAcumulada = depreciable * (pctVida / 100);
+  const valorActual = Math.max(residual, valorCompra - amortAcumulada);
+
+  // Costos fijos acumulados (seguro + patente), solo vehículos
+  let fijosAcum = 0;
+  if (!esGrua) {
+    fijosAcum = (u.seguroMensual || 0) * (aniosTranscurridos * 12) + (u.patenteAnual || 0) * aniosTranscurridos;
+  }
+
+  // Por unidad de uso ($/km o $/hora)
+  const realPorUso  = recorrido > 0 ? totalReal / recorrido : 0;
+  const fijosPorUso = recorrido > 0 ? fijosAcum / recorrido : 0;
+  const totalPorUso = realPorUso + amortPorUso + fijosPorUso;
+
+  // Rendimiento real (km/L)
+  const rendimiento = (!esGrua && litros > 0 && recorrido > 0) ? recorrido / litros : 0;
+
+  return {
+    recorrido, aniosTranscurridos, usoPorAnio, litros, rendimiento,
+    porTipo, totalReal, realPorUso,
+    valorCompra, residual, depreciable, amortPorUso, amortAcumulada, valorActual,
+    pctUso, pctAnios, pctVida, criterioVida, usoProyectado,
+    fijosAcum, fijosPorUso, totalPorUso,
+    eventos: evs.length,
+  };
+}
+
+function renderFlotaCostos() {
+  const cont = document.getElementById('flota-costos-content');
+  if (!cont) return;
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  const $ = n => '$' + Math.round(n).toLocaleString('es-AR');
+  const $d = n => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  if (!_flotaVehiculos.length && !_flotaGruas.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Cargá vehículos para ver el análisis de costos.</div>';
+    return;
+  }
+
+  const unidades = [
+    ..._flotaVehiculos.map(v => ({ u: v, esGrua: false, nombre: `${v.patente} — ${v.marca} ${v.modelo}`, unidad: 'km' })),
+    ..._flotaGruas.map(g => ({ u: g, esGrua: true, nombre: g.codigo || 'Grúa', unidad: 'hora' })),
+  ].map(x => ({ ...x, c: calcCostosUnidad(x.u, x.esGrua, p) }));
+
+  // Totales de la flota
+  const totalGastado = unidades.reduce((a,x) => a + x.c.totalReal, 0);
+  const totalAmort = unidades.reduce((a,x) => a + x.c.amortAcumulada, 0);
+  const totalValorActual = unidades.reduce((a,x) => a + x.c.valorActual, 0);
+
+  const barra = (pct, color) =>
+    `<div style="height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:5px">
+       <div style="height:100%;width:${Math.min(100,pct)}%;background:${color}"></div></div>`;
+
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Gasto real acumulado</div>
+        <div style="font-size:17px;font-weight:700;color:var(--accent)">${$(totalGastado)}</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Amortización acum.</div>
+        <div style="font-size:17px;font-weight:700">${$(totalAmort)}</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Valor actual flota</div>
+        <div style="font-size:17px;font-weight:700">${$(totalValorActual)}</div>
+      </div>
+    </div>
+
+    <button class="btn-ghost" style="width:100%;margin-bottom:14px" onclick="exportarFlotaSheets()">📊 Exportar a Google Sheets (Flota DND)</button>
+
+    ${unidades.map(({u, esGrua, nombre, unidad, c}) => {
+      const sinDatos = c.recorrido <= 0;
+      const colorVida = c.pctVida >= 85 ? 'var(--danger)' : (c.pctVida >= 60 ? 'var(--warning)' : 'var(--accent)');
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-weight:600;font-size:14px">${esGrua?'🏗️':'🚗'} ${escHtml(nombre)}</div>
+            <div style="font-size:11px;color:var(--text3)">
+              ${c.recorrido.toLocaleString('es-AR')} ${unidad}${esGrua?'s':''} recorridos · ${c.aniosTranscurridos.toFixed(1)} años
+              ${c.usoPorAnio ? ` · ${Math.round(c.usoPorAnio).toLocaleString('es-AR')} ${unidad}/año` : ''}
+              ${c.eventos ? ` · ${c.eventos} eventos` : ' · sin eventos'}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Costo total</div>
+            <div style="font-size:19px;font-weight:700;color:var(--accent)">${sinDatos?'—':$d(c.totalPorUso)}</div>
+            <div style="font-size:10px;color:var(--text3)">por ${unidad}</div>
+          </div>
+        </div>
+
+        ${sinDatos ? `<div style="font-size:11px;color:var(--text3);padding:6px 0">Todavía no hay recorrido registrado. Cargá una lectura de ${esGrua?'horómetro':'odómetro'} para calcular el costo.</div>` : `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;margin-bottom:10px">
+          <div style="background:var(--bg3);border-radius:8px;padding:7px">
+            <div style="color:var(--text3)">Combustible</div><div style="font-weight:600">${$d(c.recorrido?c.porTipo.combustible/c.recorrido:0)}</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:7px">
+            <div style="color:var(--text3)">Service+rep.</div><div style="font-weight:600">${$d(c.recorrido?(c.porTipo.service+c.porTipo.averia+c.porTipo.reparacion)/c.recorrido:0)}</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:7px">
+            <div style="color:var(--text3)">Amortización</div><div style="font-weight:600">${$d(c.amortPorUso)}</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:7px">
+            <div style="color:var(--text3)">Fijos</div><div style="font-weight:600">${$d(c.fijosPorUso)}</div>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">
+          Vida útil consumida: <strong style="color:${colorVida}">${c.pctVida.toFixed(0)}%</strong> (manda ${c.criterioVida}) ·
+          valor actual estimado ${$(c.valorActual)}
+          ${c.rendimiento ? ` · rendimiento real ${c.rendimiento.toFixed(1)} km/L` : ''}
+        </div>
+        ${barra(c.pctVida, colorVida)}
+        ${c.pctVida >= 85 ? `<div style="font-size:11px;color:var(--danger);margin-top:6px">⚠️ Cerca del fin de vida útil por ${c.criterioVida} — evaluar renovación</div>` : ''}
+        `}
+      </div>`;
+    }).join('')}
+
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.6">
+      El costo real sale de los eventos cargados dividido por el recorrido desde el alta.
+      La amortización es híbrida: se proyecta el uso según los km/horas por año reales y la vida útil en años, y se toma lo que se cumpla primero.
+    </div>`;
+}
+window.renderFlotaCostos = renderFlotaCostos;
+
+// ── Exportación a Google Sheets ───────────────────────────────
+// Hoja "Flota DND": una fila por unidad con costos y amortización (para el dashboard).
+// Hoja "Flota Eventos": una fila por evento (historial de service, averías, cargas).
+function buildFlotaExportRows(p) {
+  const headers = [
+    'Tipo', 'Patente/Código', 'Marca', 'Modelo', 'Año', 'Combustible', 'Grúa asignada', 'Estado',
+    'Inicial (km/hs)', 'Actual (km/hs)', 'Recorrido', 'Horas motor', 'Años de uso', 'Uso por año',
+    'Valor compra', 'Valor residual', 'Valor actual', 'Amortización acumulada',
+    '% Vida útil consumida', 'Criterio', 'Uso proyectado vida útil',
+    'Gasto combustible', 'Gasto peajes', 'Gasto service', 'Gasto averías', 'Gasto reparaciones', 'Gasto total',
+    'Litros cargados', 'Rendimiento km/L',
+    '$/u combustible', '$/u service+reparaciones', '$/u amortización', '$/u fijos', '$/u TOTAL',
+    'Último service', 'Eventos registrados', 'Actualizado'
+  ];
+  const rows = [headers];
+  const ahora = new Date().toLocaleString('es-AR');
+
+  const agregar = (u, esGrua) => {
+    const c = calcCostosUnidad(u, esGrua, p);
+    const t = esGrua ? (p.grua || {}) : (p.tiposVehiculo?.[u.tipo] || {});
+    const grua = !esGrua && u.gruaId ? _flotaGruas.find(g => g.fbId === u.gruaId) : null;
+    const r2 = n => Math.round(n * 100) / 100;
+    rows.push([
+      esGrua ? 'Hidrogrúa' : (t.label || u.tipo || ''),
+      esGrua ? (u.codigo || '') : (u.patente || ''),
+      u.marca || '', u.modelo || '', esGrua ? '' : (u.anio || ''),
+      esGrua ? '' : (u.combustible === 'nafta' ? 'Nafta' : 'Gasoil'),
+      grua ? (grua.codigo || '') : '',
+      u.estado || 'activo',
+      esGrua ? (u.horasIniciales || 0) : (u.kmInicial || 0),
+      esGrua ? (u.horasActuales || 0) : (u.kmActual || 0),
+      c.recorrido,
+      esGrua ? '' : (u.horasMotorActual || 0),
+      r2(c.aniosTranscurridos),
+      Math.round(c.usoPorAnio),
+      c.valorCompra, Math.round(c.residual), Math.round(c.valorActual), Math.round(c.amortAcumulada),
+      r2(c.pctVida), c.criterioVida, Math.round(c.usoProyectado),
+      Math.round(c.porTipo.combustible), Math.round(c.porTipo.peaje), Math.round(c.porTipo.service),
+      Math.round(c.porTipo.averia), Math.round(c.porTipo.reparacion), Math.round(c.totalReal),
+      r2(c.litros), c.rendimiento ? r2(c.rendimiento) : '',
+      r2(c.recorrido ? c.porTipo.combustible / c.recorrido : 0),
+      r2(c.recorrido ? (c.porTipo.service + c.porTipo.averia + c.porTipo.reparacion) / c.recorrido : 0),
+      r2(c.amortPorUso), r2(c.fijosPorUso), r2(c.totalPorUso),
+      u.ultimoServiceFecha || '', c.eventos, ahora
+    ]);
+  };
+  _flotaVehiculos.forEach(v => agregar(v, false));
+  _flotaGruas.forEach(g => agregar(g, true));
+  return rows;
+}
+
+function buildFlotaEventosRows() {
+  const headers = [
+    'Fecha', 'Unidad', 'Tipo de unidad', 'Marca/Modelo', 'Evento',
+    'Monto', 'Litros', 'Precio/litro', 'Km', 'Horas motor',
+    'Descripción', 'Próximo service', 'Factura', 'Registrado'
+  ];
+  const rows = [headers];
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  _flotaEventos.forEach(e => {
+    const esGrua = e.tipoRef === 'grua';
+    const u = esGrua ? _flotaGruas.find(g => g.fbId === e.refId) : _flotaVehiculos.find(v => v.fbId === e.refId);
+    if (!u) return; // unidad dada de baja
+    const t = esGrua ? null : (p.tiposVehiculo?.[u.tipo] || {});
+    rows.push([
+      e.fecha ? new Date(e.fecha + 'T12:00:00').toLocaleDateString('es-AR') : '',
+      esGrua ? (u.codigo || '') : (u.patente || ''),
+      esGrua ? 'Hidrogrúa' : (t?.label || u.tipo || ''),
+      `${u.marca || ''} ${u.modelo || ''}`.trim(),
+      (FLOTA_EVENTO_LABELS[e.tipo] || e.tipo).replace(/^[^\s]+\s/, ''), // sin el emoji
+      e.monto || 0, e.litros || '', e.precioLitro || '',
+      e.km || '', e.horasMotor || e.horas || '',
+      e.descripcion || '',
+      e.proximoService || e.proximoServiceHoras || '',
+      e.fotoUrl || '',
+      e.creadoEn ? new Date(e.creadoEn).toLocaleString('es-AR') : ''
+    ]);
+  });
+  return rows;
+}
+
+async function exportarFlotaSheets() {
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  try {
+    showToast('Conectando con Google Sheets…', '');
+    const token = await getGoogleAccessToken();
+
+    const escribir = async (hoja, rows) => {
+      const clear = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent(hoja + '!A:AZ')}:clear`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      if (!clear.ok) {
+        const err = await clear.json().catch(()=>({}));
+        throw new Error(err.error?.message || `HTTP ${clear.status} — ¿existe la hoja "${hoja}"?`);
+      }
+      const write = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent(hoja + '!A1')}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: rows })
+      });
+      if (!write.ok) {
+        const err = await write.json().catch(()=>({}));
+        throw new Error(err.error?.message || `HTTP ${write.status}`);
+      }
+    };
+
+    const unidades = buildFlotaExportRows(p);
+    await escribir('Flota DND', unidades);
+
+    let msgEventos = '';
+    const eventos = buildFlotaEventosRows();
+    if (eventos.length > 1) {
+      try {
+        await escribir('Flota Eventos', eventos);
+        msgEventos = ` + ${eventos.length - 1} eventos`;
+      } catch(e) {
+        console.warn('Flota Eventos:', e.message);
+        msgEventos = ` (hoja Flota Eventos: ${e.message})`;
+      }
+    }
+    showToast(`✓ ${unidades.length - 1} unidades${msgEventos} exportadas`, 'success');
+  } catch(e) {
+    console.error('Export flota:', e);
+    showToast('Error al exportar: ' + e.message, 'error');
+  }
+}
+window.exportarFlotaSheets = exportarFlotaSheets;
 
 function renderFlotaAlarmas() {
   const cont = document.getElementById('flota-alarmas-content');
@@ -9217,7 +9526,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '14.07.2026-v265'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '14.07.2026-v266'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
