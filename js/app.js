@@ -2974,20 +2974,20 @@ window.saveTablet = saveTablet;
 // Parámetros por defecto (editables desde la app). Vida útil híbrida:
 // se amortiza por lo que ocurra primero (años o km/horas).
 const FLOTA_PARAMS_DEFAULT = {
+  // serviceKm / serviceHoras: intervalo de service. Si serviceHoras > 0, el service
+  // se evalúa por km Y por horas de motor, lo que ocurra primero (las unidades con
+  // hidrogrúa acumulan muchas horas al ralentí sin sumar km).
   tiposVehiculo: {
-    auto:          { label: 'Auto',                    anios: 6,  km: 200000, residualPct: 25 },
-    utilitario:    { label: 'Utilitario',              anios: 7,  km: 250000, residualPct: 20 },
-    furgon:        { label: 'Furgón grande',           anios: 8,  km: 350000, residualPct: 20 },
-    camioneta_grua:{ label: 'Camioneta c/ hidrogrúa',  anios: 8,  km: 300000, residualPct: 30 },
-    camion_grua:   { label: 'Camión c/ hidrogrúa',     anios: 12, km: 600000, residualPct: 25 },
+    auto:          { label: 'Auto',                    anios: 6,  km: 200000, residualPct: 25, serviceKm: 10000, serviceHoras: 0 },
+    utilitario:    { label: 'Utilitario',              anios: 7,  km: 250000, residualPct: 20, serviceKm: 10000, serviceHoras: 0 },
+    furgon:        { label: 'Furgón grande',           anios: 8,  km: 350000, residualPct: 20, serviceKm: 15000, serviceHoras: 0 },
+    camioneta_grua:{ label: 'Camioneta c/ hidrogrúa',  anios: 8,  km: 300000, residualPct: 30, serviceKm: 15000, serviceHoras: 300 },
+    camion_grua:   { label: 'Camión c/ hidrogrúa',     anios: 12, km: 600000, residualPct: 25, serviceKm: 20000, serviceHoras: 400 },
   },
-  grua: { anios: 15, horas: 10000, residualPct: 20 },
+  grua: { anios: 15, horas: 10000, residualPct: 20, serviceHoras: 250 },
   combustible: { nafta: 0, gasoil: 0, actualizado: '' }, // precio $/litro, editable
-  serviceIntervalos: {
-    // km para vehículos, horas para grúas
-    autoKm: 10000, utilitarioKm: 10000, furgonKm: 15000, camionetaKm: 15000, camionKm: 20000,
-    gruaHoras: 250,
-  },
+  // Anticipación con la que se avisa el próximo service
+  alarmas: { margenKm: 1000, margenHoras: 100 },
 };
 let _flotaParams = null;
 let _flotaVehiculos = [];
@@ -3038,25 +3038,45 @@ function renderFlotaParametros() {
   const filaTipo = (key, t) => `
     <tr>
       <td style="padding:8px;font-size:12px;color:var(--text)">${escHtml(t.label)}</td>
-      <td style="padding:4px"><input type="number" id="fp-${key}-anios" value="${t.anios}" style="width:60px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
-      <td style="padding:4px"><input type="number" id="fp-${key}-km" value="${t.km}" style="width:80px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
-      <td style="padding:4px"><input type="number" id="fp-${key}-res" value="${t.residualPct}" style="width:50px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-anios" value="${t.anios}" style="width:52px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-km" value="${t.km}" style="width:74px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-res" value="${t.residualPct}" style="width:44px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-svckm" value="${t.serviceKm||0}" style="width:66px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+      <td style="padding:4px"><input type="number" id="fp-${key}-svchs" value="${t.serviceHoras||0}" style="width:52px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
     </tr>`;
   cont.innerHTML = `
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
-      <h3 style="margin:0 0 4px">Vida útil por tipo de vehículo</h3>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">La amortización corre por lo que ocurra primero: años o km. Residual = % del valor de compra que se recupera al final.</div>
-      <table style="width:100%;border-collapse:collapse">
-        <tr style="text-align:left"><th style="font-size:10px;color:var(--text3);padding:4px">Tipo</th><th style="font-size:10px;color:var(--text3);padding:4px">Años</th><th style="font-size:10px;color:var(--text3);padding:4px">Km</th><th style="font-size:10px;color:var(--text3);padding:4px">Res.%</th></tr>
+      <h3 style="margin:0 0 4px">Vida útil y service por tipo de vehículo</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">La amortización corre por lo que ocurra primero: años o km. Residual = % del valor de compra que se recupera al final.<br>
+      <strong>Service hs:</strong> si es mayor a 0, el service se evalúa también por horas de motor (lo que ocurra primero). Útil en unidades con hidrogrúa que quedan al ralentí. Dejar en 0 para evaluar solo por km.</div>
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:460px">
+        <tr style="text-align:left">
+          <th style="font-size:10px;color:var(--text3);padding:4px">Tipo</th>
+          <th style="font-size:10px;color:var(--text3);padding:4px">Años</th>
+          <th style="font-size:10px;color:var(--text3);padding:4px">Km vida</th>
+          <th style="font-size:10px;color:var(--text3);padding:4px">Res.%</th>
+          <th style="font-size:10px;color:var(--text3);padding:4px">Service km</th>
+          <th style="font-size:10px;color:var(--text3);padding:4px">Service hs</th>
+        </tr>
         ${Object.entries(p.tiposVehiculo).map(([k,t]) => filaTipo(k,t)).join('')}
       </table>
+      </div>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
       <h3 style="margin:0 0 10px">Hidrogrúa (amortización por horas)</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
         <div><label style="font-size:11px;color:var(--text3)">Años</label><input type="number" id="fp-grua-anios" value="${p.grua.anios}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Horas</label><input type="number" id="fp-grua-horas" value="${p.grua.horas}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Horas vida</label><input type="number" id="fp-grua-horas" value="${p.grua.horas}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
         <div><label style="font-size:11px;color:var(--text3)">Res.%</label><input type="number" id="fp-grua-res" value="${p.grua.residualPct}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Service hs</label><input type="number" id="fp-grua-svchs" value="${p.grua.serviceHoras||250}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+      </div>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px">Alarmas de service (anticipación)</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Avisar con X km antes</label><input type="number" id="fp-margen-km" value="${p.alarmas?.margenKm ?? 1000}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Avisar con X horas antes</label><input type="number" id="fp-margen-hs" value="${p.alarmas?.margenHoras ?? 100}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)"></div>
       </div>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
@@ -3077,10 +3097,14 @@ async function guardarFlotaParametros() {
     p.tiposVehiculo[k].anios = num(`fp-${k}-anios`);
     p.tiposVehiculo[k].km = num(`fp-${k}-km`);
     p.tiposVehiculo[k].residualPct = num(`fp-${k}-res`);
+    p.tiposVehiculo[k].serviceKm = num(`fp-${k}-svckm`);
+    p.tiposVehiculo[k].serviceHoras = num(`fp-${k}-svchs`);
   });
   p.grua.anios = num('fp-grua-anios');
   p.grua.horas = num('fp-grua-horas');
   p.grua.residualPct = num('fp-grua-res');
+  p.grua.serviceHoras = num('fp-grua-svchs');
+  p.alarmas = { margenKm: num('fp-margen-km'), margenHoras: num('fp-margen-hs') };
   p.combustible = { nafta: num('fp-nafta'), gasoil: num('fp-gasoil'), actualizado: new Date().toISOString() };
   try {
     await fbSaveFlotaParametros(p);
@@ -3148,10 +3172,114 @@ function renderFlotaGruas() {
 }
 
 // ── Alarmas de service (placeholder hasta la parte de eventos) ──
+// Calcula el estado de service de una unidad.
+// Devuelve un array de chequeos (por km y/o por horas, lo que aplique al tipo).
+// Estado: 'vencido' | 'proximo' | 'ok'. Se toma el más urgente (lo que ocurra primero).
+function calcChequeosService(unidad, esGrua, p) {
+  const margenKm = p.alarmas?.margenKm ?? 1000;
+  const margenHs = p.alarmas?.margenHoras ?? 100;
+  const chequeos = [];
+
+  const push = (unidadLbl, intervalo, base, actual, margen, sinService) => {
+    if (!intervalo || intervalo <= 0) return;
+    const proximo = base + intervalo;
+    const restante = proximo - actual;
+    const estado = restante <= 0 ? 'vencido' : (restante <= margen ? 'proximo' : 'ok');
+    chequeos.push({ unidad: unidadLbl, proximo, restante, estado, sinService });
+  };
+
+  if (esGrua) {
+    const intervalo = unidad.proximoServiceHorasEn || p.grua?.serviceHoras || 0;
+    const base = unidad.ultimoServiceEn != null ? unidad.ultimoServiceEn : (unidad.horasIniciales || 0);
+    push('hs', intervalo, base, unidad.horasActuales || 0, margenHs, unidad.ultimoServiceEn == null);
+  } else {
+    const t = p.tiposVehiculo?.[unidad.tipo] || {};
+    // Por km (siempre)
+    const intervaloKm = unidad.proximoServiceEn || t.serviceKm || 0;
+    const baseKm = unidad.ultimoServiceEn != null ? unidad.ultimoServiceEn : (unidad.kmInicial || 0);
+    push('km', intervaloKm, baseKm, unidad.kmActual || 0, margenKm, unidad.ultimoServiceEn == null);
+    // Por horas de motor (solo si el tipo lo controla, ej: unidades con hidrogrúa
+    // que acumulan ralentí sin sumar km)
+    if ((t.serviceHoras || 0) > 0) {
+      const intervaloHs = unidad.proximoServiceHorasEn || t.serviceHoras;
+      const baseHs = unidad.ultimoServiceHoras != null ? unidad.ultimoServiceHoras : 0;
+      push('hs', intervaloHs, baseHs, unidad.horasMotorActual || 0, margenHs, unidad.ultimoServiceHoras == null);
+    }
+  }
+  return chequeos;
+}
+
 function renderFlotaAlarmas() {
   const cont = document.getElementById('flota-alarmas-content');
   if (!cont) return;
-  cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Las alarmas de service se calcularán a partir de los eventos cargados.</div>';
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+
+  const filas = [];
+  const alDia = [];
+  const sinDatos = [];
+
+  const evaluar = (u, esGrua) => {
+    const nombre = esGrua ? (u.codigo || 'Grúa') : `${u.patente} — ${u.marca} ${u.modelo}`;
+    const chequeos = calcChequeosService(u, esGrua, p);
+    if (!chequeos.length) { sinDatos.push(nombre); return; }
+    // El chequeo más urgente manda (menor restante)
+    const urgente = chequeos.slice().sort((a,b) => a.restante - b.restante)[0];
+    const item = { nombre, esGrua, u, chequeos, urgente };
+    if (urgente.estado === 'ok') alDia.push(item); else filas.push(item);
+  };
+  _flotaVehiculos.forEach(v => evaluar(v, false));
+  _flotaGruas.forEach(g => evaluar(g, true));
+
+  // Vencidos primero, después próximos, cada grupo por urgencia
+  filas.sort((a,b) => (a.urgente.estado === b.urgente.estado)
+    ? a.urgente.restante - b.urgente.restante
+    : (a.urgente.estado === 'vencido' ? -1 : 1));
+
+  if (!_flotaVehiculos.length && !_flotaGruas.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Cargá vehículos o grúas para ver sus alarmas de service.</div>';
+    return;
+  }
+
+  const chip = (c) => {
+    const color = c.estado === 'vencido' ? 'var(--danger)' : (c.estado === 'proximo' ? 'var(--warning)' : 'var(--accent)');
+    const txt = c.estado === 'vencido'
+      ? `Vencido por ${Math.abs(Math.round(c.restante)).toLocaleString('es-AR')} ${c.unidad}`
+      : `Faltan ${Math.round(c.restante).toLocaleString('es-AR')} ${c.unidad}`;
+    return `<span style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid ${color};color:${color};margin-right:5px">${txt}${c.sinService?' *':''}</span>`;
+  };
+
+  cont.innerHTML = `
+    ${filas.length ? filas.map(f => {
+      const esVencido = f.urgente.estado === 'vencido';
+      const borde = esVencido ? 'var(--danger)' : 'var(--warning)';
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid ${borde};border-radius:10px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-weight:600;font-size:14px">${esVencido?'🔴':'🟡'} ${escHtml(f.nombre)}</div>
+            <div style="font-size:11px;color:var(--text3);margin:4px 0 6px">
+              ${f.esGrua ? `${(f.u.horasActuales||0).toLocaleString('es-AR')} hs` : `${(f.u.kmActual||0).toLocaleString('es-AR')} km${(f.u.horasMotorActual)?` · ${f.u.horasMotorActual.toLocaleString('es-AR')} hs motor`:''}`}
+              ${f.u.ultimoServiceFecha?` · último service: ${new Date(f.u.ultimoServiceFecha+'T12:00:00').toLocaleDateString('es-AR')}`:''}
+            </div>
+            <div>${f.chequeos.map(chip).join('')}</div>
+          </div>
+          <button class="btn-ghost small" style="white-space:nowrap" onclick="abrirEventoFlota('${f.esGrua?'grua':'vehiculo'}','${f.u.fbId}')">🔧 Registrar</button>
+        </div>
+      </div>`;
+    }).join('') : '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center;color:var(--accent);font-size:13px;margin-bottom:10px">✓ No hay services pendientes</div>'}
+
+    ${alDia.length ? `<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px">Al día (${alDia.length})</div>
+      ${alDia.map(f => `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-size:13px">🟢 ${escHtml(f.nombre)}</div>
+        <div style="font-size:11px;color:var(--text3);text-align:right">${f.chequeos.map(c => `Faltan ${Math.round(c.restante).toLocaleString('es-AR')} ${c.unidad}`).join(' · ')}</div>
+      </div>`).join('')}` : ''}
+
+    ${sinDatos.length ? `<div style="font-size:11px;color:var(--text3);margin-top:12px">Sin intervalo de service configurado: ${sinDatos.map(escHtml).join(', ')}. Configuralo en Parámetros.</div>` : ''}
+
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.6">
+      Se avisa con ${p.alarmas?.margenKm ?? 1000} km / ${p.alarmas?.margenHoras ?? 100} hs de anticipación (editable en Parámetros).<br>
+      Las unidades con hidrogrúa se controlan por km <em>y</em> por horas de motor: manda lo que se cumpla primero.<br>
+      <span style="opacity:.7">* Sin service registrado: se cuenta desde el alta de la unidad.</span>
+    </div>`;
 }
 
 // ── Alta / edición de vehículo ──
@@ -3183,6 +3311,7 @@ function editarVehiculo(fbId) {
       ${inp('fv-anio','Año', v.anio, 'number', '2023')}
       ${inp('fv-km-inicial','Km inicial', v.kmInicial, 'number')}
       ${inp('fv-km-actual','Km actual', v.kmActual ?? v.kmInicial, 'number')}
+      ${inp('fv-horas-motor','Horas de motor', v.horasMotorActual, 'number', 'Solo si el service es por hs')}
       ${inp('fv-valor','Valor de compra $', v.valorCompra, 'number')}
       ${inp('fv-fecha-alta','Fecha de alta', v.fechaAlta || new Date().toISOString().slice(0,10), 'date')}
       ${inp('fv-seguro','Seguro $/mes', v.seguroMensual, 'number')}
@@ -3221,6 +3350,7 @@ async function guardarVehiculo(fbId) {
     marca: val('fv-marca'), modelo: val('fv-modelo'), patente,
     anio: val('fv-anio'),
     kmInicial: num('fv-km-inicial'), kmActual: num('fv-km-actual') || num('fv-km-inicial'),
+    horasMotorActual: num('fv-horas-motor'),
     valorCompra: num('fv-valor'),
     fechaAlta: val('fv-fecha-alta'),
     seguroMensual: num('fv-seguro'), patenteAnual: num('fv-patente-costo'),
@@ -3429,6 +3559,8 @@ function abrirEventoFlota(tipoRef, refId) {
   const tipoComb = esGrua ? null : (ref.combustible || 'gasoil');
   window._flotaEventoPrecioComb = tipoComb ? (p.combustible?.[tipoComb] || 0) : 0;
   window._flotaEventoTipoComb = tipoComb;
+  // ¿Este vehículo evalúa service también por horas de motor? (unidades con grúa)
+  window._flotaEventoUsaHoras = !esGrua && ((p.tiposVehiculo[ref.tipo]?.serviceHoras || 0) > 0);
   flotaEventoSetTipo(tiposEvento[0][0]);
   openModalFlota();
 }
@@ -3447,6 +3579,9 @@ function flotaEventoSetTipo(tipo) {
     `<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
      <input type="${type}" id="${id}" placeholder="${ph}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px"></div>`;
   const lecturaCampo = inp('fe-lectura', `Lectura de ${unidad} (odómetro/horómetro)`, 'number', `Ej: ${esGrua?'1200':'85000'}`);
+  // Vehículos con criterio por horas (unidades con hidrogrúa): campo extra de horas de motor
+  const usaHoras = window._flotaEventoUsaHoras;
+  const horasMotorCampo = usaHoras ? inp('fe-horas-motor','Horas de motor','number','Ej: 1250') : '';
 
   let html = '';
   if (tipo === 'combustible') {
@@ -3469,12 +3604,14 @@ function flotaEventoSetTipo(tipo) {
     html = `
       ${inp('fe-monto','Costo del service $ *','number')}
       ${lecturaCampo}
+      ${horasMotorCampo}
       ${inp('fe-desc','Trabajos realizados *','text')}
-      ${inp('fe-proximo', `Próximo service (${unidad})`, 'number', 'Ej: dentro de 10000')}`;
+      ${inp('fe-proximo', `Próximo service: cada cuántos ${unidad} (opcional)`, 'number', 'Vacío = usa el intervalo del tipo')}
+      ${usaHoras ? inp('fe-proximo-hs','Próximo service: cada cuántas horas de motor (opcional)','number','Vacío = usa el intervalo del tipo') : ''}`;
   } else if (tipo === 'averia' || tipo === 'reparacion') {
-    html = `${inp('fe-monto','Costo $','number')}${lecturaCampo}${inp('fe-desc','Descripción de la ' + (tipo==='averia'?'avería':'reparación') + ' *','text')}`;
+    html = `${inp('fe-monto','Costo $','number')}${lecturaCampo}${horasMotorCampo}${inp('fe-desc','Descripción de la ' + (tipo==='averia'?'avería':'reparación') + ' *','text')}`;
   } else if (tipo === 'lectura') {
-    html = lecturaCampo;
+    html = lecturaCampo + horasMotorCampo;
   }
   campos.innerHTML = html;
 }
@@ -3525,14 +3662,18 @@ async function guardarEventoFlota(tipoRef, refId) {
   // Lectura de km/horas
   const lectura = num('fe-lectura');
   if (lectura) evento[esGrua ? 'horas' : 'km'] = lectura;
+  // Horas de motor (vehículos con criterio por horas)
+  const horasMotor = num('fe-horas-motor');
+  if (horasMotor) evento.horasMotor = horasMotor;
   // Campos de combustible
   if (tipo === 'combustible') {
     evento.litros = num('fe-litros');
     evento.precioLitro = num('fe-precio-litro');
   }
   // Próximo service
-  if (tipo === 'service' && num('fe-proximo')) {
-    evento.proximoService = num('fe-proximo');
+  if (tipo === 'service') {
+    if (num('fe-proximo')) evento.proximoService = num('fe-proximo');
+    if (num('fe-proximo-hs')) evento.proximoServiceHoras = num('fe-proximo-hs');
   }
 
   try {
@@ -3554,10 +3695,18 @@ async function guardarEventoFlota(tipoRef, refId) {
         if (v && lectura > (v.kmActual || 0)) await fbSaveFlotaVehiculo({ fbId: refId, kmActual: lectura });
       }
     }
+    // Actualizar horas de motor del vehículo (unidades con grúa)
+    if (horasMotor && !esGrua) {
+      const v = _flotaVehiculos.find(x => x.fbId === refId);
+      if (v && horasMotor > (v.horasMotorActual || 0)) await fbSaveFlotaVehiculo({ fbId: refId, horasMotorActual: horasMotor });
+    }
     // Registrar el último service para las alarmas
-    if (tipo === 'service' && lectura) {
-      const patch = { ultimoServiceEn: lectura, ultimoServiceFecha: fecha };
+    if (tipo === 'service') {
+      const patch = { ultimoServiceFecha: fecha };
+      if (lectura) patch.ultimoServiceEn = lectura;
       if (num('fe-proximo')) patch.proximoServiceEn = num('fe-proximo');
+      if (horasMotor) patch.ultimoServiceHoras = horasMotor;
+      if (num('fe-proximo-hs')) patch.proximoServiceHorasEn = num('fe-proximo-hs');
       if (esGrua) await fbSaveFlotaGrua({ fbId: refId, ...patch });
       else await fbSaveFlotaVehiculo({ fbId: refId, ...patch });
     }
@@ -9068,7 +9217,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '14.07.2026-v264'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '14.07.2026-v265'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
