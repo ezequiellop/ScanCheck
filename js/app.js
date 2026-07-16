@@ -2988,6 +2988,16 @@ const FLOTA_PARAMS_DEFAULT = {
   combustible: { nafta: 0, gasoil: 0, actualizado: '' }, // precio $/litro, editable
   // Anticipación con la que se avisa el próximo service
   alarmas: { margenKm: 1000, margenHoras: 100 },
+  // Documentación con vencimiento. Cada unidad guarda la fecha en documentos[id].
+  // margenDias = con cuánta anticipación avisar. aplicaA: vehiculo | grua | ambos.
+  documentos: [
+    { id: 'vtv',         label: 'VTV',                    aplicaA: 'vehiculo', margenDias: 30 },
+    { id: 'seguro',      label: 'Seguro (póliza)',        aplicaA: 'vehiculo', margenDias: 30 },
+    { id: 'patente',     label: 'Patente / impuesto',     aplicaA: 'vehiculo', margenDias: 15 },
+    { id: 'matafuegos',  label: 'Matafuegos',             aplicaA: 'ambos',    margenDias: 30 },
+    { id: 'ruta',        label: 'RUTA',                   aplicaA: 'vehiculo', margenDias: 30 },
+    { id: 'certif_grua', label: 'Certificación de grúa',  aplicaA: 'grua',     margenDias: 30 },
+  ],
 };
 let _flotaParams = null;
 let _flotaVehiculos = [];
@@ -3090,8 +3100,74 @@ function renderFlotaParametros() {
       </div>
       <div style="font-size:10px;color:var(--text3);margin-top:6px">Actualización manual. A futuro se automatizará con precios de referencia YPF.</div>
     </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <h3 style="margin:0 0 4px">Documentación con vencimiento</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">La fecha de cada documento se carga en la ficha de cada unidad. Acá definís qué documentos se controlan y con cuánta anticipación avisar.</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:420px">
+          <tr style="text-align:left">
+            <th style="font-size:10px;color:var(--text3);padding:4px">Documento</th>
+            <th style="font-size:10px;color:var(--text3);padding:4px">Aplica a</th>
+            <th style="font-size:10px;color:var(--text3);padding:4px">Avisar (días)</th>
+            <th style="padding:4px"></th>
+          </tr>
+          ${(p.documentos||[]).map((d,i) => `
+            <tr>
+              <td style="padding:4px"><input type="text" id="fp-doc-${i}-label" value="${escHtml(d.label)}" style="width:100%;min-width:130px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+              <td style="padding:4px">
+                <select id="fp-doc-${i}-aplica" style="padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+                  <option value="vehiculo" ${d.aplicaA==='vehiculo'?'selected':''}>Vehículo</option>
+                  <option value="grua" ${d.aplicaA==='grua'?'selected':''}>Grúa</option>
+                  <option value="ambos" ${d.aplicaA==='ambos'?'selected':''}>Ambos</option>
+                </select>
+              </td>
+              <td style="padding:4px"><input type="number" id="fp-doc-${i}-margen" value="${d.margenDias||30}" style="width:60px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px"></td>
+              <td style="padding:4px"><button class="btn-ghost small" style="color:var(--danger);padding:3px 7px" onclick="quitarDocumentoParam(${i})">✕</button></td>
+            </tr>`).join('')}
+        </table>
+      </div>
+      <button class="btn-ghost small" style="margin-top:8px" onclick="agregarDocumentoParam()">➕ Agregar documento</button>
+    </div>
     <button class="btn-primary" style="width:100%" onclick="guardarFlotaParametros()">Guardar parámetros</button>`;
 }
+
+// Lee los documentos tal como están en el formulario (para no perder ediciones
+// al agregar o quitar filas, que obligan a redibujar).
+function _leerDocumentosDelForm() {
+  const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
+  return (p.documentos||[]).map((d,i) => {
+    const label = (document.getElementById(`fp-doc-${i}-label`)?.value || d.label || '').trim();
+    return {
+      // El id se mantiene si ya existía (para no perder las fechas cargadas);
+      // si es nuevo, se genera a partir del nombre.
+      id: d.id || label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || ('doc_' + Date.now()),
+      label,
+      aplicaA: document.getElementById(`fp-doc-${i}-aplica`)?.value || d.aplicaA || 'vehiculo',
+      margenDias: parseInt(document.getElementById(`fp-doc-${i}-margen`)?.value) || 30,
+    };
+  }).filter(d => d.label);
+}
+
+function agregarDocumentoParam() {
+  const p = _flotaParams || JSON.parse(JSON.stringify(FLOTA_PARAMS_DEFAULT));
+  p.documentos = _leerDocumentosDelForm();
+  p.documentos.push({ id: '', label: 'Nuevo documento', aplicaA: 'vehiculo', margenDias: 30 });
+  _flotaParams = p;
+  renderFlotaParametros();
+}
+window.agregarDocumentoParam = agregarDocumentoParam;
+
+function quitarDocumentoParam(i) {
+  const p = _flotaParams || JSON.parse(JSON.stringify(FLOTA_PARAMS_DEFAULT));
+  const docs = _leerDocumentosDelForm();
+  const doc = docs[i];
+  if (doc && !confirm(`¿Quitar "${doc.label}" del control de vencimientos?\n\nLas fechas ya cargadas en las unidades no se borran, pero dejan de controlarse.`)) return;
+  docs.splice(i, 1);
+  p.documentos = docs;
+  _flotaParams = p;
+  renderFlotaParametros();
+}
+window.quitarDocumentoParam = quitarDocumentoParam;
 
 async function guardarFlotaParametros() {
   const num = id => parseFloat(document.getElementById(id)?.value) || 0;
@@ -3109,6 +3185,7 @@ async function guardarFlotaParametros() {
   p.grua.serviceHoras = num('fp-grua-svchs');
   p.alarmas = { margenKm: num('fp-margen-km'), margenHoras: num('fp-margen-hs') };
   p.combustible = { nafta: num('fp-nafta'), gasoil: num('fp-gasoil'), actualizado: new Date().toISOString() };
+  p.documentos = _leerDocumentosDelForm();
   try {
     await fbSaveFlotaParametros(p);
     _flotaParams = p;
@@ -3479,6 +3556,10 @@ function buildFlotaExportRows(p) {
     '$/u combustible', '$/u service+reparaciones', '$/u amortización', '$/u fijos', '$/u TOTAL',
     'Último service', 'Eventos registrados', 'Actualizado'
   ];
+  // Columnas de vencimiento: una por cada documento configurado
+  const docsCols = (p.documentos || []);
+  docsCols.forEach(d => headers.push(`Vence ${d.label}`));
+  docsCols.forEach(d => headers.push(`Días ${d.label}`));
   const rows = [headers];
   const ahora = new Date().toLocaleString('es-AR');
 
@@ -3487,7 +3568,9 @@ function buildFlotaExportRows(p) {
     const t = esGrua ? (p.grua || {}) : (p.tiposVehiculo?.[u.tipo] || {});
     const grua = !esGrua && u.gruaId ? _flotaGruas.find(g => g.fbId === u.gruaId) : null;
     const r2 = n => Math.round(n * 100) / 100;
-    rows.push([
+    const chkDocs = calcChequeosDocumentos(u, esGrua, p);
+    const porId = {}; chkDocs.forEach(c2 => { porId[c2.id] = c2; });
+    const fila = [
       esGrua ? 'Hidrogrúa' : (t.label || u.tipo || ''),
       esGrua ? (u.codigo || '') : (u.patente || ''),
       u.marca || '', u.modelo || '', esGrua ? '' : (u.anio || ''),
@@ -3509,7 +3592,11 @@ function buildFlotaExportRows(p) {
       r2(c.recorrido ? (c.porTipo.service + c.porTipo.averia + c.porTipo.reparacion) / c.recorrido : 0),
       r2(c.amortPorUso), r2(c.fijosPorUso), r2(c.totalPorUso),
       u.ultimoServiceFecha || '', c.eventos, ahora
-    ]);
+    ];
+    // Fecha de vencimiento y días restantes de cada documento
+    docsCols.forEach(d => fila.push(porId[d.id]?.fecha || ''));
+    docsCols.forEach(d => fila.push(porId[d.id]?.dias ?? ''));
+    rows.push(fila);
   };
   _flotaVehiculos.forEach(v => agregar(v, false));
   _flotaGruas.forEach(g => agregar(g, true));
@@ -3553,7 +3640,8 @@ async function exportarFlotaSheets() {
     const token = await getGoogleAccessToken();
 
     const escribir = async (hoja, rows) => {
-      const clear = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent(hoja + '!A:AZ')}:clear`, {
+      // Rango amplio: la hoja Flota DND crece si se agregan tipos de documento
+      const clear = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${encodeURIComponent(hoja + '!A:CZ')}:clear`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
@@ -3634,6 +3722,7 @@ function renderFlotaAlarmas() {
   };
 
   cont.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">🔧 Service</div>
     ${filas.length ? filas.map(f => {
       const esVencido = f.urgente.estado === 'vencido';
       const borde = esVencido ? 'var(--danger)' : 'var(--warning)';
@@ -3664,6 +3753,75 @@ function renderFlotaAlarmas() {
       Se avisa con ${p.alarmas?.margenKm ?? 1000} km / ${p.alarmas?.margenHoras ?? 100} hs de anticipación (editable en Parámetros).<br>
       Las unidades con hidrogrúa se controlan por km <em>y</em> por horas de motor: manda lo que se cumpla primero.<br>
       <span style="opacity:.7">* Sin service registrado: se cuenta desde el alta de la unidad.</span>
+    </div>
+
+    ${renderAlarmasDocumentos(p)}`;
+}
+
+// Estado de la documentación de una unidad (VTV, seguro, patente, etc.).
+// Se controla por fecha: la anticipación de cada documento se define en Parámetros.
+function calcChequeosDocumentos(u, esGrua, p) {
+  const aplica = esGrua ? 'grua' : 'vehiculo';
+  const docs = (p.documentos || []).filter(d => d.aplicaA === aplica || d.aplicaA === 'ambos');
+  const hoy = new Date(); hoy.setHours(12,0,0,0); // mediodía, igual que el ancla del vencimiento: así los días dan exactos
+  return docs.map(d => {
+    const fecha = u.documentos?.[d.id];
+    if (!fecha) return { id: d.id, label: d.label, sinFecha: true, estado: 'sin_dato' };
+    const venc = new Date(fecha + 'T12:00:00');
+    const dias = Math.round((venc - hoy) / (1000 * 60 * 60 * 24));
+    const margen = d.margenDias || 30;
+    const estado = dias < 0 ? 'vencido' : (dias <= margen ? 'proximo' : 'ok');
+    return { id: d.id, label: d.label, fecha, dias, estado, margen };
+  });
+}
+
+function renderAlarmasDocumentos(p) {
+  if (!(p.documentos || []).length) return '';
+  const conAlarma = [];
+  let sinCargar = 0, alDia = 0;
+
+  const evaluar = (u, esGrua) => {
+    const nombre = esGrua ? (u.codigo || 'Grúa') : `${u.patente} — ${u.marca} ${u.modelo}`;
+    const chequeos = calcChequeosDocumentos(u, esGrua, p);
+    const alertas = chequeos.filter(c => c.estado === 'vencido' || c.estado === 'proximo');
+    sinCargar += chequeos.filter(c => c.estado === 'sin_dato').length;
+    alDia += chequeos.filter(c => c.estado === 'ok').length;
+    if (alertas.length) {
+      const urgente = alertas.slice().sort((a,b) => a.dias - b.dias)[0];
+      conAlarma.push({ nombre, esGrua, u, alertas, urgente });
+    }
+  };
+  _flotaVehiculos.forEach(v => evaluar(v, false));
+  _flotaGruas.forEach(g => evaluar(g, true));
+
+  conAlarma.sort((a,b) => a.urgente.dias - b.urgente.dias);
+
+  const chip = (c) => {
+    const color = c.estado === 'vencido' ? 'var(--danger)' : 'var(--warning)';
+    const txt = c.estado === 'vencido'
+      ? `${escHtml(c.label)}: vencido hace ${Math.abs(c.dias)} días`
+      : `${escHtml(c.label)}: vence en ${c.dias} días`;
+    return `<span style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid ${color};color:${color};margin:0 5px 4px 0">${txt}</span>`;
+  };
+
+  return `
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:20px 0 8px">📄 Documentación</div>
+    ${conAlarma.length ? conAlarma.map(f => {
+      const esVencido = f.urgente.estado === 'vencido';
+      const borde = esVencido ? 'var(--danger)' : 'var(--warning)';
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid ${borde};border-radius:10px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">${esVencido?'🔴':'🟡'} ${escHtml(f.nombre)}</div>
+            <div style="margin-top:6px">${f.alertas.map(chip).join('')}</div>
+          </div>
+          <button class="btn-ghost small" style="white-space:nowrap" onclick="${f.esGrua?'editarGrua':'editarVehiculo'}('${f.u.fbId}')">✏️ Actualizar</button>
+        </div>
+      </div>`;
+    }).join('') : '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center;color:var(--accent);font-size:13px">✓ No hay documentación por vencer</div>'}
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">
+      ${alDia} documento${alDia===1?'':'s'} al día${sinCargar?` · ${sinCargar} sin fecha cargada (no se controlan)`:''}.
+      Los tipos de documento y su anticipación se configuran en Parámetros.
     </div>`;
 }
 
@@ -3860,6 +4018,34 @@ window.actualizarContadoresGeotab = actualizarContadoresGeotab;
 // ── FIN INTEGRACIÓN GEOTAB ────────────────────────────────────
 
 // ── Alta / edición de vehículo ──
+// Campos de vencimiento de documentación, según los tipos definidos en Parámetros.
+function _docsHtml(p, aplicaA, valores) {
+  const docs = (p.documentos || []).filter(d => d.aplicaA === aplicaA || d.aplicaA === 'ambos');
+  if (!docs.length) return '';
+  return `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Vencimientos</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${docs.map(d => `
+        <div style="margin-bottom:6px">
+          <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${escHtml(d.label)}</label>
+          <input type="date" id="fdoc-${d.id}" value="${escHtml(valores[d.id] || '')}"
+            style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// Lee las fechas de vencimiento del formulario abierto.
+function _leerDocs(p, aplicaA) {
+  const docs = (p.documentos || []).filter(d => d.aplicaA === aplicaA || d.aplicaA === 'ambos');
+  const out = {};
+  docs.forEach(d => {
+    const val = document.getElementById(`fdoc-${d.id}`)?.value;
+    if (val) out[d.id] = val;
+  });
+  return out;
+}
+
 function editarVehiculo(fbId) {
   const p = _flotaParams || FLOTA_PARAMS_DEFAULT;
   const v = fbId ? _flotaVehiculos.find(x => x.fbId === fbId) : {};
@@ -3901,6 +4087,8 @@ function editarVehiculo(fbId) {
       </select></div>
     <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Hidrogrúa asignada</label>
       <select id="fv-grua" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${gruasOpts}</select></div>
+
+    ${_docsHtml(p, 'vehiculo', v.documentos || {})}
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cancelar</button>
       ${!esNuevo?`<button class="btn-ghost" style="color:var(--danger)" onclick="borrarVehiculo('${fbId}')">🗑️</button>`:''}
@@ -3933,6 +4121,7 @@ async function guardarVehiculo(fbId) {
     seguroMensual: num('fv-seguro'), patenteAnual: num('fv-patente-costo'),
     gruaId,
     estado: 'activo',
+    documentos: _leerDocs(_flotaParams || FLOTA_PARAMS_DEFAULT, 'vehiculo'),
   };
   if (fbId) vehiculo.fbId = fbId;
   try {
@@ -4015,6 +4204,8 @@ function editarGrua(fbId) {
       <select id="fg-fuente" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${fuenteOpts}</select></div>
     <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Vehículo asignado</label>
       <select id="fg-vehiculo" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${vehOpts}</select></div>
+
+    ${_docsHtml(_flotaParams || FLOTA_PARAMS_DEFAULT, 'grua', g.documentos || {})}
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn-ghost" style="flex:1" onclick="closeModal('modal-flota')">Cancelar</button>
       ${!esNuevo?`<button class="btn-ghost" style="color:var(--danger)" onclick="borrarGrua('${fbId}')">🗑️</button>`:''}
@@ -4038,6 +4229,7 @@ async function guardarGrua(fbId) {
     valorCompra: num('fg-valor'), fechaAlta: val('fg-fecha-alta'),
     fuenteHoras: val('fg-fuente'),
     vehiculoId: nuevoVehiculoId,
+    documentos: _leerDocs(_flotaParams || FLOTA_PARAMS_DEFAULT, 'grua'),
   };
   // Historial de asignaciones: si cambió el vehículo, registrarlo
   const historial = (gruaPrevia?.historialAsignaciones || []).slice();
@@ -9794,7 +9986,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '15.07.2026-v268'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '15.07.2026-v269'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
