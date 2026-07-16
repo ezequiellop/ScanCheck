@@ -8669,7 +8669,15 @@ async function buildReportPDFDoc(rep) {
     doc.setFontSize(7); doc.setTextColor(180,200,210);
     doc.text('ScanCheck — Danaide Enterprise  |  '+new Date().toLocaleString('es-AR'), W/2, 283, {align:'center'});
 
-    return { doc, filename: 'informe-scancheck-'+rep.date+'.pdf' };
+    // El nombre incluye al técnico: en un paso donde trabajan varios el mismo
+    // día con el mismo ticket, los PDF se adjuntan al mismo Jira y con solo la
+    // fecha quedarían dos archivos idénticos en el nombre, imposibles de
+    // distinguir sin abrirlos.
+    const tecnicoSlug = (rep.technicianName || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // saca acentos
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const filename = 'informe-scancheck-' + rep.date + (tecnicoSlug ? '-' + tecnicoSlug : '') + '.pdf';
+    return { doc, filename };
 
   } catch(e) {
     console.error('PDF error:', e);
@@ -9067,10 +9075,13 @@ async function sendToJira() {
           .trim();
       } catch(e) {}
 
-      const bloqueNuevo = `Fecha: ${dateLabel}\nDispositivos atendidos: ${scans.length}\nInspector DNM: ${rep.inspectorName}`;
+      // Cada bloque identifica a su técnico: en un paso pueden trabajar varios
+      // el mismo día contra el mismo ticket, y sin el nombre no se sabría quién
+      // hizo qué (el encabezado inicial solo nombra al primero).
+      const bloqueNuevo = `Fecha: ${dateLabel}\nTécnico: ${rep.technicianName}\nDispositivos atendidos: ${scans.length}\nInspector DNM: ${rep.inspectorName}`;
       const descripcionFinal = textoPrevio
         ? `${textoPrevio}\n\n— — —\n\n${bloqueNuevo}`
-        : `[ScanCheck] Informe cargado automáticamente\nTécnico: ${rep.technicianName}\n\n${bloqueNuevo}`;
+        : `[ScanCheck] Informe cargado automáticamente\n\n${bloqueNuevo}`;
 
       const updateRes = await jiraCall(`/rest/api/3/issue/${parentKey}`, {
         fields: { description: mkDoc(descripcionFinal) }
@@ -9079,9 +9090,14 @@ async function sendToJira() {
         console.warn('No se pudo actualizar la descripción del ticket existente:', await updateRes.text());
       }
 
-      // Asignar al técnico si se resolvió el accountId
-      if (assigneeAccountId) {
+      // Asignar SOLO si el ticket todavía no tiene responsable. Si ya lo tiene
+      // (por ejemplo, el primer técnico que cargó su informe), no se lo quitamos:
+      // los demás quedan identificados igual en la descripción y en sus subtareas.
+      const yaAsignado = !!ticketData.fields?.assignee;
+      if (assigneeAccountId && !yaAsignado) {
         await jiraCall(`/rest/api/3/issue/${parentKey}`, { fields: { assignee: { id: assigneeAccountId } } }, 'PUT');
+      } else if (yaAsignado) {
+        console.log('Ticket ya asignado a', ticketData.fields.assignee.displayName, '— no se reasigna.');
       }
 
       showToast(`Usando ticket existente: ${parentKey}`, 'success');
@@ -9986,7 +10002,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '15.07.2026-v269'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '16.07.2026-v270'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
