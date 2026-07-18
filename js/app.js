@@ -4030,7 +4030,7 @@ async function confirmarImportGeotab() {
         kmActual: u.odometroKm ?? 0,
         horasMotorActual: u.horasMotor ?? 0,
         valorCompra: 0,
-        fechaAlta: new Date().toISOString().slice(0,10),
+        fechaAlta: localDateKey(),
         seguroMensual: 0, patenteAnual: 0,
         combustible: 'gasoil',
         gruaId: null,
@@ -4140,7 +4140,7 @@ function editarVehiculo(fbId) {
       ${inp('fv-km-actual','Km actual', v.kmActual ?? v.kmInicial, 'number')}
       ${inp('fv-horas-motor','Horas de motor', v.horasMotorActual, 'number', 'Solo si el service es por hs')}
       ${inp('fv-valor','Valor de compra $', v.valorCompra, 'number')}
-      ${inp('fv-fecha-alta','Fecha de alta', v.fechaAlta || new Date().toISOString().slice(0,10), 'date')}
+      ${inp('fv-fecha-alta','Fecha de alta', v.fechaAlta || localDateKey(), 'date')}
       ${inp('fv-seguro','Seguro $/mes', v.seguroMensual, 'number')}
       ${inp('fv-patente-costo','Patente $/año', v.patenteAnual, 'number')}
     </div>
@@ -4262,7 +4262,7 @@ function editarGrua(fbId) {
       ${inp('fg-horas-inicial','Horas iniciales', g.horasIniciales, 'number')}
       ${inp('fg-horas-actual','Horas actuales', g.horasActuales ?? g.horasIniciales, 'number')}
       ${inp('fg-valor','Valor de compra $', g.valorCompra, 'number')}
-      ${inp('fg-fecha-alta','Fecha de alta', g.fechaAlta || new Date().toISOString().slice(0,10), 'date')}
+      ${inp('fg-fecha-alta','Fecha de alta', g.fechaAlta || localDateKey(), 'date')}
     </div>
     <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Fuente de horas de uso *</label>
       <select id="fg-fuente" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">${fuenteOpts}</select></div>
@@ -4384,7 +4384,7 @@ function abrirEventoFlota(tipoRef, refId) {
       <button class="btn-primary" style="flex:2" onclick="guardarEventoFlota('${tipoRef}','${refId}')">Guardar evento</button>
     </div>`;
   // Fecha por defecto: hoy
-  document.getElementById('fe-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('fe-fecha').value = localDateKey();
   window._flotaEventoTipo = tiposEvento[0][0];
   window._flotaEventoEsGrua = esGrua;
   // Precio de combustible configurado según el tipo del vehículo (para autocompletar)
@@ -4911,7 +4911,7 @@ function showIniciarViaje() {
   if (viajeAbierto) { showToast('Ya tenés un viaje en curso — registrá la llegada primero','error'); return; }
 
   // Buscar viajes programados activos para hoy
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = localDateKey();
   const programadosHoy = localViajes.filter(v =>
     v.tipo === 'programacion' && !v.eliminado &&
     (v.estado === 'programado' || v.estado === 'en curso') &&
@@ -5341,11 +5341,12 @@ function _vtRender() {
         const fmtF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
         const icono = g.archivoPdf ? '📄' : (g.foto ? '📷' : '📝');
         return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="flex:1;min-width:0">
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="showCargarGasto(${i})">
             <div style="font-size:13px;font-weight:600;color:var(--text)">${icono} ${escHtml(g.concepto||'—')} · ${fmt(parseFloat(g.monto)||0)}</div>
             <div style="font-size:11px;color:var(--text3)">${fmtF} · Fac ${escHtml(g.tipo||'-')} N°${escHtml(g.nroFactura||'-')}${g.proyecto?' · '+escHtml(g.proyecto):''}</div>
           </div>
-          <button onclick="_vtEliminarGasto(${i})" style="background:transparent;border:none;color:rgba(238,85,51,.7);font-size:16px;cursor:pointer;flex-shrink:0">×</button>
+          <button onclick="showCargarGasto(${i})" title="Editar" style="background:transparent;border:none;color:var(--text3);font-size:14px;cursor:pointer;flex-shrink:0">✏️</button>
+          <button onclick="_vtEliminarGasto(${i})" title="Eliminar" style="background:transparent;border:none;color:rgba(238,85,51,.7);font-size:16px;cursor:pointer;flex-shrink:0">×</button>
         </div>`;
       }).join('');
 
@@ -5412,8 +5413,34 @@ window._vtEliminarGasto = _vtEliminarGasto;
 // ── Cargar gasto (modal) ──
 let _gastoTmp = null;
 
-function showCargarGasto() {
-  _gastoTmp = { fecha: new Date().toISOString().split('T')[0], tipo: 'B', tipoOtro: '', nroFactura: '', monto: '', concepto: 'Almuerzo', conceptoOtro: '', proyecto: '', foto: null, archivoPdf: null, archivoPdfNombre: '' };
+// Abre el modal para cargar un gasto nuevo, o para editar uno ya cargado si se
+// pasa su índice. Solo se puede editar mientras la rendición no se haya enviado.
+function showCargarGasto(editIndex) {
+  const gastoExistente = Number.isInteger(editIndex) ? _vt.gastos[editIndex] : null;
+  if (gastoExistente) {
+    const g = gastoExistente;
+    // El gasto guardado tiene tipo y concepto ya resueltos: si el técnico eligió
+    // "Otro", quedó el texto libre. Hay que volver a separarlos para que el
+    // formulario muestre el selector y el campo de texto en el estado correcto.
+    const esTipoFijo = ['A','B','C','M'].includes(g.tipo);
+    const esConceptoFijo = CONCEPTOS_VIATICO.includes(g.concepto);
+    _gastoTmp = {
+      fecha: g.fecha || localDateKey(),
+      tipo: esTipoFijo ? g.tipo : 'Otro',
+      tipoOtro: esTipoFijo ? '' : (g.tipo || ''),
+      nroFactura: g.nroFactura || '',
+      monto: g.monto || '',
+      concepto: esConceptoFijo ? g.concepto : 'Otros',
+      conceptoOtro: esConceptoFijo ? '' : (g.concepto || ''),
+      proyecto: g.proyecto || '',
+      foto: g.foto || null,
+      archivoPdf: g.archivoPdf || null,
+      archivoPdfNombre: g.archivoPdfNombre || '',
+      _editIndex: editIndex,
+    };
+  } else {
+    _gastoTmp = { fecha: localDateKey(), tipo: 'B', tipoOtro: '', nroFactura: '', monto: '', concepto: 'Almuerzo', conceptoOtro: '', proyecto: '', foto: null, archivoPdf: null, archivoPdfNombre: '', _editIndex: null };
+  }
   window._gastoTmp = _gastoTmp;
   document.getElementById('modal-gasto').classList.remove('hidden');
   _gastoRender();
@@ -5426,7 +5453,7 @@ function _gastoRender() {
   const g = _gastoTmp;
 
   el.innerHTML = `
-    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">➕ Cargar gasto</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">${_gastoTmp._editIndex != null ? '✏️ Editar gasto' : '➕ Cargar gasto'}</div>
 
     <div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:16px">
       <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">COMPROBANTE</div>
@@ -5491,7 +5518,7 @@ function _gastoRender() {
 
     <div style="display:flex;gap:10px;margin-top:16px">
       <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-gasto')">Cancelar</button>
-      <button class="btn-primary" style="flex:1" onclick="guardarGasto()">Guardar gasto</button>
+      <button class="btn-primary" style="flex:1" onclick="guardarGasto()">${_gastoTmp._editIndex != null ? 'Guardar cambios' : 'Guardar gasto'}</button>
     </div>`;
 }
 
@@ -5835,18 +5862,22 @@ function guardarGasto() {
   }
   const tipoFinal = g.tipo === 'Otro' ? g.tipoOtro.trim() : g.tipo;
   const conceptoFinal = g.concepto === 'Otros' ? g.conceptoOtro.trim() : g.concepto;
-  _vt.gastos.push({
+  const gastoFinal = {
     fecha: g.fecha, tipo: tipoFinal, nroFactura: g.nroFactura.trim(),
     monto: g.monto, concepto: conceptoFinal, proyecto: g.proyecto.trim(),
     foto: g.foto, archivoPdf: g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre,
-  });
+  };
+  const editando = g._editIndex != null && _vt.gastos[g._editIndex];
+  if (editando) _vt.gastos[g._editIndex] = gastoFinal;
+  else _vt.gastos.push(gastoFinal);
+
   const guardado = _vtPersistir();
   closeModal('modal-gasto');
   _vtRender();
   // Si no se pudo guardar, _vtPersistir ya avisó por qué: no lo tapamos con
   // un "✓ Gasto agregado" que haría creer al técnico que quedó a salvo.
   // El gasto igual queda en memoria, así que puede rendir sin perderlo.
-  if (guardado) showToast('✓ Gasto agregado', 'success');
+  if (guardado) showToast(editando ? '✓ Gasto actualizado' : '✓ Gasto agregado', 'success');
 }
 window.guardarGasto = guardarGasto;
 
@@ -5911,7 +5942,7 @@ window.rendirViaticos = rendirViaticos;
 
 // Prepara el ZIP y lo deja en window._vtZipListo
 async function _vtPrepararZip() {
-  const fechaStr = new Date().toISOString().split('T')[0];
+  const fechaStr = localDateKey();
   const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
   const xlsxBlob = _vtGenerarExcel();
   const zip = new JSZip();
@@ -6803,7 +6834,7 @@ function _pvGenerarPDF(paradasValidas, version=1) {
     doc.text(`ScanCheck — Danaide Enterprise · Página ${i} de ${totalPages}`, M + W / 2, 290, { align: 'center' });
   }
 
-  const fecha = new Date().toISOString().split('T')[0];
+  const fecha = localDateKey();
   const nombreArchivo = `Solicitud_Viaje_${_pv.proyecto.replace(/\s+/g,'-')}_v${version}_${fecha}.pdf`;
   doc.save(nombreArchivo);
   showToast('✓ PDF descargado', 'success');
@@ -10097,7 +10128,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '17.07.2026-v271'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '17.07.2026-v272'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -10221,7 +10252,7 @@ function deduplicateScans(allScans) {
 
   const map = new Map();
   normales.forEach(s => {
-    const day = s.timestamp ? new Date(s.timestamp).toISOString().slice(0,10) : 'sin-fecha';
+    const day = s.timestamp ? localDateKey(s.timestamp) : 'sin-fecha';
     const serie = (s.scannerSerie || '').trim();
     const contextKey = `${(s.paso||'').trim()}__${(s.pcNombre||'').trim()}__${(s.puesto||'').trim()}__${(s.serie||'').trim()}`;
     const key = serie
