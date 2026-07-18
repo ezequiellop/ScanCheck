@@ -5700,11 +5700,28 @@ function _gastoRender() {
     </div>`;
 }
 
+// Visor de imagen a pantalla completa (tap para cerrar). Sirve tanto para
+// base64 en memoria como para URLs de R2.
+function verFotoAmpliada(src) {
+  if (!src) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out';
+  ov.innerHTML = `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px">`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
+window.verFotoAmpliada = verFotoAmpliada;
+
 function _gastoPreviewHTML() {
   const g = _gastoTmp;
   const src = g.foto || g.fotoUrl;
-  if (src) return `<img src="${src}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border)">`;
-  if (g.archivoPdf || g.archivoPdfUrl) return `<div style="font-size:12px;color:var(--accent)">📄 ${escHtml(g.archivoPdfNombre||'documento.pdf')}</div>`;
+  if (src) return `<img src="${src}" onclick="verFotoAmpliada(_gastoTmp.foto || _gastoTmp.fotoUrl)" title="Tocar para ampliar" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border);cursor:zoom-in">`;
+  if (g.archivoPdf || g.archivoPdfUrl) {
+    const nombre = escHtml(g.archivoPdfNombre||'documento.pdf');
+    return g.archivoPdfUrl
+      ? `<div style="font-size:12px"><a href="${g.archivoPdfUrl}" target="_blank" style="color:var(--accent);text-decoration:underline">📄 ${nombre}</a></div>`
+      : `<div style="font-size:12px;color:var(--accent)">📄 ${nombre}</div>`;
+  }
   return '<div style="font-size:11px;color:var(--text3)">Sin comprobante adjunto</div>';
 }
 
@@ -10342,7 +10359,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v276'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v277'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
