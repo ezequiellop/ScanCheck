@@ -415,6 +415,47 @@ function loadLocalData() {
       scansSnapshot: (rep.scansSnapshot||[]).map(s => ({ ...s, photos: s.photos?.length ? s.photos : (photoCache[s.id]||photoCache[s.fbId]||[]) }))
     })) : [];
   } catch(e) { localReports = []; }
+  limpiarFotosLocalesViejas();
+}
+
+// Las fotos en base64 de cada scan quedaban en localStorage PARA SIEMPRE: no
+// había ni un removeItem en toda la app. Con hasta 10 fotos por registro
+// (~250 KB cada una), el espacio se agota en pocos días de trabajo y a partir
+// de ahí falla en silencio cualquier guardado nuevo — un gasto de viáticos, por
+// ejemplo. Una vez que las fotos están subidas a R2 (photoUrls) y el registro
+// tiene unos días, la copia local es redundante: la app ya muestra photoUrls
+// primero, tanto en la lista como en el detalle.
+// Se conservan las de los últimos días para poder verlas sin conexión.
+function limpiarFotosLocalesViejas(diasMin = 7) {
+  const limite = diasMin * 24 * 60 * 60 * 1000;
+  const ahora = Date.now();
+  const porId = {};
+  localScans.forEach(s => { if (s.id) porId[s.id] = s; if (s.fbId) porId[s.fbId] = s; });
+
+  const aBorrar = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith('scancheck_photos_')) continue;
+      const scan = porId[key.replace('scancheck_photos_', '')];
+      if (!scan) continue;                              // registro desconocido: no tocar
+      if (!(scan.photoUrls || []).length) continue;     // todavía no está en R2: no tocar
+      const ts = scan.timestamp ? new Date(scan.timestamp).getTime() : ahora;
+      if (ahora - ts < limite) continue;                // reciente: dejarlo para uso offline
+      aBorrar.push(key);
+    }
+  } catch(e) { return; }
+
+  let bytes = 0;
+  aBorrar.forEach(key => {
+    try {
+      bytes += (localStorage.getItem(key) || '').length;
+      localStorage.removeItem(key);
+    } catch(e) {}
+  });
+  if (aBorrar.length) {
+    console.log(`Limpieza: ${aBorrar.length} registros liberaron ~${(bytes/1048576).toFixed(1)} MB de fotos locales (siguen disponibles en R2).`);
+  }
 }
 
 async function loadMyData() {
@@ -473,6 +514,9 @@ async function loadMyData() {
 
   localScans.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
   localReports.sort((a,b) => new Date(b.createdAt||b.date||0) - new Date(a.createdAt||a.date||0));
+  // También acá: loadLocalData() solo corre sin conexión, así que la limpieza
+  // tiene que estar en los dos caminos o nunca se ejecutaría en uso normal.
+  limpiarFotosLocalesViejas();
 }
 
 function updateUserUI() {
@@ -1982,11 +2026,24 @@ function editScan(id) {
     const opBtn = document.querySelector(`.op-btn[data-op="${opKey}"]`);
     if (opBtn) setOpType(opKey, opBtn);
 
+    // Restaurar el SUBTIPO del registro, no el que quedó de la carga anterior.
+    // setOpType() reaplica la variable global (que arranca en 'instalacion_nueva'
+    // y 'cambio_equipo'), así que sin esto, al editar una "Instalación - Reemplazo"
+    // el formulario mostraba "Puesto nuevo", ocultaba los campos del equipo
+    // retirado, y al guardar el registro CAMBIABA de tipo perdiendo esos datos.
+    // Lo mismo pasaba al editar una "Falla reparable": se convertía en "Cambio de equipo".
+    if (opKey === 'instalacion' && (scan.opType === 'instalacion_nueva' || scan.opType === 'instalacion_reemplazo')) {
+      setInstalacionSubtipo(scan.opType);
+    } else if (opKey === 'incidencia' && (scan.opType === 'cambio_equipo' || scan.opType === 'falla_reparable')) {
+      setIncidenciaSubtipo(scan.opType);
+    }
+
     // Pre-completar campos
     const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
     setVal('inp-paso', scan.paso);
     setVal('inp-puesto', scan.puesto);
     setVal('inp-serie', scan.serie);
+    setVal('inp-pc-nombre', scan.pcNombre);
     setVal('inp-scanner-serie', scan.scannerSerie);
     setVal('inp-scanner-modelo', scan.scannerModelo);
     setVal('inp-notas', scan.notas);
@@ -2004,6 +2061,13 @@ function editScan(id) {
     if (scan.serieRetira) setVal('inp-serie-retira', scan.serieRetira);
     if (scan.serieNuevo)  setVal('inp-serie-nuevo',  scan.serieNuevo);
     if (scan.actaReemplazo?.nuevoMarcaModelo) setVal('inp-nuevo-marca-modelo', scan.actaReemplazo.nuevoMarcaModelo);
+
+    // Instalación con reemplazo: datos del equipo del contrato anterior que se
+    // retira. Sin esto, al reeditar quedaban vacíos y se pisaban al guardar.
+    if (scan.instalacionReemplazoData) {
+      setVal('inp-marca-vieja', scan.instalacionReemplazoData.marcaVieja);
+      setVal('inp-inst-serie-retira', scan.instalacionReemplazoData.serieVieja);
+    }
 
     // Restaurar datos del QR en variables globales y el preview
     if (scan.datosSistema) {
@@ -5237,8 +5301,29 @@ function showViaticos() {
 }
 window.showViaticos = showViaticos;
 
+// Guarda la rendición en curso. Devuelve true si se pudo guardar.
+// OJO: antes esto tenía un catch vacío y, cuando localStorage se llenaba
+// (las fotos de los tickets van en base64 y ocupan mucho), el gasto se perdía
+// sin que el técnico se enterara: cerraba la app y no estaba más.
 function _vtPersistir() {
-  try { localStorage.setItem('scancheck_viatico_activo_'+currentUser.id, JSON.stringify(_vt)); } catch(e) {}
+  try {
+    localStorage.setItem('scancheck_viatico_activo_'+currentUser.id, JSON.stringify(_vt));
+    return true;
+  } catch(e) {
+    console.error('No se pudo guardar la rendición:', e.name, e.message);
+    const sinEspacio = e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || /quota/i.test(e.message||'');
+    if (sinEspacio) {
+      showToast('⚠️ No hay espacio para guardar. Rendí los gastos que ya cargaste antes de seguir agregando.', 'error');
+    } else {
+      showToast('⚠️ No se pudo guardar el gasto: ' + e.message, 'error');
+    }
+    return false;
+  }
+}
+
+// Espacio aproximado que ocupa la rendición actual, en MB.
+function _vtPesoMB() {
+  try { return (JSON.stringify(_vt).length / 1048576); } catch(e) { return 0; }
 }
 
 function _vtRender() {
@@ -5690,10 +5775,17 @@ function _cropConfirmar() {
   const sw = (box.x2 - box.x1) / scale;
   const sh = (box.y2 - box.y1) / scale;
 
+  // Reducir a un máximo razonable: un ticket a 1600px se lee perfecto y pesa
+  // ~10 veces menos. Sin esto, el recorte salía a la resolución completa de la
+  // cámara (~2000x2800), daba >1 MB y en base64 ~1,4 MB: dos o tres gastos
+  // reventaban la cuota de localStorage y el gasto se perdía sin aviso.
+  const MAX_LADO = 1600;
+  const escalaOut = Math.min(1, MAX_LADO / Math.max(sw, sh));
   const out = document.createElement('canvas');
-  out.width = Math.round(sw);
-  out.height = Math.round(sh);
+  out.width = Math.round(sw * escalaOut);
+  out.height = Math.round(sh * escalaOut);
   const octx = out.getContext('2d');
+  octx.imageSmoothingQuality = 'high';
   octx.drawImage(tmp, sx, sy, sw, sh, 0, 0, out.width, out.height);
 
   // Exportar como JPEG con calidad razonable (comprime para no saturar R2)
@@ -5748,10 +5840,13 @@ function guardarGasto() {
     monto: g.monto, concepto: conceptoFinal, proyecto: g.proyecto.trim(),
     foto: g.foto, archivoPdf: g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre,
   });
-  _vtPersistir();
+  const guardado = _vtPersistir();
   closeModal('modal-gasto');
   _vtRender();
-  showToast('✓ Gasto agregado', 'success');
+  // Si no se pudo guardar, _vtPersistir ya avisó por qué: no lo tapamos con
+  // un "✓ Gasto agregado" que haría creer al técnico que quedó a salvo.
+  // El gasto igual queda en memoria, así que puede rendir sin perderlo.
+  if (guardado) showToast('✓ Gasto agregado', 'success');
 }
 window.guardarGasto = guardarGasto;
 
@@ -10002,7 +10097,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '16.07.2026-v270'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '17.07.2026-v271'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
