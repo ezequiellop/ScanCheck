@@ -532,6 +532,72 @@ export async function fbGetDeletedViaticos() {
   return snap.docs.map(d => ({ fbId: d.id, ...d.data() }));
 }
 
+// ── VIÁTICOS: gastos individuales (pendientes de rendir) ──────
+// Cada gasto/ticket se sincroniza apenas se carga, igual que los scanners.
+// Viven en la colección "viaticos_gastos" con rendido=false hasta que se
+// arma el informe de rendición; ahí se marcan como rendido=true.
+export async function fbSaveViaticoGasto(gasto) {
+  const ref = await addDoc(collection(db, "viaticos_gastos"), gasto);
+  return ref.id;
+}
+
+export async function fbUpdateViaticoGasto(fbId, fields) {
+  await updateDoc(doc(db, "viaticos_gastos", fbId), fields);
+}
+
+export async function fbDeleteViaticoGasto(fbId) {
+  await deleteDoc(doc(db, "viaticos_gastos", fbId));
+}
+
+// Trae los gastos del técnico que todavía no fueron rendidos. Filtra rendido/
+// eliminado del lado del cliente para no depender de un índice compuesto.
+export async function fbGetGastosPendientes(userId) {
+  const q = query(collection(db, "viaticos_gastos"), where("userId","==",userId));
+  const snap = await getDocsFromServer(q);
+  return snap.docs.map(d => ({ fbId: d.id, ...d.data() }))
+    .filter(g => !g.rendido && !g.eliminado)
+    .sort((a,b) => (a.creadoEn||'').localeCompare(b.creadoEn||''));
+}
+
+export async function fbMarcarGastosRendidos(fbIds, rendicionId) {
+  await Promise.all((fbIds||[]).map(id =>
+    updateDoc(doc(db, "viaticos_gastos", id), { rendido: true, rendicionId: rendicionId || null })
+      .catch(e => console.warn('No se pudo marcar gasto rendido', id, e.message))
+  ));
+}
+
+// Monto asignado de la rendición en curso (uno por técnico). Persiste el monto
+// para que no se pierda al limpiar memoria o cambiar de equipo.
+export async function fbSaveViaticoActivo(userId, data) {
+  await setDoc(doc(db, "viaticos_activos", userId), { ...data, actualizadoEn: serverTimestamp() }, { merge: true });
+}
+
+export async function fbGetViaticoActivo(userId) {
+  const snap = await getDoc(doc(db, "viaticos_activos", userId));
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function fbClearViaticoActivo(userId) {
+  await deleteDoc(doc(db, "viaticos_activos", userId));
+}
+
+// Monto de viáticos asignado para la rendición en curso del técnico. Un doc por
+// usuario en "viaticos_activos", para que sobreviva a limpiezas de memoria.
+export async function fbSetViaticoMonto(userId, montoAsignado) {
+  await setDoc(doc(db, "viaticos_activos", userId), {
+    userId, montoAsignado: montoAsignado ?? '', actualizadoEn: new Date().toISOString()
+  }, { merge: true });
+}
+
+export async function fbGetViaticoMonto(userId) {
+  const snap = await getDoc(doc(db, "viaticos_activos", userId));
+  return snap.exists() ? (snap.data().montoAsignado ?? '') : null;
+}
+
+export async function fbClearViaticoMonto(userId) {
+  await deleteDoc(doc(db, "viaticos_activos", userId)).catch(() => {});
+}
+
 // ── VIÁTICOS (rendiciones de gastos) ──────────────────────────
 export async function fbSaveServiceData(userId, data) {
   await updateDoc(doc(db, "users", userId), { serviceData: data });

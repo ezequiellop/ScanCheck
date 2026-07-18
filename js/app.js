@@ -12,6 +12,8 @@ import {
   fbSoftDeleteServiceReport, fbRestoreServiceReport, fbHardDeleteServiceReport, fbGetDeletedServiceReports,
   fbSaveViaticoRendicion, fbUpdateViaticoRendicion, fbGetMyViaticos, fbGetAllViaticos,
   fbSoftDeleteViatico, fbRestoreViatico, fbHardDeleteViatico, fbGetDeletedViaticos,
+  fbSaveViaticoGasto, fbUpdateViaticoGasto, fbDeleteViaticoGasto, fbGetGastosPendientes, fbMarcarGastosRendidos,
+  fbSaveViaticoActivo, fbGetViaticoActivo, fbClearViaticoActivo,
   fbGetFlotaParametros, fbSaveFlotaParametros,
   fbSaveFlotaVehiculo, fbGetFlotaVehiculos, fbDeleteFlotaVehiculo,
   fbSaveFlotaGrua, fbGetFlotaGruas, fbDeleteFlotaGrua,
@@ -574,6 +576,8 @@ const PASOS_COORDS = [
   { nombre: 'GUARDIA DE PUERTO',                       lat: -34.6100, lon: -58.3700, prov: 'BUENOS AIRES', pais: '-' },
   { nombre: 'PUERTO TIGRE',                            lat: -34.4333, lon: -58.5833, prov: 'BUENOS AIRES', pais: '-' },
   { nombre: 'TERMINAL DE CRUCEROS',                    lat: -34.6150, lon: -58.3650, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'BUQUEBUS',                                lat: -34.59760, lon: -58.36763, prov: 'BUENOS AIRES', pais: '-' },
+  { nombre: 'COLONIA EXPRESS',                         lat: -34.62502, lon: -58.36125, prov: 'BUENOS AIRES', pais: '-' },
   { nombre: 'Terminal Cruceros Pto.Madryn',             lat: -42.762279, lon: -65.025183, prov: 'CHUBUT', pais: '-' },
   { nombre: 'ANTARTIDA ARGENTINA - CAPACITACIONES',    lat: -34.6000, lon: -58.4500, prov: 'BUENOS AIRES', pais: '-' },
   { nombre: 'ANTARTIDA ARGENTINA - CONTROL MIGRATORIO',lat: -34.6000, lon: -58.4500, prov: 'BUENOS AIRES', pais: '-' },
@@ -5298,6 +5302,9 @@ function showViaticos() {
   window._vt = _vt;
   document.getElementById('modal-viaticos').classList.remove('hidden');
   _vtRender();
+  // Traer los gastos pendientes desde Firestore (sobreviven a limpiezas de
+  // memoria / cambio de día o de equipo) y reintentar sincronizar lo que falte.
+  _vtCargarPendientesRemotos();
 }
 window.showViaticos = showViaticos;
 
@@ -5307,7 +5314,19 @@ window.showViaticos = showViaticos;
 // sin que el técnico se enterara: cerraba la app y no estaba más.
 function _vtPersistir() {
   try {
-    localStorage.setItem('scancheck_viatico_activo_'+currentUser.id, JSON.stringify(_vt));
+    // Aligeramos el localStorage: si la foto/PDF ya están en R2 (tienen URL) no
+    // guardamos su base64 (que es lo que llenaba la cuota). Lo que TODAVÍA no
+    // subió conserva su base64 acá para no perderse si se cierra la app offline.
+    // Ojo: solo aligeramos la copia serializada; en memoria (_vt) el base64 se
+    // mantiene intacto para poder armar el ZIP al toque.
+    const gastosLite = (_vt.gastos || []).map(g => {
+      const c = { ...g };
+      if (g.fotoUrl && g.foto) c.foto = null;
+      if (g.archivoPdfUrl && g.archivoPdf) c.archivoPdf = null;
+      delete c._fotoCambiada;
+      return c;
+    });
+    localStorage.setItem('scancheck_viatico_activo_'+currentUser.id, JSON.stringify({ ..._vt, gastos: gastosLite }));
     return true;
   } catch(e) {
     console.error('No se pudo guardar la rendición:', e.name, e.message);
@@ -5324,6 +5343,158 @@ function _vtPersistir() {
 // Espacio aproximado que ocupa la rendición actual, en MB.
 function _vtPesoMB() {
   try { return (JSON.stringify(_vt).length / 1048576); } catch(e) { return 0; }
+}
+
+// ======== SYNC DE VIÁTICOS (igual que scanners) ========
+// Cada gasto se sube a R2 (foto/PDF) y se guarda en Firestore apenas se carga,
+// y queda disponible hasta que se arma la rendición. Diseño clave: el base64 se
+// mantiene SIEMPRE en memoria durante la sesión; solo se saca de la copia que va
+// al localStorage una vez que el archivo está confirmado en R2. Y antes de armar
+// el ZIP se rehidrata desde R2 cualquier comprobante que haya perdido su base64,
+// así las fotos NUNCA faltan en el ZIP.
+
+// Sube un dataURL (foto o PDF) a R2 reutilizando el worker de fotos. Devuelve la URL.
+async function _vtSubirArchivoR2(id, dataUrl, filename, contentType) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const up = await fetch(`${PHOTOS_PROXY_URL}/upload/${id}/${filename}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType, 'X-ScanCheck-Token': PHOTOS_TOKEN },
+    body: blob,
+  });
+  if (!up.ok) throw new Error('R2 upload ' + up.status);
+  const data = await up.json();
+  return data.url;
+}
+
+// Baja un archivo de R2 y lo devuelve como dataURL base64 (para rehidratar el ZIP).
+async function _vtDataUrlDesdeR2(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('R2 fetch ' + res.status);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+// Sincroniza UN gasto a R2 + Firestore. Idempotente: si ya tiene fbId, actualiza.
+// Si no hay conexión o falla, no rompe: el gasto queda en _vt/localStorage con su
+// base64 y se reintenta al reconectar o al reabrir viáticos.
+async function _vtSyncGasto(gasto) {
+  if (!gasto || !currentUser || !navigator.onLine) return;
+  try {
+    if (!gasto._id) gasto._id = 'vtgasto_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    // Foto → R2 (si hay base64 y falta subir o cambió)
+    if (gasto.foto && (!gasto.fotoUrl || gasto._fotoCambiada)) {
+      gasto.fotoUrl = await _vtSubirArchivoR2(gasto._id, gasto.foto, `ticket_${Date.now()}.jpg`, 'image/jpeg');
+      gasto._fotoCambiada = false;
+    }
+    // PDF → R2 (idem)
+    if (gasto.archivoPdf && (!gasto.archivoPdfUrl || gasto._fotoCambiada)) {
+      gasto.archivoPdfUrl = await _vtSubirArchivoR2(gasto._id, gasto.archivoPdf, `factura_${Date.now()}.pdf`, 'application/pdf');
+    }
+    // Doc → Firestore (colección viaticos_gastos)
+    const docData = {
+      userId: currentUser.id,
+      userName: currentUser.name || currentUser.email,
+      fecha: gasto.fecha || null, tipo: gasto.tipo || null, nroFactura: gasto.nroFactura || null,
+      monto: gasto.monto || null, concepto: gasto.concepto || null, proyecto: gasto.proyecto || null,
+      fotoUrl: gasto.fotoUrl || null, archivoPdfUrl: gasto.archivoPdfUrl || null,
+      archivoPdfNombre: gasto.archivoPdfNombre || '',
+      rendido: false, rendicionId: null,
+      creadoEn: gasto.creadoEn || new Date().toISOString(),
+    };
+    if (gasto.fbId) await fbUpdateViaticoGasto(gasto.fbId, docData);
+    else gasto.fbId = await fbSaveViaticoGasto(docData);
+    // Ya está a salvo en la nube → persistir (esto libera el base64 pesado del localStorage)
+    _vtPersistir();
+  } catch (e) {
+    console.warn('No se pudo sincronizar el gasto (se reintenta):', e.message);
+  }
+}
+
+// Reintenta subir todo lo que haya quedado sin sincronizar en la rendición actual.
+async function _vtSyncPendientes() {
+  if (!_vt || !Array.isArray(_vt.gastos)) return;
+  for (const g of _vt.gastos) {
+    const faltaSubir = (g.foto && (!g.fotoUrl || g._fotoCambiada)) || (g.archivoPdf && !g.archivoPdfUrl);
+    if (!g.fbId || faltaSubir) await _vtSyncGasto(g);
+  }
+}
+
+// Trae los gastos pendientes desde Firestore y los mergea con lo local. Así los
+// gastos sobreviven a limpiezas de memoria, cambio de día o de equipo.
+async function _vtCargarPendientesRemotos() {
+  if (!currentUser || !navigator.onLine) return;
+  try {
+    const remotos = await fbGetGastosPendientes(currentUser.id);
+    let cambios = false;
+    for (const r of remotos) {
+      if (_vt.gastos.some(g => g.fbId === r.fbId)) continue;
+      _vt.gastos.push({
+        fbId: r.fbId, _id: r._id || null,
+        fecha: r.fecha, tipo: r.tipo, nroFactura: r.nroFactura,
+        monto: r.monto, concepto: r.concepto, proyecto: r.proyecto,
+        foto: null, fotoUrl: r.fotoUrl || null,
+        archivoPdf: null, archivoPdfUrl: r.archivoPdfUrl || null,
+        archivoPdfNombre: r.archivoPdfNombre || '',
+        creadoEn: r.creadoEn || null,
+      });
+      cambios = true;
+    }
+    // Restaurar el monto asignado si acá no lo tenemos (memoria limpia / otro equipo).
+    try {
+      const activo = await fbGetViaticoActivo(currentUser.id);
+      if (activo && activo.montoAsignado != null && activo.montoAsignado !== '' && !_vt.montoAsignado) {
+        _vt.montoAsignado = activo.montoAsignado;
+        cambios = true;
+      }
+    } catch (e) { console.warn('No se pudo cargar el monto asignado:', e.message); }
+    if (cambios) { _vtPersistir(); _vtRender(); }
+    await _vtSyncPendientes();
+  } catch (e) {
+    console.warn('No se pudieron cargar gastos pendientes remotos:', e.message);
+  }
+}
+
+// Antes de armar el ZIP, recupera desde R2 el base64 de cualquier comprobante que
+// ya no lo tenga en memoria. GARANTÍA de que las fotos/PDF estén en el ZIP.
+async function _vtRehidratarFotos() {
+  for (const g of _vt.gastos) {
+    try {
+      if (!g.foto && g.fotoUrl) g.foto = await _vtDataUrlDesdeR2(g.fotoUrl);
+      if (!g.archivoPdf && g.archivoPdfUrl) g.archivoPdf = await _vtDataUrlDesdeR2(g.archivoPdfUrl);
+    } catch (e) {
+      console.warn('No se pudo recuperar un comprobante desde R2 para el ZIP:', e.message);
+    }
+  }
+}
+
+// Al reconectar, reintentar sincronizar la rendición en curso.
+window.addEventListener('online', () => {
+  if (_vt) _vtSyncPendientes().then(() => { if (typeof _vtRender === 'function') _vtRender(); });
+});
+
+// Monto asignado: se guarda local en cada tecla y se sincroniza a Firestore con
+// debounce, para que persista y siga disponible si se limpia memoria o se cambia
+// de equipo. Al modificarlo, se actualiza en la nube.
+let _vtMontoTimer = null;
+function _vtSetMonto(valor) {
+  _vt.montoAsignado = valor;
+  window._vt = _vt;
+  _vtActualizarSaldo();           // recalcula saldo y persiste local
+  clearTimeout(_vtMontoTimer);
+  _vtMontoTimer = setTimeout(_vtSyncMonto, 800);
+}
+window._vtSetMonto = _vtSetMonto;
+
+async function _vtSyncMonto() {
+  if (!currentUser || !navigator.onLine) return;
+  try { await fbSaveViaticoActivo(currentUser.id, { montoAsignado: _vt.montoAsignado || '' }); }
+  catch (e) { console.warn('No se pudo sincronizar el monto asignado:', e.message); }
 }
 
 function _vtRender() {
@@ -5356,7 +5527,7 @@ function _vtRender() {
     <div class="form-group">
       <label>Monto de viáticos asignados *</label>
       <input type="number" id="vt-monto" placeholder="Ej: 150000" min="0" step="0.01" value="${_vt.montoAsignado}"
-        oninput="_vt.montoAsignado=this.value;window._vt=_vt;_vtActualizarSaldo()" style="font-size:18px;font-weight:700">
+        oninput="_vtSetMonto(this.value)" style="font-size:18px;font-weight:700">
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
@@ -5404,9 +5575,12 @@ function _vtActualizarSaldo() {
 window._vtActualizarSaldo = _vtActualizarSaldo;
 
 function _vtEliminarGasto(i) {
+  const g = _vt.gastos[i];
   _vt.gastos.splice(i, 1);
   _vtPersistir();
   _vtRender();
+  // Borrar también el doc en Firestore (si ya se había sincronizado).
+  if (g && g.fbId) fbDeleteViaticoGasto(g.fbId).catch(e => console.warn('No se pudo borrar el gasto en la nube:', e.message));
 }
 window._vtEliminarGasto = _vtEliminarGasto;
 
@@ -5549,6 +5723,7 @@ function _gastoFoto(input) {
     // En lugar de guardar directo, abrir el editor de recorte
     abrirEditorRecorte(e.target.result, (recortada) => {
       _gastoTmp.foto = recortada;
+      _gastoTmp._fotoCambiada = true;
       _gastoTmp.archivoPdf = null;
       _gastoTmp.archivoPdfNombre = '';
       const prev = document.getElementById('gasto-preview');
@@ -5842,6 +6017,7 @@ function _gastoPdf(input) {
   reader.onload = e => {
     _gastoTmp.archivoPdf = e.target.result; // dataURL base64
     _gastoTmp.archivoPdfNombre = file.name;
+    _gastoTmp._fotoCambiada = true;
     _gastoTmp.foto = null;
     document.getElementById('gasto-preview').innerHTML = _gastoPreviewHTML();
   };
@@ -5862,12 +6038,16 @@ function guardarGasto() {
   }
   const tipoFinal = g.tipo === 'Otro' ? g.tipoOtro.trim() : g.tipo;
   const conceptoFinal = g.concepto === 'Otros' ? g.conceptoOtro.trim() : g.concepto;
+  const editando = g._editIndex != null && _vt.gastos[g._editIndex];
+  const prev = editando ? _vt.gastos[g._editIndex] : null;
   const gastoFinal = {
+    ...(prev || {}),  // conserva fbId / _id / fotoUrl / archivoPdfUrl si es edición
     fecha: g.fecha, tipo: tipoFinal, nroFactura: g.nroFactura.trim(),
     monto: g.monto, concepto: conceptoFinal, proyecto: g.proyecto.trim(),
     foto: g.foto, archivoPdf: g.archivoPdf, archivoPdfNombre: g.archivoPdfNombre,
+    _fotoCambiada: !!g._fotoCambiada || !prev,          // foto nueva o gasto nuevo
+    creadoEn: (prev && prev.creadoEn) || new Date().toISOString(),
   };
-  const editando = g._editIndex != null && _vt.gastos[g._editIndex];
   if (editando) _vt.gastos[g._editIndex] = gastoFinal;
   else _vt.gastos.push(gastoFinal);
 
@@ -5878,6 +6058,8 @@ function guardarGasto() {
   // un "✓ Gasto agregado" que haría creer al técnico que quedó a salvo.
   // El gasto igual queda en memoria, así que puede rendir sin perderlo.
   if (guardado) showToast(editando ? '✓ Gasto actualizado' : '✓ Gasto agregado', 'success');
+  // Sincronizar a R2 + Firestore en segundo plano, igual que un scanner.
+  _vtSyncGasto(gastoFinal).then(() => { if (typeof _vtRender === 'function') _vtRender(); });
 }
 window.guardarGasto = guardarGasto;
 
@@ -5944,6 +6126,10 @@ window.rendirViaticos = rendirViaticos;
 async function _vtPrepararZip() {
   const fechaStr = localDateKey();
   const nombreZip = `Rendicion_Viaticos_${fechaStr}.zip`;
+  // GARANTÍA: las fotos/PDF tienen que estar en el ZIP sí o sí. Si el base64 se
+  // limpió de memoria porque ya estaba en R2, lo recuperamos desde R2 acá.
+  await _vtRehidratarFotos();
+
   const xlsxBlob = _vtGenerarExcel();
   const zip = new JSZip();
   zip.file(`Planilla_Gastos_${fechaStr}.xlsx`, xlsxBlob);
@@ -6044,11 +6230,13 @@ async function _compartirRendicion() {
 
   // ── Respaldo en R2 + Firestore (después del share) ──
   showToast('Guardando respaldo...', '');
-  let fotoUrls = [];
+  // Cada gasto ya subió su foto a R2 al cargarse, así que reutilizamos esas URLs.
+  let fotoUrls = gastosSnapshot.map(g => g.fotoUrl).filter(Boolean);
   try {
-    const fotos = gastosSnapshot.filter(g => g.foto).map(g => g.foto);
-    if (fotos.length > 0) fotoUrls = await uploadPhotosToR2(rendicionId, fotos);
-  } catch(e) { console.warn('No se pudieron subir fotos a R2:', e.message); }
+    // Respaldo: si algún gasto no tenía su foto en R2, la subimos ahora.
+    const faltantes = gastosSnapshot.filter(g => g.foto && !g.fotoUrl).map(g => g.foto);
+    if (faltantes.length > 0) fotoUrls = fotoUrls.concat(await uploadPhotosToR2(rendicionId, faltantes));
+  } catch(e) { console.warn('No se pudieron subir fotos faltantes a R2:', e.message); }
 
   const rendicion = {
     id: rendicionId,
@@ -6067,6 +6255,16 @@ async function _compartirRendicion() {
     })),
   };
   try { await fbSaveViaticoRendicion(rendicion); } catch(e) { console.warn('No se pudo guardar rendición:', e.message); }
+
+  // Marcar los gastos individuales como rendidos para que dejen de aparecer
+  // como pendientes (pero queden en la nube, ya asociados a esta rendición).
+  try {
+    const fbIds = gastosSnapshot.map(g => g.fbId).filter(Boolean);
+    if (fbIds.length > 0) await fbMarcarGastosRendidos(fbIds, rendicionId);
+  } catch(e) { console.warn('No se pudieron marcar los gastos como rendidos:', e.message); }
+
+  // Cerrar la rendición activa: borrar el monto asignado guardado en la nube.
+  try { await fbClearViaticoActivo(currentUser.id); } catch(e) {}
 
   // Limpiar
   _vt = null; window._vt = null;
