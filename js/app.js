@@ -5510,7 +5510,7 @@ function _vtRender() {
     ? '<div class="empty-state" style="padding:16px"><p>Sin gastos cargados</p></div>'
     : _vt.gastos.map((g, i) => {
         const fmtF = g.fecha ? new Date(g.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '—';
-        const icono = g.archivoPdf ? '📄' : (g.foto ? '📷' : '📝');
+        const icono = (g.archivoPdf || g.archivoPdfUrl) ? '📄' : ((g.foto || g.fotoUrl) ? '📷' : '📝');
         return `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="flex:1;min-width:0;cursor:pointer" onclick="showCargarGasto(${i})">
             <div style="font-size:13px;font-weight:600;color:var(--text)">${icono} ${escHtml(g.concepto||'—')} · ${fmt(parseFloat(g.monto)||0)}</div>
@@ -5608,8 +5608,12 @@ function showCargarGasto(editIndex) {
       conceptoOtro: esConceptoFijo ? '' : (g.concepto || ''),
       proyecto: g.proyecto || '',
       foto: g.foto || null,
+      fotoUrl: g.fotoUrl || null,
       archivoPdf: g.archivoPdf || null,
+      archivoPdfUrl: g.archivoPdfUrl || null,
       archivoPdfNombre: g.archivoPdfNombre || '',
+      fbId: g.fbId || null,
+      _id: g._id || null,
       _editIndex: editIndex,
     };
   } else {
@@ -5698,8 +5702,9 @@ function _gastoRender() {
 
 function _gastoPreviewHTML() {
   const g = _gastoTmp;
-  if (g.foto) return `<img src="${g.foto}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border)">`;
-  if (g.archivoPdf) return `<div style="font-size:12px;color:var(--accent)">📄 ${escHtml(g.archivoPdfNombre||'documento.pdf')}</div>`;
+  const src = g.foto || g.fotoUrl;
+  if (src) return `<img src="${src}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border)">`;
+  if (g.archivoPdf || g.archivoPdfUrl) return `<div style="font-size:12px;color:var(--accent)">📄 ${escHtml(g.archivoPdfNombre||'documento.pdf')}</div>`;
   return '<div style="font-size:11px;color:var(--text3)">Sin comprobante adjunto</div>';
 }
 
@@ -10337,7 +10342,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v275'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v276'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
