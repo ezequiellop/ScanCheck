@@ -9678,11 +9678,37 @@ async function sendToJira() {
         s.scannerModelo ? `Modelo: ${s.scannerModelo}` : null,
         s.scannerSerie ? `N° Serie: ${s.scannerSerie}` : null
       ].filter(Boolean).join('\n') || undefined;
+      // Checklist y datos según el tipo/subtipo real de la operación, para que la
+      // subtarea SIEMPRE refleje lo que corresponde (no un checklist de otro tipo).
+      let cklTituloSub = 'Checklist';
+      let cklLinesSub;
+      if (s.checklistItems) {
+        cklLinesSub = checklistItemsLines(s.checklistItems);
+      } else if (s.opType === 'instalacion_nueva' || s.opType === 'instalacion_reemplazo') {
+        cklLinesSub = checklistInstalacionLines(s.checklistInstalacion);
+      } else if (s.opType === 'cambio_equipo' || s.opType === 'reemplazo') {
+        cklLinesSub = fallaChecklistLines(s.actaReemplazo);
+        cklTituloSub = 'Tipo de falla detectada (Acta de Reemplazo)';
+      } else if (s.opType === 'falla_reparable') {
+        cklLinesSub = fallaReparableLines(s.fallaReparable);
+        cklTituloSub = 'Falla reparada en sitio';
+      } else {
+        cklLinesSub = checklistLines(s.checklist);
+      }
+      // Datos propios del subtipo que hoy no salían en la subtarea.
+      let datosExtraSub = '';
+      if (s.opType === 'instalacion_reemplazo' && s.instalacionReemplazoData) {
+        const d = s.instalacionReemplazoData;
+        if (d.marcaVieja || d.serieVieja) datosExtraSub += `\nEquipo retirado (contrato anterior): ${d.marcaVieja||''}${d.serieVieja?` — Serie ${d.serieVieja}`:''}`;
+      }
+      if ((s.opType === 'cambio_equipo' || s.opType === 'reemplazo') && s.actaReemplazo?.nuevoMarcaModelo) {
+        datosExtraSub += `\nEquipo nuevo (marca/modelo): ${s.actaReemplazo.nuevoMarcaModelo}`;
+      }
       let sr;
       try {
         sr = await jiraCall('/rest/api/3/issue', {
           fields:{project:{key:cfg.project},parent:{key:parentKey},summary:`[${opLabel(s.opType)}] ${s.paso||'Sin paso'} — Serie ${s.serie} — Puesto ${s.puesto||'—'} (Ref: ${parentKey})`,
-            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}${s.estadoMiniPC?`\nEstado miniPC: ${s.estadoMiniPC.cpu||''}${s.estadoMiniPC.ramTotal?` · RAM ${s.estadoMiniPC.ramUsada||'?'}/${s.estadoMiniPC.ramTotal}GB`:''}${s.estadoMiniPC.discoTotal?` · Disco ${s.estadoMiniPC.discoUsado||'?'}/${s.estadoMiniPC.discoTotal}`:''}${s.estadoMiniPC.so?` · ${s.estadoMiniPC.so}`:''}`:''}`:(s.producto==='tablet'?`Producto: Tablet\nSerie Tablet: ${s.serie}${s.deviceId?`\nDevice ID: ${s.deviceId}`:''}${s.ip?`\nIP: ${s.ip}`:''}${s.mac?`\nMAC: ${s.mac}`:''}${s.serieRetira?`\nRetira: ${s.serieRetira}${s.deviceIdRetira?` (Device ID: ${s.deviceIdRetira})`:''}\nNuevo: ${s.serieNuevo}${s.deviceIdNuevo?` (Device ID: ${s.deviceIdNuevo})`:''}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`)}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).length?`\n\nChecklist:\n${(s.checklistItems?checklistItemsLines(s.checklistItems):checklistLines(s.checklist)).join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
+            description:mkDoc(`Paso: ${s.paso}\nPuesto: ${s.puesto}\n${s.producto==='totem'?`Producto: Tótem TVF\nSerie miniPC: ${s.serieMiniPC||s.serie}${s.modeloMiniPC?` (${s.modeloMiniPC})`:''}${s.ipMiniPC?`\nIP miniPC: ${s.ipMiniPC}`:''}${s.macMiniPC?`\nMAC miniPC: ${s.macMiniPC}`:''}${s.serieCamara?`\nCámara: ${s.serieCamara}${s.modeloCamara?` (${s.modeloCamara})`:''}`:''}${s.seriePantalla?`\nPantalla: ${s.seriePantalla}${s.modeloPantalla?` (${s.modeloPantalla})`:''}`:''}${s.equipoReemplazado?`\nEquipo reemplazado: ${s.equipoReemplazado}\nRetira: ${s.mmRetira||''} ${s.serieRetira}\nNuevo: ${s.mmNuevo||''} ${s.serieNuevo}`:''}${s.estadoMiniPC?`\nEstado miniPC: ${s.estadoMiniPC.cpu||''}${s.estadoMiniPC.ramTotal?` · RAM ${s.estadoMiniPC.ramUsada||'?'}/${s.estadoMiniPC.ramTotal}GB`:''}${s.estadoMiniPC.discoTotal?` · Disco ${s.estadoMiniPC.discoUsado||'?'}/${s.estadoMiniPC.discoTotal}`:''}${s.estadoMiniPC.so?` · ${s.estadoMiniPC.so}`:''}`:''}`:(s.producto==='tablet'?`Producto: Tablet\nSerie Tablet: ${s.serie}${s.deviceId?`\nDevice ID: ${s.deviceId}`:''}${s.ip?`\nIP: ${s.ip}`:''}${s.mac?`\nMAC: ${s.mac}`:''}${s.serieRetira?`\nRetira: ${s.serieRetira}${s.deviceIdRetira?` (Device ID: ${s.deviceIdRetira})`:''}\nNuevo: ${s.serieNuevo}${s.deviceIdNuevo?` (Device ID: ${s.deviceIdNuevo})`:''}`:''}`:`Serie PC: ${s.serie}${s.serieRetira?`\nRetira: ${s.serieRetira}\nNuevo: ${s.serieNuevo}`:''}`)}${datosExtraSub}\nTipo: ${opLabel(s.opType)}${s.invDnd?`\nN° Inv. DND: ${s.invDnd}`:''}${s.invDnm?`\nN° Inv. DNM: ${s.invDnm}`:''}\nHora: ${new Date(s.timestamp).toLocaleString('es-AR')}${s.lat?`\nGPS: ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}${s.address?` — ${s.address}`:''}`:''}${cklLinesSub.length?`\n\n${cklTituloSub}:\n${cklLinesSub.join('\n')}`:''}${s.notas?`\n\nNotas:\n${s.notas}`:''}`),
             issuetype:{id:'10003'},...FIXED_FIELDS,...ASSIGNEE_FIELD,
             ...(hardwareAsociado ? { customfield_10050: mkDoc(hardwareAsociado) } : {})}
         });
@@ -10516,7 +10542,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v281'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v283'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
