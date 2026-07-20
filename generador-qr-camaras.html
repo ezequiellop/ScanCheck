@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ScanCheck · Generador de QR de cámaras</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{ --bg:#0a1628; --bg2:#0f2140; --bg3:#16294d; --border:#24406e; --text:#eaf1fb; --text3:#8fa6c9; --accent:#00d4aa; --danger:#ee5533; }
   *{ box-sizing:border-box; }
@@ -76,6 +76,7 @@
   <div class="card" id="qrcard" style="display:none">
     <div id="qrbox">
       <canvas id="qrcanvas"></canvas>
+      <img id="qrimg" alt="QR" style="display:none;background:#fff;padding:12px;border-radius:10px;max-width:100%">
       <div class="count" id="qrcount"></div>
       <div class="row-actions" style="justify-content:center">
         <button class="btn" onclick="descargar()">⬇ Descargar PNG</button>
@@ -186,35 +187,58 @@ function _payloadCams(cams){
   });
 }
 
+let _qrMode = null;      // 'canvas' | 'img'
+let _qrImgUrl = null;
+
+function _mostrarQR(nCams, nChars, nivel){
+  document.getElementById('qrcard').style.display='block';
+  document.getElementById('qrbox').style.display='block';
+  document.getElementById('qrcount').textContent = `${nCams} cámara(s) · ${nChars} caracteres · corrección ${nivel}`;
+  document.getElementById('qrbox').scrollIntoView({ behavior:'smooth' });
+}
+
 function generar(){
   document.getElementById('err').textContent='';
   const cams = leerCamaras();
   if(!cams.length){ document.getElementById('err').textContent='Cargá al menos una cámara.'; return; }
   const json = JSON.stringify({ t:'punto', cams:_payloadCams(cams) });
-  const canvas = document.getElementById('qrcanvas');
   const width = Math.min(520, 300 + Math.floor(json.length/10));
-  // Si el payload es grande, bajamos la corrección de errores para que entre.
-  const niveles = json.length > 1100 ? ['L','M'] : ['M','Q','L'];
-  (function intento(k){
-    if(k>=niveles.length){
-      document.getElementById('err').textContent='Son demasiadas cámaras para un solo QR. Generá dos QR (mitad y mitad) y escaneá los dos: la app los suma.';
-      return;
-    }
-    QRCode.toCanvas(canvas, json, { errorCorrectionLevel:niveles[k], width, margin:2 }, err=>{
-      if(err){ intento(k+1); return; }
-      document.getElementById('qrcard').style.display='block';
-      document.getElementById('qrbox').style.display='block';
-      document.getElementById('qrcount').textContent = `${cams.length} cámara(s) · ${json.length} caracteres · corrección ${niveles[k]}`;
-      document.getElementById('qrbox').scrollIntoView({ behavior:'smooth' });
-    });
-  })(0);
+  const canvas = document.getElementById('qrcanvas');
+  const img = document.getElementById('qrimg');
+
+  if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+    // Generación local (canvas), con descenso de corrección de errores si es grande.
+    canvas.style.display=''; img.style.display='none';
+    const niveles = json.length > 1100 ? ['L','M'] : ['M','Q','L'];
+    (function intento(k){
+      if(k>=niveles.length){ document.getElementById('err').textContent='Son demasiadas cámaras para un solo QR. Generá dos (mitad y mitad): la app los suma.'; return; }
+      QRCode.toCanvas(canvas, json, { errorCorrectionLevel:niveles[k], width, margin:2 }, err=>{
+        if(err){ intento(k+1); return; }
+        _qrMode='canvas';
+        _mostrarQR(cams.length, json.length, niveles[k]);
+      });
+    })(0);
+  } else {
+    // Fallback: API pública de QR (la misma que usa la app para etiquetas).
+    // Requiere internet en el momento de generar.
+    canvas.style.display='none'; img.style.display='';
+    const ecc = json.length > 1100 ? 'L' : 'M';
+    _qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size='+width+'x'+width+'&ecc='+ecc+'&margin=8&data='+encodeURIComponent(json);
+    img.onload = () => { _qrMode='img'; _mostrarQR(cams.length, json.length, ecc); };
+    img.onerror = () => { document.getElementById('err').textContent='No se pudo generar el QR. La librería no cargó y tampoco hay conexión a internet para el generador online.'; };
+    img.src = _qrImgUrl;
+  }
 }
 
 function descargar(){
-  const a = document.createElement('a');
-  a.download = 'QR_camaras_punto.png';
-  a.href = document.getElementById('qrcanvas').toDataURL('image/png');
-  a.click();
+  if(_qrMode==='canvas'){
+    const a = document.createElement('a');
+    a.download = 'QR_camaras_punto.png';
+    a.href = document.getElementById('qrcanvas').toDataURL('image/png');
+    a.click();
+  } else if(_qrMode==='img' && _qrImgUrl){
+    window.open(_qrImgUrl, '_blank'); // abrir para guardar (imagen de otro dominio)
+  }
 }
 
 for(let k=0;k<3;k++) agregarFila();
