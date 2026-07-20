@@ -562,10 +562,11 @@
       <div class="form-group"><label>N° / Nombre del Punto *</label><input type="text" id="punto-nro" maxlength="40" placeholder="Ej: Ingreso carril 2"></div>
       <button class="btn-secondary" style="width:100%;margin-bottom:12px" onclick="startPuntoQRScan()">📷 Escanear QR de cámaras</button>
 
-      <!-- Cámaras (etapa 2: lista dinámica autocompletada por QR) -->
+      <!-- Cámaras: lista dinámica, autocompletada por QR o cargada a mano -->
       <div id="punto-camaras-section">
         <div class="section-label" style="margin-top:12px">Cámaras</div>
-        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Lista de cámaras (serial · MAC · IP) — se completa en la etapa 2 con el QR.</div>
+        <div id="punto-camaras-list"></div>
+        <button class="btn-secondary" style="width:100%;margin-top:4px" onclick="_puntoAgregarCamara()">+ Agregar cámara manualmente</button>
       </div>
 
       <!-- ONU (etapa 2/3: foto de etiqueta + IA) -->

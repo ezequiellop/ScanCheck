@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScanCheck · Generador de QR de cámaras</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+<style>
+  :root{ --bg:#0a1628; --bg2:#0f2140; --bg3:#16294d; --border:#24406e; --text:#eaf1fb; --text3:#8fa6c9; --accent:#00d4aa; --danger:#ee5533; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  .wrap{ max-width:920px; margin:0 auto; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .sub{ color:var(--text3); font-size:13px; margin-bottom:20px; }
+  .card{ background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:16px; }
+  .label{ font-size:12px; color:var(--text3); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+  textarea,input{ width:100%; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; padding:8px 10px; font-family:inherit; }
+  textarea{ min-height:80px; resize:vertical; }
+  button{ cursor:pointer; border:none; border-radius:9px; font-weight:700; font-size:13px; padding:10px 14px; }
+  .btn{ background:var(--accent); color:#06121f; }
+  .btn2{ background:var(--bg3); color:var(--text); border:1px solid var(--border); }
+  .btn-danger{ background:transparent; color:var(--danger); font-size:18px; padding:2px 8px; }
+  .tablewrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; margin-top:8px; min-width:820px; }
+  th{ text-align:left; font-size:11px; color:var(--text3); padding:4px 6px; font-weight:600; }
+  td{ padding:3px 6px; }
+  td input{ font-size:12px; padding:6px 8px; }
+  .row-actions{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  #qrbox{ text-align:center; display:none; }
+  #qrbox canvas{ background:#fff; padding:12px; border-radius:10px; }
+  .hint{ font-size:11px; color:var(--text3); margin-top:8px; }
+  .count{ font-size:11px; color:var(--text3); margin-top:6px; }
+  .err{ color:var(--danger); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎥 Generador de QR de cámaras</h1>
+  <div class="sub">Cargá las cámaras del punto de captura y generá un QR con todos los datos del CSV. El técnico lo escanea desde ScanCheck y se completa la lista automáticamente.</div>
+
+  <div class="card">
+    <div class="label">Cargar desde EZTools</div>
+    <input type="file" id="csvfile" accept=".csv,text/csv,text/plain" onchange="cargarCSV(this.files[0])" style="margin-bottom:12px">
+    <div class="label" style="margin-top:4px">o pegar la lista</div>
+    <textarea id="paste" placeholder="Pegá acá el contenido del CSV o la lista copiada de EZTools (con o sin encabezado)."></textarea>
+    <div class="row-actions">
+      <button class="btn2" onclick="parsearPegado()">Parsear lo pegado</button>
+      <button class="btn2" onclick="limpiarTabla()">Vaciar tabla</button>
+    </div>
+    <div class="hint">Del CSV toma las columnas Device Name · IP · Model · Version · MAC · Serial No. por el encabezado. Podés corregir cualquier campo en la tabla.</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Cámaras</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th style="min-width:150px">Device Name</th>
+          <th style="min-width:120px">IP</th>
+          <th style="min-width:140px">Model</th>
+          <th style="min-width:150px">Version</th>
+          <th style="min-width:140px">MAC</th>
+          <th style="min-width:160px">Serial No.</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="row-actions">
+      <button class="btn2" onclick="agregarFila()">+ Agregar cámara</button>
+      <button class="btn" onclick="generar()">Generar QR</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+
+  <div class="card" id="qrcard" style="display:none">
+    <div id="qrbox">
+      <canvas id="qrcanvas"></canvas>
+      <div class="count" id="qrcount"></div>
+      <div class="row-actions" style="justify-content:center">
+        <button class="btn" onclick="descargar()">⬇ Descargar PNG</button>
+      </div>
+      <div class="hint">Mostralo en pantalla y escanealo desde ScanCheck, o descargalo/imprimilo.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAC_RE = /([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}|\b[0-9A-Fa-f]{12}\b/;
+const IP_RE  = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+
+function escAttr(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
+
+function nuevaFila(c){
+  c = c || {};
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input data-k="name"    value="${escAttr(c.name)}"    placeholder="Device Name"></td>
+    <td><input data-k="ip"      value="${escAttr(c.ip)}"      placeholder="IP"></td>
+    <td><input data-k="model"   value="${escAttr(c.model)}"   placeholder="Model"></td>
+    <td><input data-k="version" value="${escAttr(c.version)}" placeholder="Version"></td>
+    <td><input data-k="mac"     value="${escAttr(c.mac)}"     placeholder="MAC"></td>
+    <td><input data-k="serial"  value="${escAttr(c.serial)}"  placeholder="Serial No."></td>
+    <td><button class="btn-danger" title="Quitar" onclick="this.closest('tr').remove()">×</button></td>`;
+  return tr;
+}
+function agregarFila(){ document.getElementById('tbody').appendChild(nuevaFila()); }
+function limpiarTabla(){ document.getElementById('tbody').innerHTML=''; agregarFila(); }
+
+function cargarCSV(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => parsearTexto(String(e.target.result));
+  reader.onerror = () => { document.getElementById('err').textContent='No se pudo leer el archivo.'; };
+  reader.readAsText(file);
+}
+function parsearPegado(){
+  const txt = document.getElementById('paste').value;
+  if(txt.trim()) parsearTexto(txt);
+}
+
+function _detectarDelim(linea){ let best=',',max=-1; [',',';','\t','|'].forEach(d=>{const n=linea.split(d).length; if(n>max){max=n;best=d;}}); return best; }
+function _parseCSVLine(line, delim){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){const ch=line[i]; if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else { if(ch==='"') q=true; else if(ch===delim){out.push(cur);cur='';} else cur+=ch; } } out.push(cur); return out.map(s=>s.trim()); }
+function _norm(s){ return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
+
+function parsearTexto(texto){
+  texto = texto.replace(/^\uFEFF/, '');
+  const lineas = texto.split(/\r?\n/).filter(l=>l.trim().length);
+  if(!lineas.length){ document.getElementById('err').textContent='No hay datos para cargar.'; return; }
+  const delim = _detectarDelim(lineas[0]);
+  const header = _parseCSVLine(lineas[0], delim).map(_norm);
+  const findCol = preds => header.findIndex(h => preds.some(p=>p(h)));
+  const col = {
+    name:    findCol([h=>h.includes('devicename'), h=>h.includes('nombre'), h=>h==='name']),
+    ip:      findCol([h=>h==='ip', h=>h.includes('ipaddress'), h=>h.includes('direccionip'), h=>(h.includes('ip')&&!h.includes('gateway')&&!h.includes('mask')&&!h.includes('dns')&&!h.includes('subnet'))]),
+    model:   findCol([h=>h.includes('model'), h=>h.includes('modelo')]),
+    version: findCol([h=>h.includes('version'), h=>h.includes('firmware')]),
+    mac:     findCol([h=>h.includes('mac')]),
+    serial:  findCol([h=>h.includes('serial'), h=>h==='sn', h=>h.includes('numserie'), h=>h.includes('nserie'), h=>h.includes('serie')]),
+  };
+  const hayHeader = Object.values(col).some(c=>c>=0);
+  const tbody = document.getElementById('tbody');
+  const filas = hayHeader ? lineas.slice(1) : lineas;
+  let agregadas = 0;
+  filas.forEach(l=>{
+    const cells = _parseCSVLine(l, delim);
+    const g = k => (hayHeader && col[k]>=0) ? (cells[col[k]]||'') : '';
+    const c = { name:g('name'), ip:g('ip'), model:g('model'), version:g('version'), mac:g('mac'), serial:g('serial') };
+    // Completar MAC/IP por regex si faltaron (fallback sin encabezado)
+    const joined = cells.join(' ');
+    if(!c.mac){ const m=joined.match(MAC_RE); if(m) c.mac=m[0]; }
+    if(!c.ip){  const m=joined.match(IP_RE);  if(m) c.ip=m[0]; }
+    if(!c.serial && !hayHeader){
+      let resto = joined.replace(MAC_RE,' ').replace(IP_RE,' ');
+      const tokens = resto.split(/[\s,;|\t]+/).map(t=>t.trim()).filter(t=>t.length>=3);
+      c.serial = tokens.sort((a,b)=>b.length-a.length)[0] || '';
+    }
+    if(Object.values(c).some(Boolean)){ tbody.appendChild(nuevaFila(c)); agregadas++; }
+  });
+  if(agregadas){ document.getElementById('csvfile').value=''; document.getElementById('paste').value=''; document.getElementById('err').textContent=''; document.getElementById('qrcard').style.display='none'; }
+  else document.getElementById('err').textContent='No se reconocieron cámaras. Revisá el archivo o cargalas a mano.';
+}
+
+function leerCamaras(){
+  const cams = [];
+  document.querySelectorAll('#tbody tr').forEach(tr=>{
+    const c = {};
+    tr.querySelectorAll('input').forEach(inp=>{ c[inp.dataset.k] = inp.value.trim(); });
+    if(Object.values(c).some(Boolean)) cams.push(c);
+  });
+  return cams;
+}
+
+// Payload compacto: claves cortas que espera ScanCheck.
+// n=Device Name · i=IP · mo=Model · v=Version · m=MAC · s=Serial No.
+function _payloadCams(cams){
+  return cams.map(c=>{
+    const o = {};
+    if(c.name)    o.n  = c.name;
+    if(c.ip)      o.i  = c.ip;
+    if(c.model)   o.mo = c.model;
+    if(c.version) o.v  = c.version;
+    if(c.mac)     o.m  = c.mac;
+    if(c.serial)  o.s  = c.serial;
+    return o;
+  });
+}
+
+function generar(){
+  document.getElementById('err').textContent='';
+  const cams = leerCamaras();
+  if(!cams.length){ document.getElementById('err').textContent='Cargá al menos una cámara.'; return; }
+  const json = JSON.stringify({ t:'punto', cams:_payloadCams(cams) });
+  const canvas = document.getElementById('qrcanvas');
+  const width = Math.min(520, 300 + Math.floor(json.length/10));
+  // Si el payload es grande, bajamos la corrección de errores para que entre.
+  const niveles = json.length > 1100 ? ['L','M'] : ['M','Q','L'];
+  (function intento(k){
+    if(k>=niveles.length){
+      document.getElementById('err').textContent='Son demasiadas cámaras para un solo QR. Generá dos QR (mitad y mitad) y escaneá los dos: la app los suma.';
+      return;
+    }
+    QRCode.toCanvas(canvas, json, { errorCorrectionLevel:niveles[k], width, margin:2 }, err=>{
+      if(err){ intento(k+1); return; }
+      document.getElementById('qrcard').style.display='block';
+      document.getElementById('qrbox').style.display='block';
+      document.getElementById('qrcount').textContent = `${cams.length} cámara(s) · ${json.length} caracteres · corrección ${niveles[k]}`;
+      document.getElementById('qrbox').scrollIntoView({ behavior:'smooth' });
+    });
+  })(0);
+}
+
+function descargar(){
+  const a = document.createElement('a');
+  a.download = 'QR_camaras_punto.png';
+  a.href = document.getElementById('qrcanvas').toDataURL('image/png');
+  a.click();
+}
+
+for(let k=0;k<3;k++) agregarFila();
+</script>
+</body>
+</html>
