@@ -2485,16 +2485,49 @@ let currentTotemIncSubtipo = 'reparable';
 // instalación / incidencia) y subtipos (reparable / reemplazo).
 let currentPuntoOpType = 'mantenimiento';
 let currentPuntoIncSubtipo = 'reparable';
+let _puntoUbicacion = null; // { lat, lon, acc, direccion }
 
 function showPuntoPage() {
   // Reset básico. Los campos de cámaras/ONU y checklists se cargan en la etapa 2.
-  ['punto-paso','punto-nro','punto-notas'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['punto-nro','punto-notas','punto-direccion'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  _puntoUbicacion = null;
+  const disp = document.getElementById('punto-coords-display');
+  if (disp) disp.textContent = 'Sin ubicación todavía — tocá el botón para capturar coordenadas.';
   capturedPhotos = [];
   puntoSetOpType('mantenimiento');
   showPage('new-punto');
   if (typeof renderPhotosGrid === 'function') renderPhotosGrid();
 }
 window.showPuntoPage = showPuntoPage;
+
+// Captura coordenadas GPS y autocompleta la dirección (reverse geocode). La
+// dirección queda editable por si el técnico quiere ajustarla.
+async function puntoObtenerUbicacion() {
+  const disp = document.getElementById('punto-coords-display');
+  const btn = document.getElementById('punto-btn-ubicacion');
+  if (!navigator.geolocation) { if (disp) disp.textContent = 'Este dispositivo no permite geolocalización.'; return; }
+  if (disp) disp.textContent = '⏳ Obteniendo ubicación...';
+  if (btn) btn.disabled = true;
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000 }));
+    const lat = pos.coords.latitude, lon = pos.coords.longitude, acc = Math.round(pos.coords.accuracy);
+    _puntoUbicacion = { lat, lon, acc, direccion: '' };
+    if (disp) disp.innerHTML = `📍 ${lat.toFixed(6)}, ${lon.toFixed(6)} · precisión ±${acc} m`;
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18`);
+      const d = await r.json();
+      const dir = d.display_name || '';
+      _puntoUbicacion.direccion = dir;
+      const inp = document.getElementById('punto-direccion');
+      if (inp && dir && !inp.value) inp.value = dir;
+    } catch(e) { /* sin dirección: quedan las coordenadas */ }
+  } catch(e) {
+    if (disp) disp.textContent = '⚠️ No se pudo obtener la ubicación. Verificá los permisos de GPS.';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+window.puntoObtenerUbicacion = puntoObtenerUbicacion;
 
 function puntoSetOpType(tipo) {
   currentPuntoOpType = tipo;
@@ -10416,7 +10449,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v278'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v279'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
