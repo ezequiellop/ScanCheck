@@ -1019,7 +1019,7 @@ const pageTitles = {
   'home':'Inicio','new-scan':'Nuevo Registro','report':'Informe del Día',
   'view-report':'Ver Informe','history':'Historial',
   'supervisor':'Panel Supervisor','viajes':'Mis Viajes','flota':'Gestión de Flota'
-, 'new-totem': 'Registro de Tótem', 'new-tablet': 'Registro de Tablet'};
+, 'new-totem': 'Registro de Tótem', 'new-tablet': 'Registro de Tablet', 'new-punto': 'Registro de Punto de Captura'};
 
 function showPage(name, addHistory=true) {
   // Si la cámara está abierta (overlay global) y se navega a otra página, cerrarla
@@ -2479,6 +2479,63 @@ window.closeDayReport = closeDayReport;
 // ══════════════════════════════════════════════════════════════
 let currentTotemOpType = 'mantenimiento';
 let currentTotemIncSubtipo = 'reparable';
+
+// ======== PUNTOS DE CAPTURA (etapa 1: scaffold + navegación) ========
+// Estructura espejo del tótem: mismos tipos de operación (mantenimiento /
+// instalación / incidencia) y subtipos (reparable / reemplazo).
+let currentPuntoOpType = 'mantenimiento';
+let currentPuntoIncSubtipo = 'reparable';
+
+function showPuntoPage() {
+  // Reset básico. Los campos de cámaras/ONU y checklists se cargan en la etapa 2.
+  ['punto-paso','punto-nro','punto-notas'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  capturedPhotos = [];
+  puntoSetOpType('mantenimiento');
+  showPage('new-punto');
+  if (typeof renderPhotosGrid === 'function') renderPhotosGrid();
+}
+window.showPuntoPage = showPuntoPage;
+
+function puntoSetOpType(tipo) {
+  currentPuntoOpType = tipo;
+  ['mantenimiento','instalacion','incidencia'].forEach(t => {
+    const btn = document.getElementById('punto-op-' + t);
+    if (btn) btn.classList.toggle('active', t === tipo);
+  });
+  const sub = document.getElementById('punto-incidencia-subtipo');
+  const chkM = document.getElementById('punto-checklist-mantenimiento');
+  const chkI = document.getElementById('punto-checklist-instalacion');
+  if (sub)  sub.style.display  = tipo === 'incidencia' ? 'block' : 'none';
+  if (chkM) chkM.style.display = tipo === 'mantenimiento' ? 'block' : 'none';
+  if (chkI) chkI.style.display = tipo === 'instalacion' ? 'block' : 'none';
+  if (tipo === 'incidencia') { puntoSetIncSubtipo(currentPuntoIncSubtipo); }
+  else {
+    ['punto-checklist-reparable','punto-checklist-reemplazo','punto-reemplazo-fields']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  }
+}
+window.puntoSetOpType = puntoSetOpType;
+
+function puntoSetIncSubtipo(subt) {
+  currentPuntoIncSubtipo = subt;
+  const bR = document.getElementById('punto-inc-reparable');
+  const bM = document.getElementById('punto-inc-reemplazo');
+  if (bR) bR.classList.toggle('active', subt === 'reparable');
+  if (bM) bM.classList.toggle('active', subt === 'reemplazo');
+  const chkR = document.getElementById('punto-checklist-reparable');
+  const chkM = document.getElementById('punto-checklist-reemplazo');
+  const rf   = document.getElementById('punto-reemplazo-fields');
+  if (chkR) chkR.style.display = subt === 'reparable' ? 'block' : 'none';
+  if (chkM) chkM.style.display = subt === 'reemplazo' ? 'block' : 'none';
+  if (rf)   rf.style.display   = subt === 'reemplazo' ? 'block' : 'none';
+}
+window.puntoSetIncSubtipo = puntoSetIncSubtipo;
+
+// Stubs (se implementan en etapas siguientes) para que los botones no rompan.
+function startPuntoQRScan() { showToast('Escaneo de QR de cámaras: etapa 3', ''); }
+window.startPuntoQRScan = startPuntoQRScan;
+function savePunto() { showToast('Guardado de punto de captura: etapa 4', ''); }
+window.savePunto = savePunto;
 
 const TOTEM_CHK = {
   mantenimiento: [
@@ -10359,7 +10416,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v277'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v278'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
