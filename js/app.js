@@ -1429,6 +1429,11 @@ function processQRData(raw) {
         fillTabletFromEtiqueta(et);
         return;
       }
+      if (et && et.t === 'punto') {
+        window._esperandoEtiquetaPunto = false;
+        fillPuntoFromEtiqueta(et);
+        return;
+      }
     } catch(e) {}
 
     let data;
@@ -2491,6 +2496,8 @@ function showPuntoPage() {
   // Reset básico. Los campos de cámaras/ONU y checklists se cargan en la etapa 2.
   ['punto-nro','punto-notas','punto-direccion'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   _puntoUbicacion = null;
+  _puntoCamaras = [];
+  if (typeof _puntoRenderCamaras === 'function') _puntoRenderCamaras();
   const disp = document.getElementById('punto-coords-display');
   if (disp) disp.textContent = 'Sin ubicación todavía — tocá el botón para capturar coordenadas.';
   capturedPhotos = [];
@@ -2564,9 +2571,69 @@ function puntoSetIncSubtipo(subt) {
 }
 window.puntoSetIncSubtipo = puntoSetIncSubtipo;
 
-// Stubs (se implementan en etapas siguientes) para que los botones no rompan.
-function startPuntoQRScan() { showToast('Escaneo de QR de cámaras: etapa 3', ''); }
+// Escaneo del QR de cámaras: reutiliza el scanner existente; processQRData
+// detecta el formato {t:'punto', cams:[...]} y llama a fillPuntoFromEtiqueta.
+function startPuntoQRScan() {
+  window._esperandoEtiquetaPunto = true;
+  startQRScan();
+}
 window.startPuntoQRScan = startPuntoQRScan;
+
+// ── Lista de cámaras del punto (autocompletada por QR o manual) ──
+let _puntoCamaras = [];
+
+function _puntoRenderCamaras() {
+  const cont = document.getElementById('punto-camaras-list');
+  if (!cont) return;
+  if (!_puntoCamaras.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin cámaras. Escaneá el QR o agregá manualmente.</div>';
+    return;
+  }
+  cont.innerHTML = _puntoCamaras.map((c, i) => `
+    <div style="background:var(--bg3);border-radius:10px;padding:8px 10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">Cámara ${i+1}</span>
+        <button onclick="_puntoQuitarCamara(${i})" title="Quitar" style="background:transparent;border:none;color:rgba(238,85,51,.85);font-size:16px;cursor:pointer">×</button>
+      </div>
+      <div class="form-group" style="margin:0 0 6px"><label style="font-size:10px">Device Name</label><input type="text" value="${escHtml(c.deviceName||'')}" oninput="_puntoCamaras[${i}].deviceName=this.value" maxlength="60"></div>
+      <div class="form-group" style="margin:0 0 6px"><label style="font-size:10px">Serial</label><input type="text" value="${escHtml(c.serial||'')}" oninput="_puntoCamaras[${i}].serial=this.value" maxlength="60"></div>
+      <div class="form-row">
+        <div class="form-group" style="margin:0"><label style="font-size:10px">MAC</label><input type="text" value="${escHtml(c.mac||'')}" oninput="_puntoCamaras[${i}].mac=this.value" maxlength="17"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:10px">IP</label><input type="text" value="${escHtml(c.ip||'')}" oninput="_puntoCamaras[${i}].ip=this.value" maxlength="45"></div>
+      </div>
+      <div class="form-row" style="margin-top:6px">
+        <div class="form-group" style="margin:0"><label style="font-size:10px">Model</label><input type="text" value="${escHtml(c.model||'')}" oninput="_puntoCamaras[${i}].model=this.value" maxlength="60"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:10px">Version</label><input type="text" value="${escHtml(c.version||'')}" oninput="_puntoCamaras[${i}].version=this.value" maxlength="60"></div>
+      </div>
+    </div>`).join('');
+}
+function _puntoAgregarCamara() { _puntoCamaras.push({ deviceName:'', ip:'', model:'', version:'', mac:'', serial:'' }); _puntoRenderCamaras(); }
+function _puntoQuitarCamara(i) { _puntoCamaras.splice(i, 1); _puntoRenderCamaras(); }
+window._puntoAgregarCamara = _puntoAgregarCamara;
+window._puntoQuitarCamara = _puntoQuitarCamara;
+
+// Llena la lista desde el QR {t:'punto', cams:[{n,i,mo,v,m,s}]} (todos los datos
+// del CSV de EZTools). No pisa las cargadas: agrega evitando duplicados por serial/MAC.
+function fillPuntoFromEtiqueta(d) {
+  if (!d || !Array.isArray(d.cams)) { showToast('El QR no contiene cámaras', 'error'); return; }
+  const nuevas = d.cams.map(c => ({
+    deviceName: c.n ?? c.name ?? c.deviceName ?? '',
+    ip:         c.i ?? c.ip ?? '',
+    model:      c.mo ?? c.model ?? '',
+    version:    c.v ?? c.version ?? '',
+    mac:        c.m ?? c.mac ?? '',
+    serial:     c.s ?? c.serial ?? '',
+  }));
+  let agregadas = 0;
+  nuevas.forEach(nc => {
+    const dup = _puntoCamaras.some(e => (nc.serial && e.serial === nc.serial) || (nc.mac && e.mac === nc.mac));
+    if (!dup) { _puntoCamaras.push(nc); agregadas++; }
+  });
+  _puntoRenderCamaras();
+  showToast(`✓ ${agregadas} cámara(s) cargada(s) desde el QR`, 'success');
+}
+window.fillPuntoFromEtiqueta = fillPuntoFromEtiqueta;
+
 function savePunto() { showToast('Guardado de punto de captura: etapa 4', ''); }
 window.savePunto = savePunto;
 
@@ -10449,7 +10516,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v279'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '18.07.2026-v281'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
