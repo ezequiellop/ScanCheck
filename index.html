@@ -170,6 +170,10 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
         Registrar Tablet
       </button>
+      <button class="btn-primary big" style="margin-top:10px;background:var(--bg2);color:var(--text);border:1px solid var(--border2)" onclick="showPuntoPage()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        Registrar Punto de Captura
+      </button>
       <div class="section-label" style="margin-top:24px">Registros de hoy</div>
       <div id="today-list" class="scan-list"></div>
       <div id="btn-close-day-wrap" class="hidden">
@@ -521,6 +525,86 @@
       </div>
 
       <button id="btn-save-totem" class="btn-primary" style="margin-top:24px" onclick="saveTotem()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+        Guardar Registro
+      </button>
+    </div>
+
+    <!-- ═══════════ PÁGINA: NUEVO PUNTO DE CAPTURA ═══════════ -->
+    <div class="page" id="page-new-punto">
+      <div class="page-header">
+        <button class="btn-back" onclick="showPage('home')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15,18 9,12 15,6"/></svg></button>
+        <h2>Registro de Punto de Captura</h2>
+      </div>
+
+      <div class="section-label">Tipo de operación</div>
+      <div class="op-type-row">
+        <button class="op-btn active" id="punto-op-mantenimiento" onclick="puntoSetOpType('mantenimiento')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Mantenimiento Preventivo</button>
+        <button class="op-btn" id="punto-op-instalacion" onclick="puntoSetOpType('instalacion')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Instalación</button>
+        <button class="op-btn" id="punto-op-incidencia" onclick="puntoSetOpType('incidencia')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Incidencia</button>
+      </div>
+
+      <!-- Subtipo de incidencia -->
+      <div id="punto-incidencia-subtipo" style="display:none;margin-top:10px">
+        <div class="section-label">Tipo de incidencia</div>
+        <div class="op-type-row">
+          <button class="op-btn active" id="punto-inc-reparable" onclick="puntoSetIncSubtipo('reparable')">🔨 Reparable en sitio</button>
+          <button class="op-btn" id="punto-inc-reemplazo" onclick="puntoSetIncSubtipo('reemplazo')">🔄 Reemplazo de equipo</button>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:16px">Datos del equipo</div>
+      <button class="btn-secondary" style="width:100%;margin-bottom:12px" onclick="startPuntoQRScan()">📷 Escanear QR de cámaras</button>
+
+      <div class="form-group"><label>Nombre del Paso *</label><input type="text" id="punto-paso" maxlength="80" placeholder="Ej: La Quiaca"></div>
+      <div class="form-group"><label>N° / Nombre del Punto *</label><input type="text" id="punto-nro" maxlength="40" placeholder="Ej: Ingreso carril 2"></div>
+
+      <!-- Cámaras (etapa 2: lista dinámica autocompletada por QR) -->
+      <div id="punto-camaras-section">
+        <div class="section-label" style="margin-top:12px">Cámaras</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Lista de cámaras (serial · MAC · IP) — se completa en la etapa 2 con el QR.</div>
+      </div>
+
+      <!-- ONU (etapa 2/3: foto de etiqueta + IA) -->
+      <div id="punto-onu-section">
+        <div class="section-label" style="margin-top:12px">ONU</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Serial y MAC de la ONU desde foto de la etiqueta con IA — etapa 3.</div>
+      </div>
+
+      <!-- Reemplazo de equipo (etapa 2) -->
+      <div id="punto-reemplazo-fields" style="display:none">
+        <div class="section-label" style="margin-top:12px">Datos del reemplazo</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Campos de reemplazo — etapa 2.</div>
+      </div>
+
+      <!-- Checklists (etapa 2) -->
+      <div id="punto-checklist-mantenimiento">
+        <div class="section-label" style="margin-top:16px">Checklist de mantenimiento</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Ítems de mantenimiento — etapa 2.</div>
+      </div>
+      <div id="punto-checklist-instalacion" style="display:none">
+        <div class="section-label" style="margin-top:16px">Checklist de instalación</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Ítems de instalación — etapa 2.</div>
+      </div>
+      <div id="punto-checklist-reparable" style="display:none">
+        <div class="section-label" style="margin-top:16px">Falla detectada (reparable en sitio)</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Ítems de falla — etapa 2.</div>
+      </div>
+      <div id="punto-checklist-reemplazo" style="display:none">
+        <div class="section-label" style="margin-top:16px">Motivo del reemplazo</div>
+        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Motivos de reemplazo — etapa 2.</div>
+      </div>
+
+      <div class="form-group" style="margin-top:12px"><label>Notas</label><textarea id="punto-notas" rows="3" maxlength="500" placeholder="Observaciones adicionales..."></textarea></div>
+
+      <div class="section-label">Fotografías <span class="photo-count-badge" id="punto-photo-count-badge">0/10</span></div>
+      <div id="punto-photos-grid" class="photos-grid"></div>
+      <div class="photo-actions">
+        <button class="btn-photo-add" onclick="startCamera()" id="punto-btn-add-photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>Tomar foto</button>
+        <button class="btn-photo-add" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>Galería</button>
+      </div>
+
+      <button id="btn-save-punto" class="btn-primary" style="margin-top:24px" onclick="savePunto()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
         Guardar Registro
       </button>
