@@ -1036,7 +1036,7 @@ function showPage(name, addHistory=true) {
   if (name === 'home')        { updateStats(); renderTodayList(); }
   if (name === 'mis-tickets') { loadJiraTickets(); }
   if (name === 'history')    renderHistory();
-  if (name === 'new-scan')   resetNewScanForm();
+  if (name === 'new-scan')   { const esEdicion = window._keepEditId; resetNewScanForm(); if (!esEdicion) requestLocation(); }
   if (name === 'viajes')     { loadViajes(); window.scrollTo(0,0); }
   if (name === 'supervisor') renderSupervisor();
 }
@@ -10542,7 +10542,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '18.07.2026-v283'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '21.07.2026-v284'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
