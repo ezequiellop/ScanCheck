@@ -1188,7 +1188,7 @@ window.setIncidenciaSubtipo = setIncidenciaSubtipo;
 
 // ======== RESET FORM ========
 function resetNewScanForm() {
-  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['inp-paso','inp-puesto','inp-serie','inp-notas','inp-serie-retira','inp-serie-nuevo','inp-pc-nombre','inp-scanner-serie','inp-scanner-modelo','inp-scanner-estado','inp-scanner-firmware','inp-inv-dnd','inp-inv-dnm','inp-nuevo-marca-modelo','falla-otro-texto','rep-otro-texto','inp-inst-serie-retira'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
   { const el=document.getElementById('inp-scanner-estado'); if(el) el.classList.add('select-placeholder'); }
   const marcaVieja = document.getElementById('inp-marca-vieja'); if(marcaVieja) marcaVieja.value = '';
   ['chk-vidrio','chk-cable-usb','chk-fuente','chk-limpieza','chk-update-assureid','chk-update-librerias','chk-autoinicio-doc-auth','chk-autoinicio-sentinel','chk-camara-web',
@@ -1499,6 +1499,7 @@ function processQRData(raw) {
     if (serieVal)  { const el=document.getElementById('inp-serie');  if(el) el.value=serieVal; }
     if (dskSerie && dskSerie!=='N/A')  { const el=document.getElementById('inp-scanner-serie');  if(el) el.value=dskSerie; }
     if (dskModelo && dskModelo!=='No detectado') { const el=document.getElementById('inp-scanner-modelo'); if(el) el.value=dskModelo; }
+    if (dskFirmware && dskFirmware!=='N/A') { const el=document.getElementById('inp-scanner-firmware'); if(el) el.value=dskFirmware; }
     if (dskEstado && dskEstado!=='N/A') { const el=document.getElementById('inp-scanner-estado'); if(el) { el.value=dskEstado; el.classList.toggle('select-placeholder', !el.value); } }
     if (assureEngine) qrAssureEngine = assureEngine;
     if (assureDocLib) qrAssureDocLib = assureDocLib;
@@ -1648,6 +1649,7 @@ async function saveScan() {
 
   const pcNombre      = document.getElementById('inp-pc-nombre').value.trim();
   const scannerSerie  = document.getElementById('inp-scanner-serie').value.trim();
+  const scannerFirmware = (document.getElementById('inp-scanner-firmware')?.value || '').trim();
   const scannerModelo = document.getElementById('inp-scanner-modelo').value.trim();
   const scannerEstado = document.getElementById('inp-scanner-estado').value.trim();
   const invDnd        = document.getElementById('inp-inv-dnd').value.trim();
@@ -1735,7 +1737,7 @@ async function saveScan() {
     userName: currentUser.name,
     opType: opTypeReal,
     paso, puesto, serie, serieRetira, serieNuevo, notas,
-    pcNombre, scannerSerie, scannerModelo, scannerEstado, invDnd, invDnm, checklist, checklistInstalacion, actaReemplazo, fallaReparable, instalacionReemplazoData,
+    pcNombre, scannerSerie, scannerModelo, scannerEstado, scannerFirmware, invDnd, invDnm, checklist, checklistInstalacion, actaReemplazo, fallaReparable, instalacionReemplazoData,
     assureEngine: qrAssureEngine, assureDocLib: qrAssureDocLib, assureLicKey: qrAssureLicKey,
     datosSistema: Object.keys(qrDatosSistema).length ? {...qrDatosSistema} : null,
     jiraTicket: null,
@@ -2056,6 +2058,7 @@ function editScan(id) {
     setVal('inp-serie', scan.serie);
     setVal('inp-pc-nombre', scan.pcNombre);
     setVal('inp-scanner-serie', scan.scannerSerie);
+    setVal('inp-scanner-firmware', scan.scannerFirmware || scan.datosSistema?.scannerFirmware || '');
     setVal('inp-scanner-modelo', scan.scannerModelo);
     setVal('inp-notas', scan.notas);
     setVal('inp-inv-dnd', scan.invDnd);
@@ -2972,7 +2975,7 @@ function bloqueEquipoGridHtml(s, headMargin) {
       '</div>';
   }
   return head('🖨 Scanner DESKO') + open +
-    row('Serie', s.scannerSerie) + row('Modelo', s.scannerModelo) + row('Estado', s.scannerEstado) +
+    row('Serie', s.scannerSerie) + row('Modelo', s.scannerModelo) + row('Estado', s.scannerEstado) + row('Firmware', s.scannerFirmware || s.datosSistema?.scannerFirmware) +
     row('N° Inv. DND', s.invDnd) + row('N° Inv. DNM', s.invDnm) +
     row('Serie retira', s.serieRetira, 'var(--warning)') + row('Serie nueva', s.serieNuevo, 'var(--accent)') +
     (s.instalacionReemplazoData?`<div style="color:var(--text2);grid-column:1/-1">Equipo retirado: <span style="color:var(--text)">${escHtml(s.instalacionReemplazoData.marcaVieja)} — ${escHtml(s.instalacionReemplazoData.serieVieja)}</span></div>`:'') +
@@ -8530,7 +8533,7 @@ async function saveReport() {
     producto: s.producto || 'scanner',
     paso: s.paso, puesto: s.puesto, serie: s.serie,
     serieRetira: s.serieRetira, serieNuevo: s.serieNuevo,
-    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, checklistInstalacion: s.checklistInstalacion, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
+    pcNombre: s.pcNombre, scannerSerie: s.scannerSerie, scannerModelo: s.scannerModelo, scannerEstado: s.scannerEstado, scannerFirmware: s.scannerFirmware || null, invDnd: s.invDnd, invDnm: s.invDnm, checklist: s.checklist, checklistInstalacion: s.checklistInstalacion, actaReemplazo: s.actaReemplazo, fallaReparable: s.fallaReparable, instalacionReemplazoData: s.instalacionReemplazoData,
     // Campos específicos de Tótem
     serieMiniPC: s.serieMiniPC, modeloMiniPC: s.modeloMiniPC, ipMiniPC: s.ipMiniPC, macMiniPC: s.macMiniPC,
     serieCamara: s.serieCamara, modeloCamara: s.modeloCamara, seriePantalla: s.seriePantalla, modeloPantalla: s.modeloPantalla,
@@ -8965,7 +8968,8 @@ async function buildReportPDFDoc(rep) {
         if (s.scannerSerie)  fields.push(['SERIE SCANNER', s.scannerSerie]);
         if (s.scannerModelo) fields.push(['MODELO SCANNER', s.scannerModelo]);
         if (s.scannerEstado) fields.push(['ESTADO SCANNER', s.scannerEstado]);
-        if (s.datosSistema?.scannerFirmware) fields.push(['FIRMWARE SCANNER', s.datosSistema.scannerFirmware]);
+        const fwPdf = s.scannerFirmware || s.datosSistema?.scannerFirmware;
+        if (fwPdf) fields.push(['FIRMWARE SCANNER', fwPdf]);
         if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
         if (s.invDnm) fields.push(['N° INV. DNM', s.invDnm]);
         // Cambio de equipo por incidencia
@@ -9681,7 +9685,7 @@ async function sendToJira() {
       const hardwareAsociado = [
         s.scannerModelo ? `Modelo: ${s.scannerModelo}` : null,
         s.scannerSerie ? `N° Serie: ${s.scannerSerie}` : null,
-        s.datosSistema?.scannerFirmware ? `Firmware: ${s.datosSistema.scannerFirmware}` : null
+        (s.scannerFirmware || s.datosSistema?.scannerFirmware) ? `Firmware: ${s.scannerFirmware || s.datosSistema.scannerFirmware}` : null
       ].filter(Boolean).join('\n') || undefined;
       // Checklist y datos según el tipo/subtipo real de la operación, para que la
       // subtarea SIEMPRE refleje lo que corresponde (no un checklist de otro tipo).
@@ -9703,7 +9707,8 @@ async function sendToJira() {
       // Datos propios del subtipo que hoy no salían en la subtarea.
       let datosExtraSub = '';
       // Firmware del scanner: llega en el QR que genera el .ps1 de la PC.
-      if (s.datosSistema?.scannerFirmware) datosExtraSub += `\nFirmware scanner: ${s.datosSistema.scannerFirmware}`;
+      const fwSub = s.scannerFirmware || s.datosSistema?.scannerFirmware;
+      if (fwSub) datosExtraSub += `\nFirmware scanner: ${fwSub}`;
       if (s.opType === 'instalacion_reemplazo' && s.instalacionReemplazoData) {
         const d = s.instalacionReemplazoData;
         if (d.marcaVieja || d.serieVieja) datosExtraSub += `\nEquipo retirado (contrato anterior): ${d.marcaVieja||''}${d.serieVieja?` — Serie ${d.serieVieja}`:''}`;
@@ -10549,7 +10554,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '22.07.2026-v285'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '22.07.2026-v286'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
