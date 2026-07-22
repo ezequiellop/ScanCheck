@@ -1449,6 +1449,7 @@ function processQRData(raw) {
     const dskSerie  = g('DSKS','DESKO_Scanner_Serial','');
     const dskModelo = g('DSKM','DESKO_Scanner_Modelo','');
     const dskEstado = g('DKOS','DESKO_Scanner_Status','') || g('DSKO','DESKO_Scanner_Status','');
+    const dskFirmware = g('DSKF','DESKO_Scanner_Firmware','');
     const assureEngine = g('AEV','AssureID_Engine_Version','');
     const assureDocLib = g('ADL','AssureID_DocLib_Version','');
     const assureLicKey = g('ALK','AssureID_LicenseKey','');
@@ -1490,6 +1491,7 @@ function processQRData(raw) {
     if (assureDocLibFecha) qrDatosSistema.docLibFecha = assureDocLibFecha;
     if (assureDocLibRuta)  qrDatosSistema.docLibRuta  = assureDocLibRuta;
     if (assureServicio)    qrDatosSistema.servicioEstado = assureServicio;
+    if (dskFirmware && dskFirmware!=='N/A') qrDatosSistema.scannerFirmware = dskFirmware;
 
     // El QR siempre sobreescribe los campos de hardware — son datos de la PC actual,
     // no del técnico, así que siempre deben reflejar lo que leyó el script.
@@ -2306,6 +2308,7 @@ function datosSistemaHtml(ds) {
     const servicioColor = ds.servicioEstado.toLowerCase().includes('corriendo') ? 'var(--accent)' : 'var(--warning)';
     rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Servicio AssureID</span><span style="color:${servicioColor};font-weight:700">${escHtml(ds.servicioEstado)}</span></div>`;
   }
+  if (ds.scannerFirmware) rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">Firmware scanner</span><span>${escHtml(ds.scannerFirmware)}</span></div>`;
   if (ds.docLibFecha) rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--text3)">DocLib actualizado</span><span>${escHtml(ds.docLibFecha)}</span></div>`;
   if (ds.docLibRuta)  rows += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;gap:8px"><span style="color:var(--text3);white-space:nowrap">DocLib ruta</span><span style="text-align:right;word-break:break-all">${escHtml(ds.docLibRuta)}</span></div>`;
   if (!rows) return '';
@@ -8962,6 +8965,7 @@ async function buildReportPDFDoc(rep) {
         if (s.scannerSerie)  fields.push(['SERIE SCANNER', s.scannerSerie]);
         if (s.scannerModelo) fields.push(['MODELO SCANNER', s.scannerModelo]);
         if (s.scannerEstado) fields.push(['ESTADO SCANNER', s.scannerEstado]);
+        if (s.datosSistema?.scannerFirmware) fields.push(['FIRMWARE SCANNER', s.datosSistema.scannerFirmware]);
         if (s.invDnd) fields.push(['N° INV. DND', s.invDnd]);
         if (s.invDnm) fields.push(['N° INV. DNM', s.invDnm]);
         // Cambio de equipo por incidencia
@@ -9676,7 +9680,8 @@ async function sendToJira() {
       }
       const hardwareAsociado = [
         s.scannerModelo ? `Modelo: ${s.scannerModelo}` : null,
-        s.scannerSerie ? `N° Serie: ${s.scannerSerie}` : null
+        s.scannerSerie ? `N° Serie: ${s.scannerSerie}` : null,
+        s.datosSistema?.scannerFirmware ? `Firmware: ${s.datosSistema.scannerFirmware}` : null
       ].filter(Boolean).join('\n') || undefined;
       // Checklist y datos según el tipo/subtipo real de la operación, para que la
       // subtarea SIEMPRE refleje lo que corresponde (no un checklist de otro tipo).
@@ -9697,6 +9702,8 @@ async function sendToJira() {
       }
       // Datos propios del subtipo que hoy no salían en la subtarea.
       let datosExtraSub = '';
+      // Firmware del scanner: llega en el QR que genera el .ps1 de la PC.
+      if (s.datosSistema?.scannerFirmware) datosExtraSub += `\nFirmware scanner: ${s.datosSistema.scannerFirmware}`;
       if (s.opType === 'instalacion_reemplazo' && s.instalacionReemplazoData) {
         const d = s.instalacionReemplazoData;
         if (d.marcaVieja || d.serieVieja) datosExtraSub += `\nEquipo retirado (contrato anterior): ${d.marcaVieja||''}${d.serieVieja?` — Serie ${d.serieVieja}`:''}`;
@@ -10542,7 +10549,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '21.07.2026-v284'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '22.07.2026-v285'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
