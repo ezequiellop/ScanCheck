@@ -2503,6 +2503,7 @@ function showPuntoPage() {
   ['punto-nro','punto-notas','punto-direccion'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   _puntoUbicacion = null;
   _puntoCamaras = [];
+  _puntoOnu = { modelo:'', gponSn:'', dSn:'', mac:'', foto:null };
   if (typeof _puntoRenderCamaras === 'function') _puntoRenderCamaras();
   const disp = document.getElementById('punto-coords-display');
   if (disp) disp.textContent = 'Sin ubicación todavía — tocá el botón para capturar coordenadas.';
@@ -2636,9 +2637,131 @@ function fillPuntoFromEtiqueta(d) {
     if (!dup) { _puntoCamaras.push(nc); agregadas++; }
   });
   _puntoRenderCamaras();
+  _puntoRenderOnu();
   showToast(`✓ ${agregadas} cámara(s) cargada(s) desde el QR`, 'success');
 }
 window.fillPuntoFromEtiqueta = fillPuntoFromEtiqueta;
+
+// ── ONU del punto de captura ──────────────────────────────────
+// Se saca una foto de la etiqueta y la IA extrae los datos. Todo queda
+// editable: si la foto sale mal o la etiqueta esta gastada, se carga a mano.
+let _puntoOnu = { modelo:'', gponSn:'', dSn:'', mac:'', foto:null };
+
+function _puntoRenderOnu() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('punto-onu-modelo', _puntoOnu.modelo);
+  set('punto-onu-gponsn', _puntoOnu.gponSn);
+  set('punto-onu-dsn',    _puntoOnu.dSn);
+  set('punto-onu-mac',    _puntoOnu.mac);
+  const img = document.getElementById('punto-onu-preview');
+  if (img) {
+    if (_puntoOnu.foto) { img.src = _puntoOnu.foto; img.style.display = 'block'; }
+    else { img.removeAttribute('src'); img.style.display = 'none'; }
+  }
+}
+
+function _puntoLimpiarOnu() {
+  _puntoOnu = { modelo:'', gponSn:'', dSn:'', mac:'', foto:null };
+  _puntoRenderOnu();
+  const est = document.getElementById('punto-onu-estado');
+  if (est) est.textContent = 'Sacá la foto de la etiqueta y los datos se completan solos.';
+}
+window._puntoLimpiarOnu = _puntoLimpiarOnu;
+
+// Achica la foto antes de mandarla: alcanza para leer la etiqueta y evita
+// subir varios MB desde el celular en un sitio con mala señal.
+function _puntoAchicarFoto(dataUrl, maxLado = 1400) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let { width: w, height: h } = img;
+      if (Math.max(w, h) > maxLado) {
+        const f = maxLado / Math.max(w, h);
+        w = Math.round(w * f); h = Math.round(h * f);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+async function _puntoLeerEtiquetaOnu(dataUrl) {
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const mediaType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+    const prompt = [
+      'Esta es la foto de la etiqueta de una ONU/ONT GPON. Extraé estos datos:',
+      '- modelo: lo que figura como "Model" (ej: F660)',
+      '- gponSn: lo que figura como "GPON SN" o "GPON Serial" (ej: ELWGC66829E3)',
+      '- dSn: lo que figura como "D-SN", "SN" o "Serial No." (ej: ELWRP93H6335664)',
+      '- mac: lo que figura como "MAC", respetando el formato impreso',
+      'Respondé UNICAMENTE con un objeto JSON, sin texto adicional y sin comillas de bloque.',
+      'Usá exactamente estas claves: modelo, gponSn, dSn, mac.',
+      'Si algún dato no aparece o no se lee con seguridad, poné "" en esa clave. No inventes valores.'
+    ].join('\n');
+
+    const res = await fetch(CLAUDE_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ScanCheck-Token': PHOTOS_TOKEN },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) { console.error('[ONU] HTTP', res.status); return null; }
+    const data = await res.json();
+    let txt = data.content?.[0]?.text?.trim() || '';
+    txt = txt.replace(/```json|```/g, '').trim();
+    const ini = txt.indexOf('{'), fin = txt.lastIndexOf('}');
+    if (ini < 0 || fin < 0) return null;
+    return JSON.parse(txt.slice(ini, fin + 1));
+  } catch (e) {
+    console.error('[ONU] Error:', e.message);
+    return null;
+  }
+}
+
+async function _puntoOnuDesdeFoto(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const est = document.getElementById('punto-onu-estado');
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const foto = await _puntoAchicarFoto(ev.target.result);
+    _puntoOnu.foto = foto;
+    _puntoRenderOnu();
+    if (est) est.textContent = 'Leyendo la etiqueta…';
+    const d = await _puntoLeerEtiquetaOnu(foto);
+    if (!d) {
+      if (est) est.textContent = '⚠ No se pudo leer la etiqueta. Cargá los datos a mano.';
+      return;
+    }
+    // Solo se completan los campos vacíos: no se pisa lo que ya cargó el técnico.
+    if (!_puntoOnu.modelo && d.modelo) _puntoOnu.modelo = String(d.modelo).trim();
+    if (!_puntoOnu.gponSn && d.gponSn) _puntoOnu.gponSn = String(d.gponSn).trim();
+    if (!_puntoOnu.dSn    && d.dSn)    _puntoOnu.dSn    = String(d.dSn).trim();
+    if (!_puntoOnu.mac    && d.mac)    _puntoOnu.mac    = String(d.mac).trim();
+    _puntoRenderOnu();
+    const leidos = ['modelo','gponSn','dSn','mac'].filter(k => _puntoOnu[k]).length;
+    if (est) est.textContent = leidos
+      ? `✓ ${leidos} dato(s) leídos. Revisalos antes de guardar.`
+      : '⚠ No se reconoció ningún dato. Cargalos a mano.';
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+window._puntoOnuDesdeFoto = _puntoOnuDesdeFoto;
 
 function savePunto() { showToast('Guardado de punto de captura: etapa 4', ''); }
 window.savePunto = savePunto;
@@ -10554,7 +10677,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '22.07.2026-v287'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '23.07.2026-v288'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
