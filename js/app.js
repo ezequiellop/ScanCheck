@@ -1121,8 +1121,8 @@ function renderTodayList() {
     return `<div class="scan-item" onclick="viewScan('${s.id||s.fbId}')">
       <div class="scan-item-thumb">${thumb}</div>
       <div class="scan-item-info">
-        <div class="scan-item-paso">${s.producto==='totem'?'🗼 ':(s.producto==='tablet'?'📱 ':'')}${escHtml(s.paso||'(Sin nombre)')}</div>
-        <div class="scan-item-meta">Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}${s.producto==='totem'?' · Tótem':(s.producto==='tablet'?' · Tablet':'')}</div>
+        <div class="scan-item-paso">${s.producto==='totem'?'🗼 ':(s.producto==='tablet'?'📱 ':(s.producto==='punto'?'🎥 ':''))}${escHtml(s.paso||'(Sin nombre)')}</div>
+        <div class="scan-item-meta">${s.producto==='punto'?`Punto: ${escHtml(s.puesto||'—')} · ${(s.camaras||[]).length} cámara(s)`:`Puesto: ${escHtml(s.puesto||'—')} · Serie: ${escHtml(s.serie||'—')}`}${s.producto==='totem'?' · Tótem':(s.producto==='tablet'?' · Tablet':(s.producto==='punto'?' · Punto de captura':''))}</div>
         <span class="op-badge ${s.opType||'mantenimiento'}">${opLabel(s.opType)}</span>
       </div>
       <div class="scan-item-time">${time}</div>
@@ -2763,7 +2763,93 @@ async function _puntoOnuDesdeFoto(input) {
 }
 window._puntoOnuDesdeFoto = _puntoOnuDesdeFoto;
 
-function savePunto() { showToast('Guardado de punto de captura: etapa 4', ''); }
+async function savePunto() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const direccion = val('punto-direccion');
+  const nro       = val('punto-nro');
+
+  if (!direccion) { showToast('Capturá la ubicación o escribí la dirección', 'error'); return; }
+  if (!nro)       { showToast('Ingresá el número de punto', 'error'); return; }
+
+  // Las cámaras y la ONU se toman del estado, no del DOM: ya se editan en vivo.
+  const camaras = _puntoCamaras.filter(c => Object.values(c).some(v => (v || '').trim()));
+  const onu = { ..._puntoOnu };
+  const hayOnu = ['modelo','gponSn','dSn','mac'].some(k => (onu[k] || '').trim());
+  if (!camaras.length && !hayOnu) {
+    showToast('Cargá al menos una cámara o los datos de la ONU', 'error'); return;
+  }
+
+  // Mismo mapeo de tipos que tótem/tablet, para que informes y Jira lo
+  // categoricen igual que el resto de los productos.
+  let opTypeReal = currentPuntoOpType;
+  if (currentPuntoOpType === 'incidencia') {
+    opTypeReal = currentPuntoIncSubtipo === 'reemplazo' ? 'cambio_equipo' : 'falla_reparable';
+  } else if (currentPuntoOpType === 'instalacion') {
+    opTypeReal = 'instalacion_nueva';
+  }
+
+  const scan = {
+    id: 'punto_' + Date.now(),
+    producto: 'punto',
+    userId: currentUser.id,
+    technicianName: currentUser.name || currentUser.email,
+    timestamp: new Date().toISOString(),
+    // Se reutilizan los campos del pipeline existente: 'paso' es la ubicación y
+    // 'serie' el GPON SN de la ONU, que es lo que identifica al punto.
+    paso: direccion,
+    puesto: nro,
+    serie: onu.gponSn || camaras[0]?.serial || '',
+    direccion,
+    camaras,
+    onuModelo: onu.modelo || '',
+    onuGponSn: onu.gponSn || '',
+    onuDSn:    onu.dSn || '',
+    onuMac:    onu.mac || '',
+    opType: opTypeReal,
+    notas: val('punto-notas'),
+    lat: _puntoUbicacion?.lat ?? null,
+    lon: _puntoUbicacion?.lon ?? null,
+    address: direccion,
+    // La foto de la etiqueta viaja con el resto de las fotos, así se sube a R2
+    // y se rehidrata con el mismo mecanismo ya probado.
+    photos: [...capturedPhotos.map(p => p.dataUrl), ...(onu.foto ? [onu.foto] : [])],
+  };
+
+  localScans.push(scan);
+  if (scan.photos.length > 0) {
+    try { localStorage.setItem('scancheck_photos_' + scan.id, JSON.stringify(scan.photos)); } catch(e) {}
+  }
+  try {
+    const scansForStorage = localScans.map(({photos, ...s}) => ({ ...s, photoCount: (photos||[]).length }));
+    localStorage.setItem('scancheck_local_scans_' + currentUser.id, JSON.stringify(scansForStorage));
+  } catch(e) {}
+
+  updateStats(); renderTodayList();
+  showPage('home');
+  showToast('✓ Punto de captura registrado', 'success');
+
+  if (navigator.onLine) {
+    setSyncStatus('syncing');
+    try {
+      const fbId = await fbSaveScan(scan);
+      const idx = localScans.findIndex(s => s.id === scan.id);
+      if (idx !== -1) localScans[idx].fbId = fbId;
+      if (scan.photos.length > 0) {
+        try {
+          const urls = await uploadPhotosToR2(fbId, scan.photos);
+          if (urls.length) await fbUpdateScan(fbId, { photoUrls: urls });
+        } catch(e) { console.warn('R2 punto:', e.message); }
+      }
+      setSyncStatus('online');
+    } catch(e) {
+      queueAdd('scan', scan);
+      setSyncStatus('offline');
+    }
+  } else {
+    queueAdd('scan', scan);
+  }
+}
+window.savePunto = savePunto;
 window.savePunto = savePunto;
 
 const TOTEM_CHK = {
@@ -3023,6 +3109,7 @@ function nombreDispositivo(producto, plural) {
     scanner: ['scanner', 'scanners'],
     totem:   ['tótem', 'tótems'],
     tablet:  ['tablet', 'tablets'],
+    punto:   ['punto de captura', 'puntos de captura'],
   };
   const par = map[producto] || map.scanner;
   return plural ? par[1] : par[0];
@@ -3034,7 +3121,7 @@ function contarDispositivos(scans) {
 }
 // Encabezado de la sección de datos del equipo según producto
 function tituloEquipoHtml(producto, margin) {
-  const label = producto === 'totem' ? '🗼 Tótem TVF' : (producto === 'tablet' ? '📱 Tablet' : '🖨 Scanner DESKO');
+  const label = producto === 'totem' ? '🗼 Tótem TVF' : (producto === 'tablet' ? '📱 Tablet' : (producto === 'punto' ? '🎥 Punto de Captura' : '🖨 Scanner DESKO'));
   return `<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;${margin}">${label}</div>`;
 }
 
@@ -3052,6 +3139,16 @@ function bloqueEquipoInformeHtml(s, headStyle, fieldsClass) {
       ${s.invDnd?fTag('N° Inv. DND',s.invDnd):''} ${s.invDnm?fTag('N° Inv. DNM',s.invDnm):''}
       ${s.equipoReemplazado?fTag('Equipo reemplazado',s.equipoReemplazado):''}
       ${s.serieRetira?fTag('Retira',`${s.mmRetira||''} ${s.serieRetira}`):''} ${s.serieNuevo?fTag('Nuevo',`${s.mmNuevo||''} ${s.serieNuevo}`):''}
+    </div>`;
+  }
+  if (s.producto === 'punto') {
+    const cams = (s.camaras || []).map((c, i) =>
+      fTag(`Cámara ${i+1}`, [c.deviceName, c.serial, c.ip].filter(Boolean).join(' — '))).join(' ');
+    return head('🎥 Punto de Captura') + `<div class="${fieldsClass}">
+      ${s.direccion?fTag('Ubicación',s.direccion):''} ${s.puesto?fTag('N° de punto',s.puesto):''}
+      ${cams}
+      ${s.onuModelo?fTag('ONU Modelo',s.onuModelo):''} ${s.onuGponSn?fTag('ONU GPON SN',s.onuGponSn):''}
+      ${s.onuDSn?fTag('ONU D-SN',s.onuDSn):''} ${s.onuMac?fTag('ONU MAC',s.onuMac):''}
     </div>`;
   }
   if (s.producto === 'tablet') {
@@ -10677,7 +10774,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '23.07.2026-v288'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '23.07.2026-v289'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
