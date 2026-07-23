@@ -570,10 +570,24 @@
         <button class="btn-secondary" style="width:100%;margin-top:4px" onclick="_puntoAgregarCamara()">+ Agregar cámara manualmente</button>
       </div>
 
-      <!-- ONU (etapa 2/3: foto de etiqueta + IA) -->
+      <!-- ONU: foto de la etiqueta + lectura automatica -->
       <div id="punto-onu-section">
         <div class="section-label" style="margin-top:12px">ONU</div>
-        <div class="checklist-box" style="font-size:12px;color:var(--text3)">Serial y MAC de la ONU desde foto de la etiqueta con IA — etapa 3.</div>
+        <div class="checklist-box">
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button type="button" class="btn-ghost" style="flex:1" onclick="document.getElementById('punto-onu-foto').click()">📷 Foto de la etiqueta</button>
+            <button type="button" class="btn-ghost" style="padding:0 14px" onclick="_puntoLimpiarOnu()" title="Limpiar">✕</button>
+          </div>
+          <input type="file" id="punto-onu-foto" accept="image/*" capture="environment" style="display:none" onchange="_puntoOnuDesdeFoto(this)">
+          <div id="punto-onu-estado" style="font-size:12px;color:var(--text3);margin-bottom:8px">Sacá la foto de la etiqueta y los datos se completan solos.</div>
+          <img id="punto-onu-preview" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:10px;cursor:zoom-in" onclick="verFotoAmpliada(this.src)">
+          <div class="form-group" style="margin:0 0 6px"><label style="font-size:10px">Modelo</label><input type="text" id="punto-onu-modelo" maxlength="40" placeholder="ej: F660" oninput="_puntoOnu.modelo=this.value"></div>
+          <div class="form-group" style="margin:0 0 6px"><label style="font-size:10px">GPON SN</label><input type="text" id="punto-onu-gponsn" maxlength="40" placeholder="ej: ELWGC66829E3" oninput="_puntoOnu.gponSn=this.value"></div>
+          <div class="form-row">
+            <div class="form-group" style="margin:0"><label style="font-size:10px">D-SN</label><input type="text" id="punto-onu-dsn" maxlength="40" oninput="_puntoOnu.dSn=this.value"></div>
+            <div class="form-group" style="margin:0"><label style="font-size:10px">MAC</label><input type="text" id="punto-onu-mac" maxlength="17" oninput="_puntoOnu.mac=this.value"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Reemplazo de equipo (etapa 2) -->
