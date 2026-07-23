@@ -10554,7 +10554,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '22.07.2026-v286'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '22.07.2026-v287'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
@@ -10564,7 +10564,11 @@ const JIRA_PROXY_URL = 'https://scancheck-jira-proxy.elopapa.workers.dev';
 const JIRA_BASE_URL = 'https://danaide-enterprise.atlassian.net';
 const GOOGLE_CLIENT_ID = '1033851892465-fdfkguq9uba6pfie61id75rhnnn4fj1h.apps.googleusercontent.com';
 const GOOGLE_SHEET_ID  = '17lJBVQaLyxrYC_KoTjalnoZ7UhOkX2pT9xm0LhoIA54';
-const SHEET_RANGE      = 'ScanCheck-App!A:Z';
+// El rango debe cubrir TODAS las columnas de la tabla (hoy 34). Estaba en A:Z
+// (26), asi que al sincronizar no se limpiaban las ultimas columnas: si una
+// exportacion tenia menos filas que la anterior, quedaban filas huerfanas con
+// datos viejos en Ticket Jira, los checks y camara web. Se deja holgado.
+const SHEET_RANGE      = 'ScanCheck-App!A:BZ';
 
 let gsiTokenClient = null;
 let gsiAccessToken = null;
@@ -10860,7 +10864,7 @@ function buildExportRows(allScans) {
   const headers = [
     'Fecha', 'Técnico', 'Inspector DNM', 'Paso', 'Tipo Operación',
     'Puesto', 'Nombre PC', 'Serie PC',
-    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'N° Inv. DND', 'N° Inv. DNM',
+    'Serie Scanner', 'Modelo Scanner', 'Estado Scanner', 'Firmware Scanner', 'N° Inv. DND', 'N° Inv. DNM',
     'AssureID Engine', 'AssureID DocLib', 'AssureID LicKey',
     'Sentinel Actualizado', 'Library Actualizado',
     'Latitud', 'Longitud', 'Dirección',
@@ -10895,6 +10899,7 @@ function buildExportRows(allScans) {
       s.scannerSerie || '',
       s.scannerModelo || '',
       scannerEstadoLabel(s.scannerEstado),
+      s.scannerFirmware || s.datosSistema?.scannerFirmware || '',
       s.invDnd || '',
       s.invDnm || '',
       s.assureEngine || legacy.engine || '',
