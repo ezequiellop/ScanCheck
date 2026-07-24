@@ -277,3 +277,22 @@ select option[value=""]{color:var(--text3)}
 .config-header svg{color:var(--accent)}
 .config-desc{font-size:13px;color:var(--text2);margin-bottom:18px;line-height:1.6}
 .config-link{font-size:12px;color:var(--accent2);margin-top:4px;display:block;text-decoration:none}
+
+
+/* ===== Métricas del panel supervisor (gráficos sin librerías) ===== */
+.met-per.active { background:var(--accent); color:#06121f; border-color:var(--accent); }
+.met-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:18px; }
+.met-kpi { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+.met-kpi-val { font-size:26px; font-weight:800; color:var(--accent); line-height:1.1; }
+.met-kpi-lbl { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+.met-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px; }
+.met-card-t { font-size:13px; font-weight:700; color:var(--text); margin-bottom:12px; }
+.met-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:12px; }
+.met-row-lbl { flex:0 0 42%; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.met-row-bar { flex:1; height:16px; background:var(--bg3); border-radius:5px; overflow:hidden; }
+.met-row-fill { height:100%; border-radius:5px; transition:width .3s ease; }
+.met-row-val { flex:0 0 38px; text-align:right; font-weight:700; color:var(--text); font-family:var(--mono); }
+.met-spark { display:flex; align-items:flex-end; gap:2px; height:90px; }
+.met-spark-col { flex:1; background:var(--accent); border-radius:2px 2px 0 0; min-height:2px; opacity:.85; }
+.met-spark-x { display:flex; justify-content:space-between; font-size:10px; color:var(--text3); margin-top:6px; }
+.met-empty { font-size:12px; color:var(--text3); padding:6px 0; }
