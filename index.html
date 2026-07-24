@@ -829,6 +829,7 @@
     <div id="page-supervisor" class="page">
       <div class="sup-tabs">
         <button class="sup-tab active" onclick="supTab('informes',this)">Informes</button>
+        <button class="sup-tab" onclick="supTab('metricas',this)">📊 Métricas</button>
         <button class="sup-tab" onclick="supTab('tecnicos',this)">Técnicos</button>
         <button class="sup-tab" onclick="supTab('versiones',this)">Versiones</button>
         <button class="sup-tab" onclick="supTab('mapa',this)">Mapa Live</button>
@@ -844,6 +845,18 @@
         </div>
         <div id="sup-informes-list"></div>
         <div id="sup-papelera-list" class="hidden"></div>
+      </div>
+      <div id="sup-metricas" class="sup-panel hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-ghost small met-per" onclick="setMetricasPeriodo(7,this)">7 días</button>
+            <button class="btn-ghost small met-per active" onclick="setMetricasPeriodo(30,this)">30 días</button>
+            <button class="btn-ghost small met-per" onclick="setMetricasPeriodo(90,this)">90 días</button>
+            <button class="btn-ghost small met-per" onclick="setMetricasPeriodo(0,this)">Todo</button>
+          </div>
+          <button class="btn-ghost small" onclick="renderMetricas(true)">↻ Actualizar</button>
+        </div>
+        <div id="sup-metricas-content"><div class="empty-state"><p>Cargando métricas…</p></div></div>
       </div>
       <div id="sup-tecnicos" class="sup-panel hidden"><div id="sup-tecnicos-list"></div></div>
       <div id="sup-versiones" class="sup-panel hidden"><div id="sup-versiones-content"></div></div>
