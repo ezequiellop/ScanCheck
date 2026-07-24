@@ -10129,7 +10129,7 @@ window.eliminarRegistroDefinitivo = eliminarRegistroDefinitivo;
 // ======== SUPERVISOR ========
 function supTab(tab, btn) {
   document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['informes','tecnicos','versiones','mapa','export','storage','viajes','programados'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
+  ['informes','metricas','tecnicos','versiones','mapa','export','storage','viajes','programados'].forEach(t=>document.getElementById('sup-'+t).classList.toggle('hidden',t!==tab));
   if (tab==='mapa') {
     startLiveMap();
     // Leaflet necesita recalcular el tamaño si el mapa se inicializó mientras la pestaña estaba oculta
@@ -10142,6 +10142,7 @@ function supTab(tab, btn) {
     fbMarcarVersionesVistas().catch(e => console.warn('Error marcando versiones vistas:', e));
   }
   if (tab==='programados') loadSupProgramados();
+  if (tab==='metricas') renderMetricas();
 }
 window.supTab = supTab;
 
@@ -10269,6 +10270,292 @@ async function loadStorageStats() {
 window.loadStorageStats = loadStorageStats;
 
 let liveMapStarted=false;
+// ═══════════════════════════════════════════════════════════════
+// MÉTRICAS DEL PANEL SUPERVISOR
+// Se calculan sobre los informes ya sincronizados. Los gráficos son CSS/SVG
+// puro: sin librerías externas, así funcionan igual sin conexión.
+// ═══════════════════════════════════════════════════════════════
+let _metricasPeriodo = 30;   // días; 0 = todo el histórico
+
+function setMetricasPeriodo(dias, btn) {
+  _metricasPeriodo = dias;
+  document.querySelectorAll('.met-per').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderMetricas();
+}
+window.setMetricasPeriodo = setMetricasPeriodo;
+
+function _metFila(label, valor, max, color) {
+  const pct = max > 0 ? Math.round((valor / max) * 100) : 0;
+  return `<div class="met-row">
+    <div class="met-row-lbl" title="${escHtml(label)}">${escHtml(label)}</div>
+    <div class="met-row-bar"><div class="met-row-fill" style="width:${pct}%;background:${color}"></div></div>
+    <div class="met-row-val">${valor}</div>
+  </div>`;
+}
+
+function _metCard(titulo, filas) {
+  return `<div class="met-card"><div class="met-card-t">${titulo}</div>${
+    filas || '<div class="met-empty">Sin datos en este período.</div>'}</div>`;
+}
+
+// Ordena un conteo {clave: n} de mayor a menor y arma las barras.
+function _metDesde(conteo, color, limite) {
+  const items = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, limite || 99);
+  if (!items.length) return '';
+  const max = items[0][1];
+  return items.map(([k, v]) => _metFila(k, v, max, color)).join('');
+}
+
+// La planilla es la base: el export vuelca TODOS los informes de TODOS los
+// técnicos, así que sirve como fuente única. Se cachea para no pedirla de nuevo
+// en cada filtro. Si falla (sin permisos, sin conexión), se cae a Firestore.
+let _metFilas = null;      // registros normalizados
+let _metOrigen = '';       // 'sheets' | 'firestore'
+let _metCargadoEl = null;  // cuándo se trajo
+let _metBusqueda = '';
+
+// Columnas donde puede aparecer un número de serie o de inventario. Se usan
+// tanto para buscar como para mostrar dónde apareció.
+const MET_CAMPOS_SERIE = [
+  ['serieScanner', 'Serie Scanner'], ['seriePC', 'Serie PC'], ['nombrePC', 'Nombre PC'],
+  ['serieRetira', 'Serie Retira'], ['serieNueva', 'Serie Nueva'],
+  ['serieRetirada', 'Equipo Retirado (Serie)'],
+  ['invDnd', 'N° Inv. DND'], ['invDnm', 'N° Inv. DNM'],
+  ['firmware', 'Firmware'], ['modeloScanner', 'Modelo'],
+];
+
+function _metNorm(v) { return (v == null ? '' : String(v)).trim(); }
+
+// Pasa las filas crudas de la planilla (array de arrays) a registros con nombre.
+function _metDesdeSheet(valores) {
+  if (!valores || valores.length < 2) return [];
+  const cab = valores[0].map(_metNorm);
+  const idx = n => cab.indexOf(n);
+  const c = {
+    fecha: idx('Fecha'), tecnico: idx('Técnico'), inspector: idx('Inspector DNM'),
+    paso: idx('Paso'), opTipo: idx('Tipo Operación'), puesto: idx('Puesto'),
+    nombrePC: idx('Nombre PC'), seriePC: idx('Serie PC'),
+    serieScanner: idx('Serie Scanner'), modeloScanner: idx('Modelo Scanner'),
+    firmware: idx('Firmware Scanner'),
+    invDnd: idx('N° Inv. DND'), invDnm: idx('N° Inv. DNM'),
+    lat: idx('Latitud'), lon: idx('Longitud'), direccion: idx('Dirección'),
+    serieRetira: idx('Serie Retira'), serieNueva: idx('Serie Nueva'),
+    serieRetirada: idx('Equipo Retirado (Contrato Anterior) Serie'),
+    jira: idx('Ticket Jira'),
+  };
+  const g = (fila, k) => (c[k] >= 0 ? _metNorm(fila[c[k]]) : '');
+  return valores.slice(1)
+    .filter(f => f && f.some(v => _metNorm(v)))
+    .map(f => {
+      const r = {};
+      Object.keys(c).forEach(k => { r[k] = g(f, k); });
+      return r;
+    });
+}
+
+// Mismo formato, pero armado desde Firestore (respaldo si la planilla no carga).
+function _metDesdeReports(reports) {
+  const out = [];
+  (reports || []).filter(r => !r.eliminado).forEach(rep => {
+    const scans = rep.scansSnapshot || [];
+    if (!scans.length) {
+      out.push({ fecha: rep.date || '', tecnico: rep.technicianName || '', inspector: rep.inspectorName || '',
+                 paso: rep.paso || '', opTipo: '', puesto: '', jira: rep.jiraKey || '' });
+      return;
+    }
+    scans.forEach(s => out.push({
+      fecha: rep.date || '', tecnico: rep.technicianName || '', inspector: rep.inspectorName || '',
+      paso: s.paso || rep.paso || '', opTipo: opLabel(s.opType || 'mantenimiento'),
+      puesto: _metNorm(s.puesto), nombrePC: _metNorm(s.pcNombre), seriePC: _metNorm(s.serie),
+      serieScanner: _metNorm(s.scannerSerie), modeloScanner: _metNorm(s.scannerModelo),
+      firmware: _metNorm(s.scannerFirmware || s.datosSistema?.scannerFirmware),
+      invDnd: _metNorm(s.invDnd), invDnm: _metNorm(s.invDnm),
+      lat: _metNorm(s.lat), lon: _metNorm(s.lon), direccion: _metNorm(s.address),
+      serieRetira: _metNorm(s.serieRetira), serieNueva: _metNorm(s.serieNuevo),
+      serieRetirada: _metNorm(s.instalacionReemplazoData?.serieVieja),
+      jira: rep.jiraKey || '', producto: s.producto || 'scanner',
+    }));
+  });
+  return out;
+}
+
+async function _metCargarDatos(forzar) {
+  if (_metFilas && !forzar) return _metFilas;
+  // 1) La planilla, que es la base
+  try {
+    const token = await getGoogleAccessToken();
+    const rango = encodeURIComponent(SHEET_RANGE);
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${rango}`,
+      { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    _metFilas = _metDesdeSheet(data.values || []);
+    _metOrigen = 'sheets';
+    _metCargadoEl = new Date();
+    return _metFilas;
+  } catch (e) {
+    console.warn('Métricas: no se pudo leer la planilla, uso Firestore.', e.message);
+  }
+  // 2) Respaldo: Firestore
+  let reports = localReports;
+  try { reports = await fbGetAllReports(); } catch(e) {}
+  _metFilas = _metDesdeReports(reports);
+  _metOrigen = 'firestore';
+  _metCargadoEl = new Date();
+  return _metFilas;
+}
+
+function metBuscar(texto) {
+  _metBusqueda = (texto || '').trim();
+  _metPintar();
+}
+window.metBuscar = metBuscar;
+
+// Busca el texto en cualquier campo de serie/inventario y arma el resultado
+// mostrando DÓNDE está el equipo (paso, puesto) y cuándo se lo vio por última vez.
+function _metResultadosBusqueda(filas) {
+  const q = _metBusqueda.toLowerCase();
+  if (q.length < 2) return null;
+  const hits = [];
+  filas.forEach(f => {
+    for (const [campo, label] of MET_CAMPOS_SERIE) {
+      const v = (f[campo] || '').toLowerCase();
+      if (v && v.includes(q)) { hits.push({ f, campo: label, valor: f[campo] }); break; }
+    }
+  });
+  hits.sort((a, b) => (b.f.fecha || '').localeCompare(a.f.fecha || ''));
+  if (!hits.length) {
+    return `<div class="met-card"><div class="met-card-t">🔍 Sin resultados</div>
+      <div class="met-empty">No se encontró ningún equipo con "${escHtml(_metBusqueda)}".</div></div>`;
+  }
+  const ultimo = hits[0].f;
+  const filasHtml = hits.slice(0, 40).map(h => {
+    const f = h.f;
+    const mapa = (f.lat && f.lon)
+      ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(f.lat + ',' + f.lon)}" target="_blank" style="color:var(--accent2)">ver mapa</a>` : '';
+    const jira = f.jira ? `<a href="${JIRA_BASE_URL}/browse/${escHtml(f.jira)}" target="_blank" style="color:var(--accent2)">${escHtml(f.jira)}</a>` : '';
+    return `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:12px">
+      <div style="font-weight:700;color:var(--accent)">${escHtml(f.paso || '—')}${f.puesto ? ' · Puesto ' + escHtml(f.puesto) : ''}</div>
+      <div style="color:var(--text3);margin-top:2px">${escHtml(f.fecha || '—')} · ${escHtml(f.tecnico || '—')}${f.opTipo ? ' · ' + escHtml(f.opTipo) : ''}</div>
+      <div style="color:var(--text3);margin-top:2px">${escHtml(h.campo)}: <span style="color:var(--text);font-family:var(--mono)">${escHtml(h.valor)}</span></div>
+      ${(f.direccion || mapa || jira) ? `<div style="color:var(--text3);margin-top:2px">${escHtml(f.direccion || '')} ${mapa} ${jira}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="met-card">
+    <div class="met-card-t">📍 Ubicación actual (último registro)</div>
+    <div style="font-size:15px;font-weight:800;color:var(--accent)">${escHtml(ultimo.paso || '—')}${ultimo.puesto ? ' · Puesto ' + escHtml(ultimo.puesto) : ''}</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:3px">Visto el ${escHtml(ultimo.fecha || '—')} por ${escHtml(ultimo.tecnico || '—')}</div>
+    ${ultimo.modeloScanner ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">Modelo: ${escHtml(ultimo.modeloScanner)}${ultimo.firmware ? ' · Firmware: ' + escHtml(ultimo.firmware) : ''}</div>` : ''}
+  </div>
+  <div class="met-card">
+    <div class="met-card-t">🔍 ${hits.length} registro(s) con "${escHtml(_metBusqueda)}"${hits.length > 40 ? ' — se muestran los 40 más recientes' : ''}</div>
+    ${filasHtml}
+  </div>`;
+}
+
+function _metPintar() {
+  const cont = document.getElementById('sup-metricas-content');
+  if (!cont || !_metFilas) return;
+
+  // Filtro por período
+  let filas = _metFilas;
+  if (_metricasPeriodo > 0) {
+    const desde = new Date();
+    desde.setDate(desde.getDate() - _metricasPeriodo);
+    desde.setHours(0,0,0,0);
+    filas = filas.filter(f => {
+      const d = new Date((f.fecha || '') + 'T12:00:00');
+      return !isNaN(d) && d >= desde;
+    });
+  }
+
+  const origen = _metOrigen === 'sheets'
+    ? '📗 Google Sheets'
+    : '⚠ Firestore (no se pudo leer la planilla)';
+  const cabecera = `<div style="font-size:11px;color:var(--text3);margin-bottom:12px">
+      Fuente: ${origen} · ${_metFilas.length} registros · actualizado ${_metCargadoEl ? _metCargadoEl.toLocaleTimeString('es-AR') : '—'}
+    </div>
+    <div class="met-card" style="padding:12px">
+      <input type="text" id="met-buscar" placeholder="🔍 Buscar por serie, N° de inventario o nombre de PC…"
+             value="${escHtml(_metBusqueda)}" oninput="metBuscar(this.value)"
+             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 11px">
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Buscá una serie para saber en qué paso y puesto está el equipo.</div>
+    </div>`;
+
+  // Si hay búsqueda activa, se muestran los resultados en lugar de los gráficos.
+  const resultados = _metResultadosBusqueda(_metFilas);
+  if (resultados) { cont.innerHTML = cabecera + resultados; return; }
+
+  if (!filas.length) {
+    cont.innerHTML = cabecera + '<div class="empty-state"><p>No hay registros en el período elegido.</p></div>';
+    return;
+  }
+
+  const porOp = {}, porTecnico = {}, porPaso = {}, porInspector = {}, porDia = {}, porModelo = {};
+  const equipos = new Set(), pcs = new Set();
+  let conJira = 0;
+
+  filas.forEach(f => {
+    if (f.opTipo)   porOp[f.opTipo] = (porOp[f.opTipo] || 0) + 1;
+    if (f.tecnico)  porTecnico[f.tecnico] = (porTecnico[f.tecnico] || 0) + 1;
+    if (f.paso)     porPaso[f.paso] = (porPaso[f.paso] || 0) + 1;
+    if (f.inspector) porInspector[f.inspector] = (porInspector[f.inspector] || 0) + 1;
+    if (f.fecha)    porDia[f.fecha] = (porDia[f.fecha] || 0) + 1;
+    if (f.modeloScanner) porModelo[f.modeloScanner] = (porModelo[f.modeloScanner] || 0) + 1;
+    if (f.serieScanner) equipos.add(f.serieScanner);
+    if (f.seriePC) pcs.add(f.seriePC);
+    if (f.jira) conJira++;
+  });
+
+  const dias = Object.keys(porDia).sort();
+  let spark = '<div class="met-empty">Sin datos.</div>';
+  if (dias.length) {
+    const maxDia = Math.max(...Object.values(porDia));
+    const ult = dias.slice(-30);
+    spark = `<div class="met-spark">${ult.map(d => {
+        const v = porDia[d];
+        const h = Math.max(2, Math.round((v / maxDia) * 100));
+        return `<div class="met-spark-col" style="height:${h}%" title="${d}: ${v}"></div>`;
+      }).join('')}</div>
+      <div class="met-spark-x"><span>${ult[0]}</span><span>${ult[ult.length-1]}</span></div>`;
+  }
+
+  cont.innerHTML = cabecera + `
+    <div class="met-grid">
+      <div class="met-kpi"><div class="met-kpi-val">${filas.length}</div><div class="met-kpi-lbl">Registros</div></div>
+      <div class="met-kpi"><div class="met-kpi-val">${equipos.size}</div><div class="met-kpi-lbl">Equipos únicos</div></div>
+      <div class="met-kpi"><div class="met-kpi-val">${Object.keys(porPaso).length}</div><div class="met-kpi-lbl">Pasos / sitios</div></div>
+      <div class="met-kpi"><div class="met-kpi-val">${Object.keys(porTecnico).length}</div><div class="met-kpi-lbl">Técnicos</div></div>
+      <div class="met-kpi"><div class="met-kpi-val">${pcs.size}</div><div class="met-kpi-lbl">PCs distintas</div></div>
+      <div class="met-kpi"><div class="met-kpi-val">${conJira}</div><div class="met-kpi-lbl">Con ticket Jira</div></div>
+    </div>
+    ${_metCard('📈 Registros por día', spark)}
+    ${_metCard('🔧 Por tipo de operación', _metDesde(porOp, 'var(--accent)'))}
+    ${_metCard('👤 Por técnico', _metDesde(porTecnico, 'var(--accent2)'))}
+    ${_metCard('📍 Pasos más visitados (top 10)', _metDesde(porPaso, 'var(--accent)', 10))}
+    ${Object.keys(porModelo).length ? _metCard('🖨 Modelos de scanner', _metDesde(porModelo, 'var(--accent2)', 10)) : ''}
+    ${Object.keys(porInspector).length ? _metCard('🛂 Por inspector DNM', _metDesde(porInspector, 'var(--accent)', 10)) : ''}
+  `;
+}
+
+async function renderMetricas(forzar) {
+  const cont = document.getElementById('sup-metricas-content');
+  if (!cont) return;
+  if (!_metFilas || forzar) {
+    cont.innerHTML = '<div class="empty-state"><p>Leyendo la planilla…</p></div>';
+    try { await _metCargarDatos(!!forzar); }
+    catch (e) {
+      cont.innerHTML = `<div class="empty-state"><p>No se pudieron cargar los datos.<br><span style="font-size:12px;color:var(--text3)">${escHtml(e.message)}</span></p></div>`;
+      return;
+    }
+  }
+  _metPintar();
+}
+window.renderMetricas = renderMetricas;
+
 async function renderSupervisor() {
   // Informes
   let allReports=localReports;
@@ -10774,7 +11061,7 @@ function getUrlPasoArgentinaGobAr(nombrePaso) {
 window.getUrlPasoArgentinaGobAr = getUrlPasoArgentinaGobAr;
 const CLAUDE_PROXY_URL = 'https://scancheck-claude-proxy.elopapa.workers.dev';
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJkYjcxYTYzOTE1YzQxMTVhYjBmMzdjN2FjYjJiNGE3IiwiaCI6Im11cm11cjY0In0=';
-const APP_VERSION = '23.07.2026-v289'; // Fecha + nro de SW — actualizar junto con sw.js
+const APP_VERSION = '23.07.2026-v291'; // Fecha + nro de SW — actualizar junto con sw.js
 
 // ── Cloudflare R2 Photos Proxy ───────────────────────────────
 const PHOTOS_PROXY_URL = 'https://scancheck-photos-proxy.elopapa.workers.dev';
